@@ -1,0 +1,45 @@
+{
+  "name": "TripHisaab",
+  "short_name": "TripHisaab",
+  "description": "Plan trip budgets, track expenses, split costs, and settle up with your travel group.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0f766e",
+  "icons": [
+    {
+      "src": "/appIcon.jpg",
+      "sizes": "256x256",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/appIcon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/appIcon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Your trips",
+      "short_name": "Trips",
+      "description": "Open your TripHisaab trips.",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/appIcon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

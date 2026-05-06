@@ -579,9 +579,13 @@ function App() {
   const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isInviteShareModalOpen, setIsInviteShareModalOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [tripSearch, setTripSearch] = useState("");
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
 
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -596,6 +600,8 @@ function App() {
   const [predictions, setPredictions] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [settlements, setSettlements] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [selectedNotification, setSelectedNotification] = useState(null);
 
   // -------------------- Forms --------------------
   const [memberForm, setMemberForm] = useState({ displayName: "", email: "" });
@@ -612,6 +618,7 @@ function App() {
     notes: ""
   });
   const [savingSettlement, setSavingSettlement] = useState(false);
+  const [approvingNotificationId, setApprovingNotificationId] = useState("");
 
   const [predictionDraft, setPredictionDraft] = useState({});
   const [savingPredictions, setSavingPredictions] = useState(false);
@@ -626,6 +633,7 @@ function App() {
   const [savingTripSettings, setSavingTripSettings] = useState(false);
 
   const [savingExpense, setSavingExpense] = useState(false);
+  const [expenseFeedback, setExpenseFeedback] = useState(null);
   const [expenseForm, setExpenseForm] = useState({
     ...EMPTY_EXPENSE_FORM,
     date: todayIso(),
@@ -673,10 +681,34 @@ function App() {
     loadLiveExchangeRates();
     const inviteFromUrl = getInviteFromUrl();
     if (inviteFromUrl) setPendingInvite(inviteFromUrl);
+    setIsStandaloneApp(
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      window.navigator.standalone === true
+    );
     const preloadTimer = window.setTimeout(() => {
       setInitialPreloading(false);
     }, 1800);
     return () => window.clearTimeout(preloadTimer);
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = event => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event);
+      setIsInstallable(true);
+    };
+    const handleAppInstalled = () => {
+      setDeferredInstallPrompt(null);
+      setIsInstallable(false);
+      setIsStandaloneApp(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
   }, []);
 
   useEffect(() => {
@@ -882,6 +914,24 @@ function App() {
     [balances, currentUserMemberId]
   );
 
+  const visibleNotifications = useMemo(
+    () =>
+      notifications
+        .filter(n => !n.recipientMemberId || n.recipientMemberId === currentUserMemberId)
+        .sort((a, b) =>
+          String(b.createdAtIso || "").localeCompare(String(a.createdAtIso || ""))
+        ),
+    [currentUserMemberId, notifications]
+  );
+
+  const unreadNotificationCount = useMemo(
+    () =>
+      visibleNotifications.filter(n =>
+        n.status === "pending" || n.status === "unread"
+      ).length,
+    [visibleNotifications]
+  );
+
   const memberSuggestions = useMemo(() => {
     const currentTripEmails = new Set(members.map(m => getEmailLower(m.email)));
     const q = memberSearch.trim().toLowerCase();
@@ -896,6 +946,26 @@ function App() {
       })
       .slice(0, 6);
   }, [memberDirectory, memberSearch, members]);
+
+  const defaultExpenseCategoryId = useMemo(() => {
+    const activeIds = new Set(activeCategories.map(c => c.id));
+    const sortedExpenses = [...expenses].sort((a, b) => {
+      const aKey = `${a.date || ""} ${a.time || ""}`;
+      const bKey = `${b.date || ""} ${b.time || ""}`;
+      return bKey.localeCompare(aKey);
+    });
+    const lastUsed = sortedExpenses.find(e => activeIds.has(e.categoryId))?.categoryId;
+    if (lastUsed) return lastUsed;
+
+    const counts = new Map();
+    expenses.forEach(e => {
+      if (activeIds.has(e.categoryId)) {
+        counts.set(e.categoryId, (counts.get(e.categoryId) || 0) + 1);
+      }
+    });
+    const mostCommon = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return mostCommon || activeCategories[0]?.id || "";
+  }, [activeCategories, expenses]);
 
   const suggestedSettlements = useMemo(() => {
     const debtors = balances
@@ -1185,6 +1255,35 @@ function App() {
         "Google login failed. Check that Google sign-in is enabled in Firebase Authentication."
       );
     }
+  }
+
+  async function handleInstallApp() {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice.outcome === "accepted") {
+        setDeferredInstallPrompt(null);
+        setIsInstallable(false);
+      }
+      return;
+    }
+
+    alert(
+      "To add TripHisaab to your home screen:\n\nOn iPhone/iPad: tap Share, then Add to Home Screen.\nOn Android: open the browser menu, then tap Install app or Add to Home screen."
+    );
+  }
+
+  function renderInstallButton({ compact = false } = {}) {
+    if (isStandaloneApp) return null;
+    return (
+      <button
+        className={`secondary-button ${compact ? "small-button" : ""}`}
+        type="button"
+        onClick={handleInstallApp}
+      >
+        {compact ? (isInstallable ? "Install" : "Add") : isInstallable ? "Install app" : "Add to Home Screen"}
+      </button>
+    );
   }
 
   async function handleLogout() {
@@ -1797,6 +1896,8 @@ function App() {
     setPredictions([]);
     setExpenses([]);
     setSettlements([]);
+    setNotifications([]);
+    setSelectedNotification(null);
     setPredictionDraft({});
     cancelCategoryForm();
     cancelEditingExpense();
@@ -1823,6 +1924,16 @@ function App() {
       const loadedPredictions = predictionsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedExpenses = expensesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedSettlements = settlementsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const loadedCurrentUserMemberId = getCurrentUserMemberIdFromList(loadedMembers);
+      const notificationsSnap = loadedCurrentUserMemberId
+        ? await getDocs(
+            query(
+              collection(db, "trips", tripId, "notifications"),
+              where("recipientMemberId", "==", loadedCurrentUserMemberId)
+            )
+          ).catch(() => ({ docs: [] }))
+        : { docs: [] };
+      const loadedNotifications = notificationsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
       loadedMembers.sort((a, b) => {
         if (a.isOwner) return -1;
@@ -1877,6 +1988,7 @@ function App() {
       setPredictions(loadedPredictions);
       setExpenses(loadedExpenses);
       setSettlements(loadedSettlements);
+      setNotifications(loadedNotifications);
       setPredictionDraft(draft);
 
       setExpenseForm(prev => ({
@@ -2262,78 +2374,150 @@ function App() {
     });
   }
 
+  function buildFastExpenseForm(overrides = {}) {
+    const payerId =
+      currentUserMemberId ||
+      getCurrentUserMemberIdFromList(activeMembers) ||
+      activeMembers[0]?.id ||
+      "";
+    return {
+      ...EMPTY_EXPENSE_FORM,
+      date: todayIso(),
+      time: nowTimeIso(),
+      categoryId: defaultExpenseCategoryId,
+      originalCurrency: selectedTrip?.defaultCurrency || "EUR",
+      paymentMethod: "card",
+      expenseType: "personal",
+      splitType: "equal",
+      paidByMemberId: payerId,
+      splitMemberIds: payerId ? [payerId] : [],
+      ...overrides
+    };
+  }
+
+  function openFastExpenseModal(overrides = {}) {
+    setExpenseFeedback(null);
+    setExpenseForm(buildFastExpenseForm(overrides));
+    setIsAddExpenseModalOpen(true);
+  }
+
   // -------------------- Expenses --------------------
   async function handleAddExpense(event) {
     event.preventDefault();
     if (!selectedTrip) return;
 
-    const originalAmount = Number(expenseForm.originalAmount);
-    const originalCurrency = expenseForm.originalCurrency || "EUR";
+    const normalizedExpenseForm = {
+      ...expenseForm,
+      date: expenseForm.date || todayIso(),
+      time: expenseForm.time || nowTimeIso(),
+      originalCurrency:
+        expenseForm.originalCurrency || selectedTrip.defaultCurrency || "EUR",
+      categoryId: expenseForm.categoryId || defaultExpenseCategoryId,
+      paidByMemberId:
+        expenseForm.paidByMemberId ||
+        currentUserMemberId ||
+        activeMembers[0]?.id ||
+        "",
+      expenseType: expenseForm.expenseType || "personal",
+      splitType: expenseForm.splitType || "equal",
+      paymentMethod: expenseForm.paymentMethod || "card"
+    };
 
-    if (!expenseForm.categoryId) return alert("Choose a category.");
-    if (!expenseForm.paidByMemberId) return alert("Choose who paid.");
+    const originalAmount = Number(normalizedExpenseForm.originalAmount);
+    const originalCurrency = normalizedExpenseForm.originalCurrency || "EUR";
+
+    if (!normalizedExpenseForm.categoryId) return alert("Choose a category.");
+    if (!normalizedExpenseForm.description.trim()) return alert("Add a note or vendor.");
+    if (!normalizedExpenseForm.paidByMemberId) return alert("Choose who paid.");
     if (!originalAmount || originalAmount <= 0) return alert("Enter a valid amount.");
-    if (!validateCustomSplit(expenseForm)) return;
+    if (!validateCustomSplit(normalizedExpenseForm)) return;
 
-    const splitMemberIds = getCleanSplitMemberIds(expenseForm);
-    if (expenseForm.expenseType === "shared" && splitMemberIds.length === 0) {
+    const splitMemberIds = getCleanSplitMemberIds(normalizedExpenseForm);
+    if (normalizedExpenseForm.expenseType === "shared" && splitMemberIds.length === 0) {
       return alert("Choose at least one split member.");
     }
 
     setSavingExpense(true);
     try {
-      const category = categoriesById.get(expenseForm.categoryId);
-      await addDoc(collection(db, "trips", selectedTrip.id, "expenses"), {
-        date: expenseForm.date,
-        time: expenseForm.time,
-        categoryId: expenseForm.categoryId,
+      const category = categoriesById.get(normalizedExpenseForm.categoryId);
+      const amountEur = convertToEur(originalAmount, originalCurrency);
+      const expenseRef = await addDoc(collection(db, "trips", selectedTrip.id, "expenses"), {
+        date: normalizedExpenseForm.date,
+        time: normalizedExpenseForm.time,
+        categoryId: normalizedExpenseForm.categoryId,
         categoryName: category?.name || "",
-        description: expenseForm.description.trim(),
-        amountEur: convertToEur(originalAmount, originalCurrency),
+        description: normalizedExpenseForm.description.trim(),
+        amountEur,
         originalAmount,
         originalCurrency,
         exchangeRateFromEur: getCurrencyRate(originalCurrency),
         ratesSource: ratesMeta.source,
         ratesStatus: ratesMeta.status,
         ratesUpdatedAt: ratesMeta.updatedAt,
-        paymentMethod: expenseForm.paymentMethod,
-        notes: expenseForm.notes.trim(),
-        expenseType: expenseForm.expenseType,
+        paymentMethod: normalizedExpenseForm.paymentMethod,
+        notes: normalizedExpenseForm.notes.trim(),
+        expenseType: normalizedExpenseForm.expenseType,
         splitType:
-          expenseForm.expenseType === "shared" ? expenseForm.splitType : "none",
+          normalizedExpenseForm.expenseType === "shared" ? normalizedExpenseForm.splitType : "none",
         customSplitSharesOriginal:
-          expenseForm.expenseType === "shared" && expenseForm.splitType === "custom"
-            ? expenseForm.customSplitShares
+          normalizedExpenseForm.expenseType === "shared" && normalizedExpenseForm.splitType === "custom"
+            ? normalizedExpenseForm.customSplitShares
             : {},
         customSplitSharesEur:
-          expenseForm.expenseType === "shared" && expenseForm.splitType === "custom"
-            ? buildCustomSplitSharesEur(expenseForm)
+          normalizedExpenseForm.expenseType === "shared" && normalizedExpenseForm.splitType === "custom"
+            ? buildCustomSplitSharesEur(normalizedExpenseForm)
             : {},
-        paidByMemberId: expenseForm.paidByMemberId,
-        paidByMemberName: memberNameOf(expenseForm.paidByMemberId),
+        paidByMemberId: normalizedExpenseForm.paidByMemberId,
+        paidByMemberName: memberNameOf(normalizedExpenseForm.paidByMemberId),
         splitMemberIds,
         createdBy: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
 
-      setExpenseForm({
-        ...expenseForm,
-        date: todayIso(),
-        time: nowTimeIso(),
-        description: "",
+      setExpenseForm(buildFastExpenseForm({
         originalAmount: "",
-        notes: "",
-        customSplitShares: {}
-      });
+        description: "",
+        categoryId: normalizedExpenseForm.categoryId
+      }));
       setIsAddExpenseModalOpen(false);
       await loadTripData(selectedTrip.id);
+      setExpenseFeedback({
+        expenseId: expenseRef.id,
+        message: `${formatCurrency(originalAmount, originalCurrency)} added to ${category?.name || "expense"}. Dashboard updated.`
+      });
     } catch (error) {
       console.error("Could not save expense:", error);
       alert("Could not save expense.");
     } finally {
       setSavingExpense(false);
     }
+  }
+
+  async function undoLastExpense() {
+    if (!selectedTrip || !expenseFeedback?.expenseId) return;
+    const undoId = expenseFeedback.expenseId;
+    setExpenseFeedback(null);
+    try {
+      await deleteDoc(doc(db, "trips", selectedTrip.id, "expenses", undoId));
+      await loadTripData(selectedTrip.id);
+    } catch (error) {
+      console.error("Could not undo expense:", error);
+      alert("Could not undo expense.");
+    }
+  }
+
+  function addAnotherExpense() {
+    openFastExpenseModal({
+      originalAmount: "",
+      description: "",
+      notes: ""
+    });
+  }
+
+  function viewDashboardAfterExpense() {
+    setExpenseFeedback(null);
+    setActiveTab("dashboard");
   }
 
   function startEditingExpense(expense) {
@@ -2605,8 +2789,8 @@ function App() {
 
   async function handleRecordSettlement(event) {
     event.preventDefault();
-    await saveSettlement(settlementForm);
-    setIsSettlementModalOpen(false);
+    const saved = await saveSettlement(settlementForm);
+    if (saved) setIsSettlementModalOpen(false);
   }
 
   async function handleMarkSettlementPaid(suggested) {
@@ -2630,18 +2814,18 @@ function App() {
 
     setSavingSettlement(true);
     try {
-      await addDoc(collection(db, "trips", selectedTrip.id, "settlements"), {
-        date: data.date || todayIso(),
-        fromMemberId: data.fromMemberId,
-        fromMemberName: memberNameOf(data.fromMemberId),
-        toMemberId: data.toMemberId,
-        toMemberName: memberNameOf(data.toMemberId),
-        amountEur: amount,
-        notes: data.notes || "",
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
+      const isDebtorRecording = currentUserMemberId === data.fromMemberId;
+      const isCreditorRecording = currentUserMemberId === data.toMemberId;
+
+      if (isDebtorRecording && !data.skipApprovalRequest) {
+        await createSettlementApprovalNotification(data, amount);
+        alert("Settlement sent for approval.");
+      } else {
+        const settlementId = await createCompletedSettlement(data, amount);
+        if (isCreditorRecording) {
+          await createSettlementCompletedNotification(data, amount, settlementId);
+        }
+      }
 
       setSettlementForm({
         date: todayIso(),
@@ -2651,11 +2835,134 @@ function App() {
         notes: ""
       });
       await loadTripData(selectedTrip.id);
+      return true;
     } catch (error) {
       console.error("Could not record settlement:", error);
+      if (currentUserMemberId === data.fromMemberId) {
+        try {
+          await createCompletedSettlement(
+            {
+              ...data,
+              notes: `${data.notes || ""} Approval notification fallback`.trim()
+            },
+            amount
+          );
+          await loadTripData(selectedTrip.id);
+          alert("Could not send approval notification, so the settlement was recorded directly.");
+          return true;
+        } catch (fallbackError) {
+          console.error("Could not record fallback settlement:", fallbackError);
+        }
+      }
       alert("Could not settle up.");
+      return false;
     } finally {
       setSavingSettlement(false);
+    }
+  }
+
+  async function createCompletedSettlement(data, amount, extra = {}) {
+    const settlementRef = await addDoc(collection(db, "trips", selectedTrip.id, "settlements"), {
+      date: data.date || todayIso(),
+      fromMemberId: data.fromMemberId,
+      fromMemberName: memberNameOf(data.fromMemberId),
+      toMemberId: data.toMemberId,
+      toMemberName: memberNameOf(data.toMemberId),
+      amountEur: amount,
+      notes: data.notes || "",
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      ...extra
+    });
+    return settlementRef.id;
+  }
+
+  async function createSettlementApprovalNotification(data, amount) {
+    await addDoc(collection(db, "trips", selectedTrip.id, "notifications"), {
+      type: "settlement_approval_requested",
+      status: "pending",
+      tripId: selectedTrip.id,
+      tripName: selectedTrip.name,
+      fromMemberId: data.fromMemberId,
+      fromMemberName: memberNameOf(data.fromMemberId),
+      toMemberId: data.toMemberId,
+      toMemberName: memberNameOf(data.toMemberId),
+      actorMemberId: data.fromMemberId,
+      actorName: memberNameOf(data.fromMemberId),
+      recipientMemberId: data.toMemberId,
+      recipientName: memberNameOf(data.toMemberId),
+      action: "requested settlement approval",
+      amountEur: amount,
+      settlementDate: data.date || todayIso(),
+      notes: data.notes || "",
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      createdAtIso: new Date().toISOString(),
+      updatedAt: serverTimestamp()
+    });
+  }
+
+  async function createSettlementCompletedNotification(data, amount, settlementId) {
+    try {
+      await addDoc(collection(db, "trips", selectedTrip.id, "notifications"), {
+        type: "settlement_completed",
+        status: "unread",
+        tripId: selectedTrip.id,
+        tripName: selectedTrip.name,
+        fromMemberId: data.fromMemberId,
+        fromMemberName: memberNameOf(data.fromMemberId),
+        toMemberId: data.toMemberId,
+        toMemberName: memberNameOf(data.toMemberId),
+        actorMemberId: data.toMemberId,
+        actorName: memberNameOf(data.toMemberId),
+        recipientMemberId: data.fromMemberId,
+        recipientName: memberNameOf(data.fromMemberId),
+        action: "completed settlement",
+        amountEur: amount,
+        settlementId,
+        settlementDate: data.date || todayIso(),
+        notes: data.notes || "",
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+        createdAtIso: new Date().toISOString(),
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.warn("Settlement completed, but notification could not be sent:", error);
+    }
+  }
+
+  async function approveSettlementNotification(notification) {
+    if (!selectedTrip || !user || !notification) return;
+    setApprovingNotificationId(notification.id);
+    try {
+      const settlementId = await createCompletedSettlement(
+        {
+          date: notification.settlementDate || todayIso(),
+          fromMemberId: notification.fromMemberId,
+          toMemberId: notification.toMemberId,
+          amountEur: notification.amountEur,
+          notes: notification.notes || "Approved from notification"
+        },
+        Number(notification.amountEur || 0),
+        { approvedFromNotificationId: notification.id }
+      );
+      await updateDoc(doc(db, "trips", selectedTrip.id, "notifications", notification.id), {
+        status: "approved",
+        settlementId,
+        approvedBy: user.uid,
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      await createSettlementCompletedNotification(notification, Number(notification.amountEur || 0), settlementId);
+      setSelectedNotification(null);
+      await loadTripData(selectedTrip.id);
+    } catch (error) {
+      console.error("Could not approve settlement:", error);
+      alert("Could not approve settlement.");
+    } finally {
+      setApprovingNotificationId("");
     }
   }
 
@@ -2678,6 +2985,153 @@ function App() {
       console.error("Could not delete settlement:", error);
       alert("Could not delete settlement.");
     }
+  }
+
+  function formatNotificationDate(notification) {
+    const raw = notification.createdAtIso || notification.createdAt?.toDate?.()?.toISOString?.();
+    if (!raw) return "Just now";
+    return new Date(raw).toLocaleString([], {
+      dateStyle: "medium",
+      timeStyle: "short"
+    });
+  }
+
+  async function openNotifications() {
+    setIsNotificationsOpen(true);
+    const readTargets = visibleNotifications.filter(n => n.status === "unread");
+    if (readTargets.length === 0 || !selectedTrip) return;
+
+    setNotifications(current =>
+      current.map(n =>
+        readTargets.some(target => target.id === n.id)
+          ? { ...n, status: "read" }
+          : n
+      )
+    );
+
+    try {
+      await Promise.all(
+        readTargets.map(n =>
+          updateDoc(doc(db, "trips", selectedTrip.id, "notifications", n.id), {
+            status: "read",
+            readAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          })
+        )
+      );
+    } catch (error) {
+      console.warn("Could not mark notifications as read:", error);
+    }
+  }
+
+  function renderNotificationBell() {
+    if (!selectedTrip) return null;
+    return (
+      <button
+        className="notification-bell"
+        type="button"
+        aria-label="Open notifications"
+        onClick={openNotifications}
+      >
+        <span className="notification-bell-icon">🔔</span>
+        {unreadNotificationCount > 0 ? (
+          <span className="notification-badge">{unreadNotificationCount}</span>
+        ) : null}
+      </button>
+    );
+  }
+
+  function renderNotificationsModal() {
+    return (
+      <>
+        <Modal
+          isOpen={isNotificationsOpen}
+          onClose={() => setIsNotificationsOpen(false)}
+          title="Notifications"
+        >
+          <div className="modal-body notification-panel">
+            {visibleNotifications.length === 0 ? (
+              <p className="muted">No notifications yet.</p>
+            ) : (
+              <div className="notification-list">
+                {visibleNotifications.map(notification => (
+                  <button
+                    className={`notification-item${notification.status === "pending" ? " pending" : ""}`}
+                    type="button"
+                    key={notification.id}
+                    onClick={() =>
+                      notification.status === "pending"
+                        ? setSelectedNotification(notification)
+                        : null
+                    }
+                  >
+                    <strong>{notification.tripName || selectedTrip.name}</strong>
+                    <span>From: {notification.actorName || notification.fromMemberName || "Unknown"}</span>
+                    <span>
+                      Action: {notification.action || "settlement update"}
+                      {notification.status === "pending" ? " - approval needed" : ""}
+                    </span>
+                    <span>
+                      With:{" "}
+                      {notification.toMemberName === (notification.actorName || notification.fromMemberName)
+                        ? notification.fromMemberName
+                        : notification.toMemberName || notification.recipientName || "Unknown"}
+                    </span>
+                    <span>
+                      {formatMoney(Number(notification.amountEur || 0))} ·{" "}
+                      {formatNotificationDate(notification)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </Modal>
+
+        <Modal
+          isOpen={Boolean(selectedNotification)}
+          onClose={() => setSelectedNotification(null)}
+          title="Approve settlement"
+        >
+          {selectedNotification ? (
+            <div className="modal-body notification-approval">
+              <p>
+                <strong>{selectedNotification.fromMemberName}</strong> says they paid{" "}
+                <strong>{selectedNotification.toMemberName}</strong>{" "}
+                <strong>{formatMoney(Number(selectedNotification.amountEur || 0))}</strong>.
+              </p>
+              <p className="small muted">
+                Trip: {selectedNotification.tripName || selectedTrip.name}
+                <br />
+                Requested: {formatNotificationDate(selectedNotification)}
+              </p>
+              {selectedNotification.notes ? (
+                <p className="small muted">Note: {selectedNotification.notes}</p>
+              ) : null}
+              <footer className="modal-footer">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setSelectedNotification(null)}
+                >
+                  Later
+                </button>
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={approvingNotificationId === selectedNotification.id}
+                  onClick={() => approveSettlementNotification(selectedNotification)}
+                >
+                  {approvingNotificationId === selectedNotification.id
+                    ? "Approving..."
+                    : "Approve settlement"}
+                </button>
+              </footer>
+            </div>
+          ) : null}
+        </Modal>
+      </>
+    );
   }
 
   // -------------------- CSV export --------------------
@@ -2817,6 +3271,73 @@ function App() {
       Number(formData.originalAmount || 0),
       formData.originalCurrency || "EUR"
     );
+
+    if (!isEdit) {
+      return (
+        <form className="modal-form fast-expense-form" onSubmit={onSubmit}>
+          <div className="modal-body">
+            <label>
+              Amount
+              <input
+                className="fast-amount-input"
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.originalAmount}
+                placeholder="0.00"
+                onChange={e =>
+                  setFormData({ ...formData, originalAmount: e.target.value })
+                }
+                autoFocus
+                required
+              />
+            </label>
+
+            <label>
+              Category
+              <select
+                value={formData.categoryId}
+                onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+                required
+              >
+                <option value="">Choose category</option>
+                {activeCategories.map(c => (
+                  <option value={c.id} key={c.id}>
+                    {c.icon} {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Note / vendor
+              <input
+                type="text"
+                value={formData.description}
+                placeholder="e.g. Coffee, taxi, lunch"
+                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                required
+              />
+            </label>
+
+            <p className="small muted fast-expense-defaults">
+              Today · {formData.originalCurrency || selectedTrip?.defaultCurrency || "EUR"} · paid by{" "}
+              {formData.paidByMemberId ? memberNameOf(formData.paidByMemberId) : "me"}
+            </p>
+          </div>
+          <footer className="modal-footer">
+            {onCancel ? (
+              <button className="secondary-button" type="button" onClick={onCancel}>
+                Cancel
+              </button>
+            ) : null}
+            <button className="primary-button" type="submit" disabled={saving}>
+              {saving ? "Adding..." : "Add expense"}
+            </button>
+          </footer>
+        </form>
+      );
+    }
 
     return (
       <form className="modal-form" onSubmit={onSubmit}>
@@ -3271,6 +3792,7 @@ function App() {
                 {selectedTrip.accessRole === "owner" ? "Trip admin" : "Member"}
               </div>
             </div>
+            {renderNotificationBell()}
             <button className="link-button sidebar-logout" type="button" onClick={handleLogout}>
               Out
             </button>
@@ -3292,10 +3814,11 @@ function App() {
               <img className="mobile-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
               <span className="mobile-topbar-tagline">Every trip. Every spend. Sorted.</span>
             </span>
+            {renderNotificationBell()}
             <button
               className="primary-button small-button"
               type="button"
-              onClick={() => setIsAddExpenseModalOpen(true)}
+              onClick={() => openFastExpenseModal()}
             >
               + Add
             </button>
@@ -3378,7 +3901,7 @@ function App() {
                   <button
                     className="quick-add-btn"
                     type="button"
-                    onClick={() => setIsAddExpenseModalOpen(true)}
+                    onClick={() => openFastExpenseModal()}
                   >
                     <div className="quick-add-circle">+</div>
                     <div>
@@ -3392,7 +3915,7 @@ function App() {
                         key={c.id}
                         className="quick-add-chip"
                         type="button"
-                        onClick={() => setIsAddExpenseModalOpen(true)}
+                          onClick={() => openFastExpenseModal({ categoryId: c.id })}
                       >
                         {c.icon} {c.name}
                       </button>
@@ -3612,7 +4135,7 @@ function App() {
                 <button
                   className="primary-button small-button"
                   type="button"
-                  onClick={() => setIsAddExpenseModalOpen(true)}
+                  onClick={() => openFastExpenseModal()}
                 >
                   + Add expense
                 </button>
@@ -4327,6 +4850,34 @@ function App() {
           ))}
         </nav>
 
+        <button
+          className="floating-add-expense"
+          type="button"
+          onClick={() => openFastExpenseModal()}
+        >
+          <span className="floating-add-icon">+</span>
+          <span>Add Expense</span>
+        </button>
+
+        {expenseFeedback ? (
+          <div className="expense-feedback" role="status">
+            <button
+              className="expense-feedback-close"
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => setExpenseFeedback(null)}
+            >
+              ×
+            </button>
+            <strong>{expenseFeedback.message}</strong>
+            <div className="expense-feedback-actions">
+              <button type="button" onClick={undoLastExpense}>Undo</button>
+              <button type="button" onClick={addAnotherExpense}>Add another</button>
+              <button type="button" onClick={viewDashboardAfterExpense}>View dashboard</button>
+            </div>
+          </div>
+        ) : null}
+
         {/* Add expense modal */}
         <Modal
           isOpen={isAddExpenseModalOpen}
@@ -4620,6 +5171,7 @@ function App() {
             </footer>
           </form>
         </Modal>
+        {renderNotificationsModal()}
         {renderTutorialModal()}
       </div>
     );
@@ -4692,6 +5244,7 @@ function App() {
         <button className="primary-button" onClick={handleGoogleLogin}>
           Continue with Google
         </button>
+        {renderInstallButton()}
         <p className="small muted">
           Firebase MVP: Google login + Firestore database.
         </p>
@@ -4774,6 +5327,7 @@ function App() {
               <img className="mobile-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
               <span className="mobile-topbar-tagline">Every trip. Every spend. Sorted.</span>
             </span>
+            {renderInstallButton({ compact: true })}
             <button className="primary-button small-button" type="button" onClick={() => setIsCreateModalOpen(true)}>+ New</button>
           </div>
 
@@ -4784,6 +5338,7 @@ function App() {
               <p className="home-hero-sub">All your adventures, neatly packed ✈️</p>
             </div>
             <div className="home-hero-right">
+              {renderInstallButton()}
               <button className="home-create-btn" type="button" onClick={() => setIsCreateModalOpen(true)} data-tour="create-trip">
                 + Create new trip
               </button>
