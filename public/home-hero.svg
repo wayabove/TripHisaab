@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 682" role="img" aria-label="Travel banner with clouds, airplane, camera, passport, suitcase, and map">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffe1ce"/>
+      <stop offset=".55" stop-color="#fff1e7"/>
+      <stop offset="1" stop-color="#fffaf6"/>
+    </linearGradient>
+    <linearGradient id="cloud" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#fff6ef"/>
+    </linearGradient>
+    <linearGradient id="case" x1="0" x2="1">
+      <stop offset="0" stop-color="#ff7659"/>
+      <stop offset="1" stop-color="#ef4f39"/>
+    </linearGradient>
+    <linearGradient id="passport" x1="0" x2="1">
+      <stop offset="0" stop-color="#00866f"/>
+      <stop offset="1" stop-color="#00665f"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#d78c69" flood-opacity=".18"/>
+    </filter>
+  </defs>
+
+  <rect width="2048" height="682" fill="url(#sky)"/>
+
+  <g opacity=".82" fill="url(#cloud)">
+    <path d="M68 126c17-31 59-31 76 0 21-11 49 5 50 30 20-5 39 8 43 29H31c1-19 18-31 37-27-3-12-3-23 0-32z"/>
+    <path d="M729 148c21-38 74-37 94 3 23-15 57 2 61 31 24-5 48 11 54 36H704c2-27 28-44 54-35-5-14-12-25-29-35z"/>
+    <path d="M1355 237c38-76 146-77 185 0 43-24 101 4 110 57 40-6 77 21 87 61h-395c5-58 62-94 116-74-17-25-52-25-103-44z"/>
+    <path d="M1818 170c18-36 68-36 88 0 23-15 55 3 58 32 23-5 45 10 52 34h-224c3-25 27-42 53-35-7-13-16-22-27-31z"/>
+    <path d="M71 308c12-25 47-25 60 0 15-9 36 3 39 22 13-3 28 7 32 22H49c2-16 18-27 34-22-4-9-7-15-12-22z"/>
+  </g>
+
+  <path d="M821 308c32-87 157-80 215-13 79 91 232 126 322 34 57-59 55-146 173-170" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-dasharray="27 18" opacity=".9"/>
+  <path d="M1245 179l59 38-20 12-41-15-20 24-12-7 10-33-26-18 16-8z" fill="#ff6846" filter="url(#soft)"/>
+
+  <g transform="translate(1210 268)" filter="url(#soft)">
+    <path d="M45 241l132-101 210 38-133 106z" fill="#ffe4d3"/>
+    <path d="M145 129l179 31 152-67 154 38-172 113-192-38-132 83-176-28z" fill="#fff2e7"/>
+    <path d="M146 143l176 29 143-61 130 31-146 91-185-37-118 72z" fill="#5fc7ef"/>
+    <path d="M255 161l14 94M396 125l34 108M519 125l-62 108M150 214l305 23" fill="none" stroke="#2797d2" stroke-width="3" opacity=".55"/>
+  </g>
+
+  <g transform="translate(1300 416)" filter="url(#soft)">
+    <rect x="0" y="0" width="178" height="92" rx="16" fill="#989ca8"/>
+    <rect x="14" y="15" width="42" height="26" rx="6" fill="#f2f7fb"/>
+    <circle cx="105" cy="46" r="37" fill="#31343f"/>
+    <circle cx="105" cy="46" r="24" fill="#111827"/>
+    <circle cx="94" cy="35" r="8" fill="#dbeafe" opacity=".8"/>
+    <circle cx="152" cy="51" r="7" fill="#ff9f43"/>
+    <rect x="31" y="66" width="38" height="8" rx="4" fill="#f7d35d"/>
+  </g>
+
+  <g transform="translate(1400 270)" filter="url(#soft)">
+    <path d="M75 92c-5-71 53-104 97-92-34 34-44 70-31 107 33-43 83-49 115-25-56 24-90 62-99 112 36-32 82-32 112-7-54 20-86 55-101 105h-70c17-82 5-147-23-200z" fill="#73ad4b"/>
+    <path d="M116 130c16 68 17 114 3 166" fill="none" stroke="#8b5e34" stroke-width="22" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(1592 352) rotate(-14)" filter="url(#soft)">
+    <rect width="182" height="230" rx="20" fill="url(#passport)"/>
+    <text x="91" y="56" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" fill="#f3cf4e">PASSPORT</text>
+    <circle cx="91" cy="122" r="45" fill="none" stroke="#f3cf4e" stroke-width="8"/>
+    <path d="M53 122h76M91 77c26 32 26 58 0 90M91 77c-26 32-26 58 0 90" fill="none" stroke="#f3cf4e" stroke-width="5"/>
+    <rect x="57" y="185" width="70" height="8" rx="4" fill="#f3cf4e"/>
+  </g>
+
+  <g transform="translate(1760 238)" filter="url(#soft)">
+    <path d="M74 8h83c17 0 31 14 31 31v18h-28V40c0-5-4-9-9-9H81c-5 0-9 4-9 9v17H44V39C44 22 57 8 74 8z" fill="#36323a"/>
+    <rect x="0" y="61" width="229" height="295" rx="28" fill="url(#case)"/>
+    <rect x="187" y="73" width="20" height="279" rx="10" fill="#252330" opacity=".65"/>
+    <rect x="37" y="102" width="66" height="54" rx="8" fill="#fff7db" transform="rotate(-14 70 129)"/>
+    <rect x="119" y="106" width="58" height="50" rx="8" fill="#fff7db" transform="rotate(13 148 131)"/>
+    <path d="M79 204c13-28 55-19 47 10-6 23-39 38-39 38s-23-27-8-48z" fill="none" stroke="#fff7db" stroke-width="7"/>
+    <rect x="115" y="210" width="71" height="56" rx="8" fill="#fff7db" transform="rotate(-15 151 238)"/>
+  </g>
+
+  <g transform="translate(1930 462)" fill="none" stroke="#2d95d0" stroke-width="9" stroke-linecap="round">
+    <path d="M39 0c22 0 34 18 27 36-6 14-22 20-31 33-4 6-5 13-5 21"/>
+    <path d="M28 124h1"/>
+  </g>
+  <g transform="translate(1900 540)" fill="#72a84c">
+    <path d="M39 52c-29-13-30-45 0-53 19 13 24 31 0 53z"/>
+    <path d="M61 52c-1-39 32-55 55-31-3 29-25 42-55 31z"/>
+    <path d="M49 55c-18-33 4-59 33-50 11 28-1 48-33 50z"/>
+  </g>
+</svg>
