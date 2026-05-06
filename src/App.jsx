@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   signInWithPopup,
   signOut,
@@ -68,6 +68,7 @@ const TRIP_IMAGE_QUALITY = 0.68;
 const TRIP_IMAGE_MAX_BYTES = 260 * 1024;
 const PROFILE_IMAGE_SIZE = 256;
 const PROFILE_IMAGE_QUALITY = 0.82;
+const MEMBER_DIRECTORY_STORAGE_KEY = "triphisaab-member-directory";
 const CATEGORY_EMOJI_OPTIONS = [
   "📌", "✈️", "🚆", "🚕", "🚌", "⛽", "🏨", "🏠",
   "🍽️", "☕", "🍕", "🛒", "🛍️", "🎟️", "🎡", "🏖️",
@@ -158,6 +159,42 @@ function readProfileImage(file) {
     reader.onerror = () => reject(new Error("Could not read this image."));
     reader.readAsDataURL(file);
   });
+}
+
+function readStoredMemberDirectory() {
+  try {
+    const raw = window.localStorage.getItem(MEMBER_DIRECTORY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredMemberDirectory(membersList) {
+  try {
+    window.localStorage.setItem(
+      MEMBER_DIRECTORY_STORAGE_KEY,
+      JSON.stringify(membersList.slice(0, 80))
+    );
+  } catch {
+    // Local storage is only a convenience cache; adding members still works.
+  }
+}
+
+function mergeMemberDirectory(current, incoming) {
+  const map = new Map();
+  [...incoming, ...current].forEach(member => {
+    const emailLower = getEmailLower(member.email);
+    if (!emailLower) return;
+    map.set(emailLower, {
+      displayName: member.displayName || member.name || emailLower,
+      email: emailLower
+    });
+  });
+  return Array.from(map.values()).sort((a, b) =>
+    String(a.displayName || a.email).localeCompare(String(b.displayName || b.email))
+  );
 }
 
 // -------------------- Reusable Modal shell --------------------
@@ -283,6 +320,8 @@ function TourOverlay({ onComplete }) {
   const [visible, setVisible] = useState(false);
   const tooltipRef = useRef(null);
   const current = TOUR_STEPS[step];
+  const currentTargets = current.targets;
+  const currentPosition = current.position;
 
   function findTarget(targets) {
     for (const t of targets) {
@@ -297,9 +336,8 @@ function TourOverlay({ onComplete }) {
   }
 
   useEffect(() => {
-    setVisible(false);
     const update = () => {
-      const found = findTarget(current.targets);
+      const found = findTarget(currentTargets);
       if (!found) {
         setSpotlight(null);
         return;
@@ -321,7 +359,7 @@ function TourOverlay({ onComplete }) {
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
-  }, [step]);
+  }, [currentTargets]);
 
   useEffect(() => {
     if (!tooltipRef.current) return;
@@ -332,7 +370,7 @@ function TourOverlay({ onComplete }) {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       let top, left;
-      const pos = spotlight ? current.position : "center";
+      const pos = spotlight ? currentPosition : "center";
 
       if (pos === "center" || !spotlight) {
         top = vh / 2 - tt.height / 2;
@@ -361,13 +399,20 @@ function TourOverlay({ onComplete }) {
       setVisible(true);
     }, 60);
     return () => clearTimeout(tid);
-  }, [spotlight, step]);
+  }, [currentPosition, spotlight]);
 
   const next = () => {
-    if (step < TOUR_STEPS.length - 1) setStep(s => s + 1);
-    else onComplete();
+    setVisible(false);
+    if (step < TOUR_STEPS.length - 1) {
+      setStep(s => s + 1);
+    } else {
+      onComplete();
+    }
   };
-  const prev = () => setStep(s => s - 1);
+  const prev = () => {
+    setVisible(false);
+    setStep(s => s - 1);
+  };
   const isLast = step === TOUR_STEPS.length - 1;
 
   return (
@@ -423,7 +468,8 @@ function TourOverlay({ onComplete }) {
 
 function DonateButton({ inline = false }) {
   const btnRef = useRef(null);
-  const idRef = useRef("paypal-donate-" + Math.random().toString(36).slice(2));
+  const reactId = useId();
+  const idRef = useRef(`paypal-donate-${reactId.replace(/[^a-zA-Z0-9_-]/g, "")}`);
 
   useEffect(() => {
     const id = idRef.current;
@@ -540,6 +586,8 @@ function App() {
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [tripDataLoading, setTripDataLoading] = useState(false);
+  const [deletingTrip, setDeletingTrip] = useState(false);
+  const [leavingTrip, setLeavingTrip] = useState(false);
 
   // -------------------- Trip data --------------------
   const [members, setMembers] = useState([]);
@@ -551,6 +599,8 @@ function App() {
 
   // -------------------- Forms --------------------
   const [memberForm, setMemberForm] = useState({ displayName: "", email: "" });
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberDirectory, setMemberDirectory] = useState(() => readStoredMemberDirectory());
   const [savingMember, setSavingMember] = useState(false);
   const [updatingMemberId, setUpdatingMemberId] = useState("");
 
@@ -627,7 +677,6 @@ function App() {
       setInitialPreloading(false);
     }, 1800);
     return () => window.clearTimeout(preloadTimer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -657,7 +706,6 @@ function App() {
 
   useEffect(() => {
     if (user && pendingInvite) loadInviteDetails(pendingInvite);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, pendingInvite]);
 
   useEffect(() => {
@@ -814,6 +862,40 @@ function App() {
 
     return Object.values(out);
   }, [members, expenses, settlements]);
+
+  const currentUserMemberId = useMemo(
+    () => {
+      if (!user) return "";
+      const byUserId = members.find(m => m.userId === user.uid);
+      if (byUserId) return byUserId.id;
+      const emailLower = getEmailLower(user.email);
+      const byEmail = members.find(
+        m => getEmailLower(m.email) === emailLower
+      );
+      return byEmail?.id || "";
+    },
+    [members, user]
+  );
+
+  const currentUserBalance = useMemo(
+    () => balances.find(b => b.memberId === currentUserMemberId) || null,
+    [balances, currentUserMemberId]
+  );
+
+  const memberSuggestions = useMemo(() => {
+    const currentTripEmails = new Set(members.map(m => getEmailLower(m.email)));
+    const q = memberSearch.trim().toLowerCase();
+    return memberDirectory
+      .filter(member => !currentTripEmails.has(getEmailLower(member.email)))
+      .filter(member => {
+        if (!q) return true;
+        return (
+          String(member.displayName || "").toLowerCase().includes(q) ||
+          String(member.email || "").toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 6);
+  }, [memberDirectory, memberSearch, members]);
 
   const suggestedSettlements = useMemo(() => {
     const debtors = balances
@@ -1207,6 +1289,16 @@ function App() {
       );
 
       await batch.commit();
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          leftTrips: {
+            [pendingInvite.tripId]: false
+          },
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
 
       const tripSnap = await getDoc(doc(db, "trips", pendingInvite.tripId));
       await loadTrips(user.uid, user.email);
@@ -1228,6 +1320,10 @@ function App() {
 
   async function createInviteLink() {
     if (!selectedTrip || !user) return;
+    if (!canManageSelectedTrip()) {
+      alert("Only the trip owner can create invite links.");
+      return "";
+    }
     setCreatingInvite(true);
     try {
       const inviteRef = doc(collection(db, "trips", selectedTrip.id, "invites"));
@@ -1325,12 +1421,14 @@ function App() {
       const emailLower = getEmailLower(email);
 
       // Fetch owner trips and email-access list in parallel
-      const [ownerSnap, accessSnap] = await Promise.all([
+      const [ownerSnap, accessSnap, userSnap] = await Promise.all([
         getDocs(query(collection(db, "trips"), where("ownerId", "==", userId))),
         emailLower
           ? getDocs(collection(db, "emailAccess", emailLower, "trips"))
-          : Promise.resolve({ docs: [] })
+          : Promise.resolve({ docs: [] }),
+        getDoc(doc(db, "users", userId))
       ]);
+      const leftTrips = userSnap.exists() ? userSnap.data().leftTrips || {} : {};
 
       ownerSnap.docs.forEach(d => {
         tripsMap.set(d.id, { id: d.id, accessRole: "owner", ...d.data() });
@@ -1339,7 +1437,12 @@ function App() {
       // Resolve all access trips in parallel
       const accessEntries = accessSnap.docs
         .map(d => ({ data: d.data(), tripId: d.data().tripId || d.id }))
-        .filter(e => e.tripId && !tripsMap.has(e.tripId));
+        .filter(e =>
+          e.tripId &&
+          e.data.status !== "inactive" &&
+          leftTrips[e.tripId] !== true &&
+          !tripsMap.has(e.tripId)
+        );
 
       const tripSnaps = await Promise.all(
         accessEntries.map(e => getDoc(doc(db, "trips", e.tripId)))
@@ -1448,6 +1551,71 @@ function App() {
       alert("Could not create trip. Check your Firestore rules.");
     } finally {
       setCreatingTrip(false);
+    }
+  }
+
+  async function deleteRefsInBatches(refs) {
+    for (let i = 0; i < refs.length; i += 450) {
+      const batch = writeBatch(db);
+      refs.slice(i, i + 450).forEach(ref => batch.delete(ref));
+      await batch.commit();
+    }
+  }
+
+  async function handleDeleteTrip() {
+    if (!selectedTrip || !user) return;
+    if (!canManageSelectedTrip()) {
+      alert("Only the trip owner can delete this trip.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete "${selectedTrip.name}" permanently?\n\nThis removes the trip, members, expenses, settlements, predictions, categories, and invite links for everyone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingTrip(true);
+    try {
+      const subcollections = [
+        "members",
+        "categories",
+        "predictions",
+        "expenses",
+        "settlements",
+        "invites"
+      ];
+      const snaps = await Promise.all(
+        subcollections.map(name =>
+          getDocs(collection(db, "trips", selectedTrip.id, name))
+        )
+      );
+      const memberDocs = snaps[0].docs.map(d => ({ id: d.id, ...d.data() }));
+      const subcollectionRefs = snaps.flatMap(snap => snap.docs.map(d => d.ref));
+      const accessRefs = memberDocs
+        .map(m => getEmailLower(m.email))
+        .filter(Boolean)
+        .map(emailLower => doc(db, "emailAccess", emailLower, "trips", selectedTrip.id));
+
+      const ownerEmailLower =
+        selectedTrip.ownerEmailLower || getEmailLower(selectedTrip.ownerEmail || user.email);
+      if (ownerEmailLower) {
+        accessRefs.push(doc(db, "emailAccess", ownerEmailLower, "trips", selectedTrip.id));
+      }
+
+      const refsToDelete = [...subcollectionRefs, ...accessRefs];
+      const uniqueRefsToDelete = Array.from(
+        new Map(refsToDelete.map(ref => [ref.path, ref])).values()
+      );
+
+      await deleteRefsInBatches(uniqueRefsToDelete);
+      await deleteDoc(doc(db, "trips", selectedTrip.id));
+      closeTrip();
+      await loadTrips(user.uid, user.email);
+    } catch (error) {
+      console.error("Could not delete trip:", error);
+      alert("Could not delete trip. Check your Firestore rules.");
+    } finally {
+      setDeletingTrip(false);
     }
   }
 
@@ -1699,6 +1867,11 @@ function App() {
       const activeMemberIds = activeLoadedMembers.map(m => m.id);
 
       setMembers(loadedMembers);
+      setMemberDirectory(current => {
+        const next = mergeMemberDirectory(current, loadedMembers);
+        writeStoredMemberDirectory(next);
+        return next;
+      });
       await loadMemberProfiles(loadedMembers);
       setCategories(loadedCategories);
       setPredictions(loadedPredictions);
@@ -1749,6 +1922,10 @@ function App() {
   async function handleAddMember(event) {
     event.preventDefault();
     if (!selectedTrip || !user) return;
+    if (!canManageSelectedTrip()) {
+      alert("Only the trip owner can add members.");
+      return;
+    }
 
     const displayName = memberForm.displayName.trim();
     const emailLower = getEmailLower(memberForm.email);
@@ -1799,7 +1976,15 @@ function App() {
       });
 
       await batch.commit();
+      setMemberDirectory(current => {
+        const next = mergeMemberDirectory(current, [
+          { displayName: displayName || emailLower, email: emailLower }
+        ]);
+        writeStoredMemberDirectory(next);
+        return next;
+      });
       setMemberForm({ displayName: "", email: "" });
+      setMemberSearch("");
       await loadTripData(selectedTrip.id);
 
       if (alreadyExists) {
@@ -1832,7 +2017,7 @@ function App() {
     const nextStatus = isInactive ? "active" : "inactive";
     const message = isInactive
       ? `Reactivate ${memberNameOf(member.id)} and give them access again?`
-      : `Deactivate ${memberNameOf(member.id)} and remove their trip access? Old expenses will stay visible.`;
+      : `Remove ${memberNameOf(member.id)} from this trip? Old expenses will stay visible.`;
     if (!window.confirm(message)) return;
 
     setUpdatingMemberId(member.id);
@@ -1868,6 +2053,93 @@ function App() {
       alert("Could not update member. Check your Firestore rules.");
     } finally {
       setUpdatingMemberId("");
+    }
+  }
+
+  function selectMemberSuggestion(member) {
+    setMemberForm({
+      displayName: member.displayName || "",
+      email: member.email || ""
+    });
+    setMemberSearch(member.displayName || member.email || "");
+  }
+
+  async function handleLeaveTrip() {
+    if (!selectedTrip || !user) return;
+    if (canManageSelectedTrip()) {
+      alert("Trip owners cannot leave their own trip. Delete the trip instead if you no longer need it.");
+      return;
+    }
+
+    const balanceNet = Number(currentUserBalance?.net || 0);
+    if (Math.abs(balanceNet) > 0.01) {
+      const direction = balanceNet < 0 ? "owe" : "are owed";
+      alert(
+        `You cannot leave this trip yet.\n\nYou still ${direction} ${formatMoney(Math.abs(balanceNet))}. Please settle up before leaving.`
+      );
+      setActiveTab("settlements");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Leave "${selectedTrip.name}"?\n\nYou will lose access to this trip. Your old expenses will stay in the trip history.`
+    );
+    if (!confirmed) return;
+
+    setLeavingTrip(true);
+    try {
+      const emailLower = getEmailLower(user.email);
+      if (!emailLower) {
+        alert("Could not identify your account email, so this trip access cannot be removed.");
+        return;
+      }
+
+      await deleteDoc(doc(db, "emailAccess", emailLower, "trips", selectedTrip.id));
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          leftTrips: {
+            [selectedTrip.id]: false
+          },
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+
+      if (currentUserMemberId) {
+        try {
+          await updateDoc(doc(db, "trips", selectedTrip.id, "members", currentUserMemberId), {
+            status: "inactive",
+            updatedAt: serverTimestamp()
+          });
+        } catch (memberError) {
+          console.warn("Trip access was removed, but member history status could not be updated:", memberError);
+        }
+      }
+
+      closeTrip();
+      await loadTrips(user.uid, user.email);
+    } catch (error) {
+      console.error("Could not leave trip:", error);
+      try {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            leftTrips: {
+              [selectedTrip.id]: true
+            },
+            updatedAt: serverTimestamp()
+          },
+          { merge: true }
+        );
+        closeTrip();
+        await loadTrips(user.uid, user.email);
+      } catch (fallbackError) {
+        console.error("Could not hide left trip:", fallbackError);
+        alert("Could not leave trip. Check your Firestore rules.");
+      }
+    } finally {
+      setLeavingTrip(false);
     }
   }
 
@@ -3043,6 +3315,7 @@ function App() {
                   : undefined
               }
             >
+              {canManageSelectedTrip() ? (
               <div className="trip-hero-topright">
                 <button
                     className="trip-hero-invite"
@@ -3053,6 +3326,7 @@ function App() {
                     🔗 {creatingInvite ? "Creating link..." : "Share invite"}
                 </button>
               </div>
+              ) : null}
               <h1 className="trip-hero-title">{selectedTrip.name}</h1>
               <div className="trip-hero-dates">
                 📅 {selectedTrip.startDate} → {selectedTrip.endDate}
@@ -3578,7 +3852,7 @@ function App() {
 
         {activeTab === "members" ? (
           <section>
-            {selectedTrip ? (
+            {selectedTrip && canManageSelectedTrip() ? (
               <section className="card">
                 <h2>Invite link</h2>
                 <p className="small muted">
@@ -3608,12 +3882,46 @@ function App() {
               </section>
             ) : null}
 
+            {canManageSelectedTrip() ? (
             <section className="card">
-              <h2>Add trip member manually</h2>
+              <h2>Add trip member</h2>
               <p className="small muted">
-                You can still add your friend's Google email manually.
+                Search previous members or enter a new Google email.
               </p>
               <form onSubmit={handleAddMember}>
+                <label>
+                  Search previous members
+                  <div className="member-search-combobox">
+                    <input
+                      type="search"
+                      value={memberSearch}
+                      placeholder="Search by name or email"
+                      autoComplete="off"
+                      onChange={e => setMemberSearch(e.target.value)}
+                    />
+                    {memberSuggestions.length > 0 ? (
+                      <div className="member-suggestion-list">
+                        {memberSuggestions.map(member => (
+                          <button
+                            className="member-suggestion-item"
+                            type="button"
+                            key={member.email}
+                            onClick={() => selectMemberSuggestion(member)}
+                          >
+                            <span className="member-suggestion-name">
+                              {member.displayName || member.email}
+                            </span>
+                            <span className="member-suggestion-email">{member.email}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : memberSearch.trim() ? (
+                      <div className="member-suggestion-empty">
+                        No saved member matches this search.
+                      </div>
+                    ) : null}
+                  </div>
+                </label>
                 <label>
                   Name
                   <input
@@ -3646,12 +3954,13 @@ function App() {
                 </button>
               </form>
             </section>
+            ) : null}
 
             <section className="card">
               <h2>Trip members</h2>
               <p className="small muted">
-                Deactivating a member removes their app access but keeps old
-                expense history readable.
+                Removing a member takes away app access but keeps old expense
+                history readable.
               </p>
               {members.length === 0 ? (
                 <p className="muted">No members yet.</p>
@@ -3698,8 +4007,8 @@ function App() {
                           {updatingMemberId === m.id
                             ? "Updating..."
                             : m.status === "inactive"
-                            ? "Reactivate"
-                            : "Deactivate"}
+                            ? "Restore"
+                            : "Remove"}
                         </button>
                       ) : null}
                     </div>
@@ -3940,6 +4249,47 @@ function App() {
             >
               Refresh trip data
             </button>
+
+            <section className="danger-zone">
+              <h2>{canManageSelectedTrip() ? "Delete trip" : "Leave trip"}</h2>
+              {canManageSelectedTrip() ? (
+                <>
+                  <p className="small muted">
+                    Permanently delete this trip for everyone, including members,
+                    expenses, settlements, predictions, categories, and invite links.
+                  </p>
+                  <button
+                    className="danger-button"
+                    type="button"
+                    disabled={deletingTrip}
+                    onClick={handleDeleteTrip}
+                  >
+                    {deletingTrip ? "Deleting trip..." : "Delete trip"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="small muted">
+                    You can leave once your balance is settled. Current balance:{" "}
+                    <strong>{formatMoney(Math.abs(Number(currentUserBalance?.net || 0)))}</strong>
+                    {Number(currentUserBalance?.net || 0) < -0.01
+                      ? " owed"
+                      : Number(currentUserBalance?.net || 0) > 0.01
+                      ? " to receive"
+                      : " outstanding"}
+                    .
+                  </p>
+                  <button
+                    className="danger-button"
+                    type="button"
+                    disabled={leavingTrip}
+                    onClick={handleLeaveTrip}
+                  >
+                    {leavingTrip ? "Leaving trip..." : "Leave trip"}
+                  </button>
+                </>
+              )}
+            </section>
           </section>
         ) : null}
           </div>
