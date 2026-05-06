@@ -138,6 +138,99 @@ p {
   gap: 18px;
 }
 
+.landing-page {
+  height: 100dvh;
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #f7fbfa;
+}
+
+.landing-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(90deg, #f7fbfa 0%, #f7fbfa 42%, #fff7f1 100%);
+}
+
+.landing-bg-art {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  object-position: center center;
+}
+
+.landing-shell {
+  position: relative;
+  z-index: 1;
+  width: min(720px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 28px clamp(20px, 5vw, 56px);
+}
+
+.landing-logo {
+  display: block;
+  width: min(230px, 72vw);
+  height: auto;
+  margin: 0 auto;
+}
+
+.landing-tagline {
+  margin: -8px 0 10px;
+  color: var(--primary-dark);
+  font-weight: 800;
+  text-align: center;
+}
+
+.landing-copy {
+  display: grid;
+  gap: 12px;
+}
+
+.landing-copy h1 {
+  max-width: 640px;
+  font-size: clamp(34px, 8vw, 64px);
+}
+
+.landing-copy p {
+  max-width: 610px;
+  color: #334155;
+  font-size: clamp(16px, 2vw, 19px);
+  line-height: 1.65;
+}
+
+.landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.landing-google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.landing-google img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
+.landing-secondary {
+  max-width: 560px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .logo {
   width: 68px;
   height: 68px;
@@ -667,6 +760,122 @@ p {
   color: #4b5563;
 }
 
+.plan-budget-page {
+  display: grid;
+  gap: 14px;
+}
+
+.plan-budget-editor .section-header {
+  align-items: flex-start;
+}
+
+.budget-form {
+  display: grid;
+  gap: 14px;
+}
+
+.budget-scope-field,
+.budget-member-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.budget-scope-options,
+.member-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scope-option,
+.member-chip {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 9px 13px;
+  font-weight: 750;
+}
+
+.scope-option.selected,
+.member-chip.selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.budget-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.budget-list-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.budget-total-stack {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.budget-total-stack span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.budget-total-stack strong {
+  font-size: 22px;
+}
+
+.budget-entry-list {
+  display: grid;
+  gap: 12px;
+}
+
+.budget-entry-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.budget-entry-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.budget-entry-main > div {
+  min-width: 0;
+}
+
+.budget-entry-side {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  text-align: right;
+}
+
+.budget-entry-side > strong {
+  font-size: 18px;
+}
+
 .settings-list {
   display: grid;
   gap: 8px;
@@ -1155,6 +1364,7 @@ p {
 
   .trip-card,
   .expense-card,
+  .budget-entry-card,
   .balance-row,
   .breakdown-row,
   .settlement-row,
@@ -1165,7 +1375,8 @@ p {
   }
 
   .trip-meta,
-  .expense-card-side {
+  .expense-card-side,
+  .budget-entry-side {
     justify-items: start;
     text-align: left;
   }
@@ -1173,6 +1384,21 @@ p {
   .expense-actions,
   .category-actions {
     justify-content: flex-start;
+  }
+
+  .budget-list-header,
+  .budget-form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .budget-total-stack {
+    text-align: left;
+  }
+
+  .scope-option,
+  .member-chip {
+    flex: 1 1 calc(50% - 8px);
   }
 
   .primary-button,
@@ -1459,8 +1685,8 @@ p {
   width: 36px;
   height: 36px;
   padding: 6px;
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--border);
+  background: #ffffff;
   border-radius: 8px;
   cursor: pointer;
   flex-shrink: 0;
@@ -1470,9 +1696,11 @@ p {
 
 .hamburger-btn span {
   display: block;
+  width: 100%;
+  min-width: 20px;
   height: 2px;
   border-radius: 2px;
-  background: var(--text);
+  background: #111827;
   transition: transform 200ms, opacity 200ms;
 }
 
@@ -2417,6 +2645,40 @@ p {
    ============================================================ */
 
 @media (max-width: 768px) {
+  .landing-bg {
+    background: linear-gradient(180deg, #f7fbfa 0%, #fff7f1 58%, #fffaf6 100%);
+  }
+
+  .landing-bg-art {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: none;
+    object-position: center center;
+    opacity: 0.9;
+  }
+
+  .landing-shell {
+    text-align: center;
+    padding: 28px 24px;
+  }
+
+  .landing-copy h1,
+  .landing-copy p,
+  .landing-secondary {
+    max-width: 100%;
+  }
+
+  .landing-actions {
+    display: grid;
+    width: 100%;
+  }
+
+  .landing-actions .primary-button,
+  .landing-actions .secondary-button {
+    width: 100%;
+  }
+
   /* Sidebar becomes a fixed slide-in drawer */
   .sidebar {
     position: fixed;

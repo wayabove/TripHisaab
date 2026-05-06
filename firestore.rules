@@ -1,0 +1,166 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function tripPath(tripId) {
+      return /databases/$(database)/documents/trips/$(tripId);
+    }
+
+    function tripExists(tripId) {
+      return exists(tripPath(tripId));
+    }
+
+    function tripExistsAfter(tripId) {
+      return existsAfter(tripPath(tripId));
+    }
+
+    function isOwner(tripId) {
+      return signedIn()
+        && tripExists(tripId)
+        && get(tripPath(tripId)).data.ownerId == request.auth.uid;
+    }
+
+    function isOwnerAfter(tripId) {
+      return signedIn()
+        && tripExistsAfter(tripId)
+        && getAfter(tripPath(tripId)).data.ownerId == request.auth.uid;
+    }
+
+    function isTripMemberByUid(tripId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/trips/$(tripId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/trips/$(tripId)/members/$(request.auth.uid)).data.status == "active";
+    }
+
+    function hasEmailAccess(tripId) {
+      return signedIn()
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/emailAccess/$(request.auth.token.email)/trips/$(tripId))
+        && get(/databases/$(database)/documents/emailAccess/$(request.auth.token.email)/trips/$(tripId)).data.status == "active";
+    }
+
+    function canReadTrip(tripId) {
+      return signedIn()
+        && (
+          isOwner(tripId)
+          || isTripMemberByUid(tripId)
+          || hasEmailAccess(tripId)
+        );
+    }
+
+    function canWriteTripData(tripId) {
+      return canReadTrip(tripId) || isOwnerAfter(tripId);
+    }
+
+    function requestMemberKeys() {
+      return request.auth.token.email == null
+        ? [request.auth.uid]
+        : [request.auth.uid, request.auth.token.email];
+    }
+
+    function isGroupBudget(data) {
+      return !data.keys().hasAny(["scope"]) || data.scope == "group";
+    }
+
+    function canReadBudget(data) {
+      return isGroupBudget(data)
+        || (
+          data.keys().hasAny(["visibleMemberIds"])
+          && data.visibleMemberIds is list
+          && data.visibleMemberIds.hasAny(requestMemberKeys())
+        );
+    }
+
+    function canWriteBudget(data) {
+      return data.scope in ["group", "selected", "me"]
+        && data.estimatedEur is number
+        && data.estimatedEur > 0
+        && data.visibleMemberIds is list
+        && (
+          data.scope == "group"
+          || data.visibleMemberIds.hasAny(requestMemberKeys())
+        );
+    }
+
+    function isSelfUser(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isSelfEmail(email) {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email == email;
+    }
+
+    match /users/{userId} {
+      allow get, create, update, delete: if isSelfUser(userId);
+      allow list: if signedIn();
+    }
+
+    match /emailAccess/{email}/trips/{tripId} {
+      allow get, list: if signedIn();
+      allow create, update: if isSelfEmail(email) || isOwner(tripId) || isOwnerAfter(tripId);
+      allow delete: if isSelfEmail(email) || isOwner(tripId);
+    }
+
+    match /trips/{tripId} {
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid;
+      allow get, list: if canReadTrip(tripId)
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow update, delete: if isOwner(tripId);
+
+      match /members/{memberId} {
+        allow get, list: if canReadTrip(tripId) || isOwnerAfter(tripId);
+        allow create, update: if isOwner(tripId)
+          || isOwnerAfter(tripId)
+          || (
+            signedIn()
+            && request.resource.data.userId == request.auth.uid
+            && request.resource.data.role == "member"
+          );
+        allow delete: if isOwner(tripId);
+      }
+
+      match /categories/{categoryId} {
+        allow get, list: if canReadTrip(tripId) || isOwnerAfter(tripId);
+        allow create: if canWriteTripData(tripId);
+        allow update, delete: if canReadTrip(tripId);
+      }
+
+      match /predictions/{predictionId} {
+        allow get, list: if canReadTrip(tripId) && canReadBudget(resource.data);
+        allow create: if canReadTrip(tripId) && canWriteBudget(request.resource.data);
+        allow update: if canReadTrip(tripId)
+          && canReadBudget(resource.data)
+          && canWriteBudget(request.resource.data);
+        allow delete: if canReadTrip(tripId) && canReadBudget(resource.data);
+      }
+
+      match /expenses/{expenseId} {
+        allow get, list: if canReadTrip(tripId);
+        allow create, update, delete: if canReadTrip(tripId);
+      }
+
+      match /settlements/{settlementId} {
+        allow get, list: if canReadTrip(tripId);
+        allow create, update, delete: if canReadTrip(tripId);
+      }
+
+      match /notifications/{notificationId} {
+        allow get, list: if canReadTrip(tripId);
+        allow create, update, delete: if canReadTrip(tripId);
+      }
+
+      match /invites/{inviteId} {
+        allow get: if true;
+        allow list: if canReadTrip(tripId);
+        allow create, update, delete: if isOwner(tripId);
+      }
+    }
+  }
+}

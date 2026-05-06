@@ -72,7 +72,56 @@ const MEMBER_DIRECTORY_STORAGE_KEY = "triphisaab-member-directory";
 const CATEGORY_EMOJI_OPTIONS = [
   "📌", "✈️", "🚆", "🚕", "🚌", "⛽", "🏨", "🏠",
   "🍽️", "☕", "🍕", "🛒", "🛍️", "🎟️", "🎡", "🏖️",
-  "💸", "💳", "🧾", "🎁", "💊", "📱", "🧳", "✨"
+  "💸", "💳", "🧾", "🎁", "💊", "📱", "🧳", "✨",
+  "🍔", "🍜", "🥐", "🥤", "🍷", "🚗", "🚲", "🚇",
+  "⛴️", "🛫", "🛬", "🛌", "🏕️", "🎭", "🎮", "📷",
+  "🧴", "👕", "👶", "🐾", "🗺️", "🧡", "⭐", "🔖"
+];
+
+const BUDGET_SCOPE_OPTIONS = [
+  { value: "group", label: "Whole group" },
+  { value: "selected", label: "Selected people" },
+  { value: "me", label: "Only me" }
+];
+
+const EMPTY_BUDGET_FORM = {
+  categoryId: "",
+  title: "",
+  estimatedEur: "",
+  scope: "group",
+  visibleMemberIds: []
+};
+
+const DEMO_TRIP_ID = "demo-norway-trip";
+const DEMO_MEMBERS = [
+  { id: "demo-alex", displayName: "Alex", email: "alex@example.com", status: "active", role: "owner", isOwner: true },
+  { id: "demo-sam", displayName: "Sam", email: "sam@example.com", status: "active", role: "member", isOwner: false },
+  { id: "demo-maya", displayName: "Maya", email: "maya@example.com", status: "active", role: "member", isOwner: false }
+];
+const DEMO_CATEGORIES = [
+  { id: "flights", name: "Flights", type: "Trip", icon: "✈️", color: "#2563eb", isActive: true },
+  { id: "hotel", name: "Hotel", type: "Trip", icon: "🏨", color: "#7c3aed", isActive: true },
+  { id: "food", name: "Food", type: "Daily", icon: "🍽️", color: "#ea580c", isActive: true },
+  { id: "transport", name: "Transport", type: "Daily", icon: "🚆", color: "#0891b2", isActive: true },
+  { id: "activities", name: "Activities", type: "Fun", icon: "🎟️", color: "#16a34a", isActive: true }
+];
+const DEMO_PREDICTIONS = [
+  { id: "flights", categoryId: "flights", categoryName: "Flights", estimatedEur: 720 },
+  { id: "hotel", categoryId: "hotel", categoryName: "Hotel", estimatedEur: 900 },
+  { id: "food", categoryId: "food", categoryName: "Food", estimatedEur: 420 },
+  { id: "transport", categoryId: "transport", categoryName: "Transport", estimatedEur: 260 },
+  { id: "activities", categoryId: "activities", categoryName: "Activities", estimatedEur: 360 }
+];
+const DEMO_EXPENSES = [
+  { id: "demo-exp-1", date: "2026-06-10", time: "09:10", categoryId: "flights", categoryName: "Flights", categoryIcon: "✈️", description: "Oslo round-trip flights", amountEur: 695, originalAmount: 695, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-alex", paidByMemberName: "Alex", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" },
+  { id: "demo-exp-2", date: "2026-06-10", time: "17:30", categoryId: "hotel", categoryName: "Hotel", categoryIcon: "🏨", description: "Bergen harbor hotel", amountEur: 870, originalAmount: 870, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-sam", paidByMemberName: "Sam", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "4 nights" },
+  { id: "demo-exp-3", date: "2026-06-11", time: "12:20", categoryId: "food", categoryName: "Food", categoryIcon: "🍽️", description: "Fish market lunch", amountEur: 86, originalAmount: 86, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-maya", paidByMemberName: "Maya", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" },
+  { id: "demo-exp-4", date: "2026-06-12", time: "08:45", categoryId: "transport", categoryName: "Transport", categoryIcon: "🚆", description: "Flam railway tickets", amountEur: 240, originalAmount: 240, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-alex", paidByMemberName: "Alex", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" },
+  { id: "demo-exp-5", date: "2026-06-13", time: "14:00", categoryId: "activities", categoryName: "Activities", categoryIcon: "🎟️", description: "Fjord cruise", amountEur: 330, originalAmount: 330, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-sam", paidByMemberName: "Sam", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" },
+  { id: "demo-exp-6", date: "2026-06-14", time: "19:10", categoryId: "food", categoryName: "Food", categoryIcon: "🍽️", description: "Last dinner in Oslo", amountEur: 124, originalAmount: 124, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-maya", paidByMemberName: "Maya", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" }
+];
+const DEMO_SETTLEMENTS = [
+  { id: "demo-settle-1", date: "2026-06-15", fromMemberId: "demo-maya", fromMemberName: "Maya", toMemberId: "demo-alex", toMemberName: "Alex", amountEur: 120, notes: "Partial payback" }
 ];
 
 function readTripImage(file) {
@@ -302,7 +351,7 @@ const TOUR_STEPS = [
   {
     targets: ["sidebar-tour", "bottom-nav-tour"],
     title: "Everything Inside a Trip",
-    body: "Open any trip to access its tabs: log Expenses, plan ahead with Predictions, manage Members, view Balances, and adjust Settings.",
+    body: "Open any trip to access its tabs: log Expenses, plan ahead with Plan Budget, manage Members, view Balances, and adjust Settings.",
     position: "right",
   },
   {
@@ -583,6 +632,7 @@ function App() {
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [tripSearch, setTripSearch] = useState("");
+  const [showLanding, setShowLanding] = useState(true);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isStandaloneApp, setIsStandaloneApp] = useState(false);
@@ -620,8 +670,9 @@ function App() {
   const [savingSettlement, setSavingSettlement] = useState(false);
   const [approvingNotificationId, setApprovingNotificationId] = useState("");
 
-  const [predictionDraft, setPredictionDraft] = useState({});
   const [savingPredictions, setSavingPredictions] = useState(false);
+  const [budgetForm, setBudgetForm] = useState(EMPTY_BUDGET_FORM);
+  const [editingBudgetId, setEditingBudgetId] = useState(null);
 
   const [settingsTripForm, setSettingsTripForm] = useState({
     name: "",
@@ -765,9 +816,16 @@ function App() {
     return map;
   }, [categories]);
 
-  const predictionsByCategoryId = useMemo(() => {
+  const groupBudgetByCategoryId = useMemo(() => {
     const map = new Map();
-    predictions.forEach(p => map.set(p.categoryId, p));
+    predictions
+      .filter(p => normalizeBudgetScope(p) === "group")
+      .forEach(p => {
+        map.set(
+          p.categoryId,
+          (map.get(p.categoryId) || 0) + Number(p.estimatedEur || 0)
+        );
+      });
     return map;
   }, [predictions]);
 
@@ -789,7 +847,9 @@ function App() {
       actual += amount;
       if (e.expenseType === "shared") shared += amount;
     });
-    const predicted = predictions.reduce(
+    const predicted = predictions
+      .filter(p => normalizeBudgetScope(p) === "group")
+      .reduce(
       (sum, p) => sum + Number(p.estimatedEur || 0),
       0
     );
@@ -799,6 +859,11 @@ function App() {
     );
     return { predicted, actual, shared, settled };
   }, [expenses, predictions, settlements]);
+
+  const visiblePlanTotal = useMemo(
+    () => predictions.reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0),
+    [predictions]
+  );
 
   const actualByCategoryId = useMemo(() => {
     const map = new Map();
@@ -1098,6 +1163,30 @@ function App() {
     return Boolean(user && selectedTrip && selectedTrip.ownerId === user.uid);
   }
 
+  function isDemoMode() {
+    return selectedTrip?.id === DEMO_TRIP_ID || selectedTrip?.isDemo === true;
+  }
+
+  function normalizeBudgetScope(entry) {
+    if (entry?.scope === "selected" || entry?.scope === "me") return entry.scope;
+    return "group";
+  }
+
+  function budgetScopeLabel(entry) {
+    const scope = normalizeBudgetScope(entry);
+    return BUDGET_SCOPE_OPTIONS.find(option => option.value === scope)?.label || "Whole group";
+  }
+
+  function budgetVisibleNames(entry) {
+    const scope = normalizeBudgetScope(entry);
+    if (scope === "group") return "Everyone";
+    const ids = entry.visibleMemberIds?.length
+      ? entry.visibleMemberIds
+      : entry.memberIds || [];
+    if (scope === "me") return "Only me";
+    return ids.map(memberNameOf).join(", ") || "Selected people";
+  }
+
   async function createUserProfileIfNeeded(currentUser) {
     const userRef = doc(db, "users", currentUser.uid);
     const userSnap = await getDoc(userRef);
@@ -1248,6 +1337,7 @@ function App() {
 
   async function handleGoogleLogin() {
     try {
+      setShowLanding(false);
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error("Google login failed:", error);
@@ -1289,6 +1379,8 @@ function App() {
   async function handleLogout() {
     try {
       await signOut(auth);
+      setShowLanding(true);
+      closeTrip();
     } catch (error) {
       console.error("Logout failed:", error);
       alert("Logout failed. Please try again.");
@@ -1669,7 +1761,7 @@ function App() {
     }
 
     const confirmed = window.confirm(
-      `Delete "${selectedTrip.name}" permanently?\n\nThis removes the trip, members, expenses, settlements, predictions, categories, and invite links for everyone.`
+      `Delete "${selectedTrip.name}" permanently?\n\nThis removes the trip, members, expenses, settlements, plan budget, categories, and invite links for everyone.`
     );
     if (!confirmed) return;
 
@@ -1887,6 +1979,25 @@ function App() {
     await loadTripData(trip.id);
   }
 
+  async function openDemoTrip() {
+    setShowLanding(false);
+    setSelectedTrip({
+      id: DEMO_TRIP_ID,
+      isDemo: true,
+      accessRole: "demo",
+      name: "5-Day Norway Trip Demo",
+      startDate: "2026-06-10",
+      endDate: "2026-06-14",
+      defaultCurrency: "EUR",
+      status: "Demo",
+      ownerId: "demo",
+      ownerEmail: "demo@triphisaab.app",
+      imageDataUrl: ""
+    });
+    setActiveTab("dashboard");
+    await loadTripData(DEMO_TRIP_ID);
+  }
+
   function closeTrip() {
     setSelectedTrip(null);
     setActiveTab("dashboard");
@@ -1898,7 +2009,6 @@ function App() {
     setSettlements([]);
     setNotifications([]);
     setSelectedNotification(null);
-    setPredictionDraft({});
     cancelCategoryForm();
     cancelEditingExpense();
     setMemberForm({ displayName: "", email: "" });
@@ -1907,24 +2017,56 @@ function App() {
   }
 
   async function loadTripData(tripId) {
+    if (tripId === DEMO_TRIP_ID) {
+      setTripDataLoading(true);
+      setMembers(DEMO_MEMBERS);
+      setMemberProfilesByEmail({});
+      setCategories(DEMO_CATEGORIES);
+      setPredictions(DEMO_PREDICTIONS);
+      setExpenses(DEMO_EXPENSES);
+      setSettlements(DEMO_SETTLEMENTS);
+      setNotifications([]);
+      setTripDataLoading(false);
+      return;
+    }
     setTripDataLoading(true);
     try {
-      // Parallelize all 5 reads — was the single biggest perf bottleneck.
-      const [membersSnap, categoriesSnap, predictionsSnap, expensesSnap, settlementsSnap] =
+      // Parallelize the base reads; budget visibility depends on the loaded member id.
+      const [membersSnap, categoriesSnap, expensesSnap, settlementsSnap] =
         await Promise.all([
           getDocs(collection(db, "trips", tripId, "members")),
           getDocs(collection(db, "trips", tripId, "categories")),
-          getDocs(collection(db, "trips", tripId, "predictions")),
           getDocs(collection(db, "trips", tripId, "expenses")),
           getDocs(collection(db, "trips", tripId, "settlements"))
         ]);
 
       const loadedMembers = membersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedCategories = categoriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const loadedPredictions = predictionsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedExpenses = expensesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedSettlements = settlementsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedCurrentUserMemberId = getCurrentUserMemberIdFromList(loadedMembers);
+      const predictionCollection = collection(db, "trips", tripId, "predictions");
+      const predictionReads = [
+        getDocs(query(predictionCollection, where("scope", "==", "group"))),
+        getDocs(query(predictionCollection, where("scope", "==", null))).catch(() => ({ docs: [] }))
+      ];
+      if (loadedCurrentUserMemberId) {
+        predictionReads.push(
+          getDocs(
+            query(
+              predictionCollection,
+              where("visibleMemberIds", "array-contains", loadedCurrentUserMemberId)
+            )
+          ).catch(() => ({ docs: [] }))
+        );
+      }
+      const predictionSnaps = await Promise.all(predictionReads);
+      const loadedPredictions = Array.from(
+        predictionSnaps
+          .flatMap(snap => snap.docs)
+          .reduce((map, d) => map.set(d.id, { id: d.id, ...d.data() }), new Map())
+          .values()
+      );
       const notificationsSnap = loadedCurrentUserMemberId
         ? await getDocs(
             query(
@@ -1960,12 +2102,6 @@ function App() {
         String(b.date || "").localeCompare(String(a.date || ""))
       );
 
-      const draft = {};
-      loadedCategories.forEach(category => {
-        const existing = loadedPredictions.find(p => p.categoryId === category.id);
-        draft[category.id] = existing ? String(existing.estimatedEur || "") : "";
-      });
-
       const firstActiveCategory = loadedCategories.find(c => c.isActive);
       const activeLoadedMembers = loadedMembers.filter(m => m.status !== "inactive");
 
@@ -1989,7 +2125,15 @@ function App() {
       setExpenses(loadedExpenses);
       setSettlements(loadedSettlements);
       setNotifications(loadedNotifications);
-      setPredictionDraft(draft);
+      setBudgetForm(current => ({
+        ...current,
+        categoryId: current.categoryId || firstActiveCategory?.id || "",
+        visibleMemberIds: current.visibleMemberIds?.length
+          ? current.visibleMemberIds
+          : loadedCurrentUserMemberId
+          ? [loadedCurrentUserMemberId]
+          : []
+      }));
 
       setExpenseForm(prev => ({
         ...prev,
@@ -2255,42 +2399,110 @@ function App() {
     }
   }
 
-  // -------------------- Predictions --------------------
+  // -------------------- Plan Budget --------------------
+  function resetBudgetForm(overrides = {}) {
+    setEditingBudgetId(null);
+    setBudgetForm({
+      ...EMPTY_BUDGET_FORM,
+      categoryId: activeCategories[0]?.id || categories[0]?.id || "",
+      visibleMemberIds: currentUserMemberId ? [currentUserMemberId] : [],
+      ...overrides
+    });
+  }
+
+  function toggleBudgetMember(memberId) {
+    setBudgetForm(current => {
+      const selected = new Set(current.visibleMemberIds || []);
+      if (selected.has(memberId)) selected.delete(memberId);
+      else selected.add(memberId);
+      return { ...current, visibleMemberIds: Array.from(selected) };
+    });
+  }
+
+  function buildBudgetVisibility(scope) {
+    if (scope === "group") return activeMembers.map(m => m.id);
+    if (scope === "me") return currentUserMemberId ? [currentUserMemberId] : [];
+    return budgetForm.visibleMemberIds || [];
+  }
+
+  function startEditingBudget(entry) {
+    setEditingBudgetId(entry.id);
+    setBudgetForm({
+      categoryId: entry.categoryId || activeCategories[0]?.id || "",
+      title: entry.title || entry.notes || "",
+      estimatedEur: entry.estimatedEur ? String(entry.estimatedEur) : "",
+      scope: normalizeBudgetScope(entry),
+      visibleMemberIds:
+        entry.visibleMemberIds?.length
+          ? entry.visibleMemberIds
+          : entry.memberIds || []
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   async function handleSavePredictions(event) {
     event.preventDefault();
     if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit trip budgets.");
+    const amount = Number(budgetForm.estimatedEur);
+    if (!budgetForm.categoryId) return alert("Choose a category.");
+    if (!amount || amount <= 0) return alert("Enter a budget amount above zero.");
+    if (!currentUserMemberId) return alert("Could not find your trip member profile yet.");
+    const scope = budgetForm.scope || "group";
+    const visibleMemberIds = buildBudgetVisibility(scope);
+    if (scope === "selected" && visibleMemberIds.length === 0) {
+      return alert("Choose at least one person for this budget entry.");
+    }
+    const category = categoriesById.get(budgetForm.categoryId);
     setSavingPredictions(true);
     try {
-      // Run all writes in parallel (they're independent)
-      await Promise.all(
-        categories.map(category => {
-          const amount = Number(predictionDraft[category.id]);
-          const predictionRef = doc(
-            db,
-            "trips",
-            selectedTrip.id,
-            "predictions",
-            category.id
-          );
-          if (amount > 0) {
-            return setDoc(predictionRef, {
-              categoryId: category.id,
-              categoryName: category.name,
-              estimatedEur: amount,
-              notes: "",
-              updatedAt: serverTimestamp()
-            });
-          }
-          return deleteDoc(predictionRef).catch(() => {});
-        })
-      );
+      const payload = {
+        categoryId: budgetForm.categoryId,
+        categoryName: category?.name || "",
+        title: budgetForm.title.trim(),
+        estimatedEur: amount,
+        scope,
+        visibleMemberIds,
+        createdByMemberId: currentUserMemberId,
+        updatedAt: serverTimestamp()
+      };
+      if (editingBudgetId) {
+        await setDoc(
+          doc(db, "trips", selectedTrip.id, "predictions", editingBudgetId),
+          payload,
+          { merge: true }
+        );
+      } else {
+        await addDoc(collection(db, "trips", selectedTrip.id, "predictions"), {
+          ...payload,
+          createdBy: user.uid,
+          createdAt: serverTimestamp()
+        });
+      }
       await loadTripData(selectedTrip.id);
-      alert("Predictions saved.");
+      resetBudgetForm({ categoryId: budgetForm.categoryId });
+      alert("Plan budget saved.");
     } catch (error) {
-      console.error("Could not save predictions:", error);
-      alert("Could not save predictions.");
+      console.error("Could not save plan budget:", error);
+      alert("Could not save plan budget.");
     } finally {
       setSavingPredictions(false);
+    }
+  }
+
+  async function handleDeleteBudget(entry) {
+    if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit trip budgets.");
+    if (!window.confirm(`Delete this budget entry for ${entry.categoryName || "this category"}?`)) {
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, "trips", selectedTrip.id, "predictions", entry.id));
+      if (editingBudgetId === entry.id) resetBudgetForm();
+      await loadTripData(selectedTrip.id);
+    } catch (error) {
+      console.error("Could not delete plan budget:", error);
+      alert("Could not delete plan budget.");
     }
   }
 
@@ -2396,6 +2608,10 @@ function App() {
   }
 
   function openFastExpenseModal(overrides = {}) {
+    if (isDemoMode()) {
+      alert("Demo trip is read-only. Sign in with Google to create and edit your own trips.");
+      return;
+    }
     setExpenseFeedback(null);
     setExpenseForm(buildFastExpenseForm(overrides));
     setIsAddExpenseModalOpen(true);
@@ -2405,6 +2621,7 @@ function App() {
   async function handleAddExpense(event) {
     event.preventDefault();
     if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to add expenses.");
 
     const normalizedExpenseForm = {
       ...expenseForm,
@@ -2484,7 +2701,7 @@ function App() {
       await loadTripData(selectedTrip.id);
       setExpenseFeedback({
         expenseId: expenseRef.id,
-        message: `${formatCurrency(originalAmount, originalCurrency)} added to ${category?.name || "expense"}. Dashboard updated.`
+        message: `${formatCurrency(originalAmount, originalCurrency)} added to ${category?.name || "expense"}. Trip Overview updated.`
       });
     } catch (error) {
       console.error("Could not save expense:", error);
@@ -2564,6 +2781,7 @@ function App() {
   async function handleUpdateExpense(event) {
     event.preventDefault();
     if (!selectedTrip || !editingExpenseId) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit expenses.");
 
     const originalAmount = Number(expenseEditForm.originalAmount);
     const originalCurrency = expenseEditForm.originalCurrency || "EUR";
@@ -2627,6 +2845,7 @@ function App() {
 
   async function handleDeleteExpense(expense) {
     if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to delete expenses.");
     const confirmed = window.confirm(
       `Delete this expense?\n\n${
         expense.description || expense.categoryName
@@ -2686,6 +2905,7 @@ function App() {
   async function handleSaveCategory(event) {
     event.preventDefault();
     if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit categories.");
     if (!categoryForm.name.trim()) {
       alert("Category name is required.");
       return;
@@ -2708,7 +2928,7 @@ function App() {
           updatedAt: serverTimestamp()
         });
 
-        // Cascade name update to expenses + prediction in a single batch
+        // Cascade name update to expenses + visible budget entries in a single batch
         const expensesSnap = await getDocs(
           collection(db, "trips", selectedTrip.id, "expenses")
         );
@@ -2721,20 +2941,14 @@ function App() {
             });
           }
         });
-        const predictionRef = doc(
-          db,
-          "trips",
-          selectedTrip.id,
-          "predictions",
-          editingCategoryId
-        );
-        const predictionSnap = await getDoc(predictionRef);
-        if (predictionSnap.exists()) {
-          batch.update(predictionRef, {
-            categoryName: categoryForm.name.trim(),
-            updatedAt: serverTimestamp()
+        predictions
+          .filter(entry => entry.categoryId === editingCategoryId)
+          .forEach(entry => {
+            batch.update(doc(db, "trips", selectedTrip.id, "predictions", entry.id), {
+              categoryName: categoryForm.name.trim(),
+              updatedAt: serverTimestamp()
+            });
           });
-        }
         await batch.commit();
       } else {
         await addDoc(collection(db, "trips", selectedTrip.id, "categories"), {
@@ -2761,6 +2975,7 @@ function App() {
 
   async function handleToggleCategory(category) {
     if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit categories.");
     try {
       await updateDoc(
         doc(db, "trips", selectedTrip.id, "categories", category.id),
@@ -2773,6 +2988,32 @@ function App() {
     } catch (error) {
       console.error("Could not update category status:", error);
       alert("Could not update category status.");
+    }
+  }
+
+  async function handleDeleteCategory(category) {
+    if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit categories.");
+    const usedByExpenses = expenses.some(e => e.categoryId === category.id);
+    const message = usedByExpenses
+      ? `Delete "${category.name}"?\n\nExisting expenses will keep their saved category name, but this category will no longer be available for new budgets or expenses.`
+      : `Delete "${category.name}" and its visible budget entries?`;
+    if (!window.confirm(message)) return;
+
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, "trips", selectedTrip.id, "categories", category.id));
+      predictions
+        .filter(entry => entry.categoryId === category.id)
+        .forEach(entry => {
+          batch.delete(doc(db, "trips", selectedTrip.id, "predictions", entry.id));
+        });
+      await batch.commit();
+      if (budgetForm.categoryId === category.id) resetBudgetForm({ categoryId: "" });
+      await loadTripData(selectedTrip.id);
+    } catch (error) {
+      console.error("Could not delete category:", error);
+      alert("Could not delete category.");
     }
   }
 
@@ -2804,6 +3045,7 @@ function App() {
   }
 
   async function saveSettlement(data) {
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to record settlements.");
     if (!selectedTrip || !user) return;
     const amount = Number(data.amountEur);
     if (!data.fromMemberId || !data.toMemberId) return alert("Choose both people.");
@@ -3150,19 +3392,19 @@ function App() {
     rows.push(csvRow(["Exported at", new Date().toLocaleString()]));
     rows.push("");
 
-    rows.push(csvRow(["Predicted vs Actual"]));
+    rows.push(csvRow(["Plan Budget vs Expenses"]));
     rows.push(csvRow(["Metric", "Amount EUR"]));
-    rows.push(csvRow(["Predicted total", totals.predicted.toFixed(2)]));
-    rows.push(csvRow(["Actual total", totals.actual.toFixed(2)]));
+    rows.push(csvRow(["Plan Budget total", totals.predicted.toFixed(2)]));
+    rows.push(csvRow(["Expenses total", totals.actual.toFixed(2)]));
     rows.push(csvRow(["Shared expenses total", totals.shared.toFixed(2)]));
     rows.push(csvRow(["Settled total", totals.settled.toFixed(2)]));
-    rows.push(csvRow(["Remaining / Over prediction", remaining.toFixed(2)]));
+    rows.push(csvRow(["Remaining / Over plan budget", remaining.toFixed(2)]));
     rows.push("");
 
     rows.push(csvRow(["Category Breakdown"]));
-    rows.push(csvRow(["Category", "Type", "Predicted EUR", "Actual EUR", "Difference EUR"]));
+    rows.push(csvRow(["Category", "Type", "Plan Budget EUR", "Expenses EUR", "Difference EUR"]));
     categories.forEach(c => {
-      const predicted = Number(predictionsByCategoryId.get(c.id)?.estimatedEur || 0);
+      const predicted = Number(groupBudgetByCategoryId.get(c.id) || 0);
       const actual = actualByCategoryId.get(c.id) || 0;
       rows.push(
         csvRow([
@@ -3634,6 +3876,7 @@ function App() {
                       Suggested amount: {formatMoney(s.amount)}
                     </p>
                   </div>
+                  {!isDemoMode() ? (
                   <button
                     className="primary-button small-button"
                     type="button"
@@ -3642,6 +3885,7 @@ function App() {
                   >
                     Mark paid
                   </button>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -3669,6 +3913,7 @@ function App() {
                     </p>
                     {s.notes ? <p className="small muted">{s.notes}</p> : null}
                   </div>
+                  {!isDemoMode() ? (
                   <button
                     className="danger-button small-button"
                     type="button"
@@ -3676,12 +3921,14 @@ function App() {
                   >
                     Delete
                   </button>
+                  ) : null}
                 </div>
               ))}
             </div>
           )}
         </section>
 
+        {!isDemoMode() ? (
         <button
           className="primary-button"
           type="button"
@@ -3692,6 +3939,7 @@ function App() {
         >
           Settle Up
         </button>
+        ) : null}
 
       </section>
     );
@@ -3722,11 +3970,12 @@ function App() {
       : "Budget exceeded 😬";
 
     const userInitial = (user?.displayName || user?.email || "?")[0].toUpperCase();
+    const demoMode = isDemoMode();
 
     const navItems = [
-      { key: "dashboard", label: "Dashboard", icon: "⊞" },
-      { key: "prediction", label: "Prediction", icon: "📊" },
-      { key: "actual", label: "Actual", icon: "💳" },
+      { key: "dashboard", label: "Trip Overview", icon: "⊞" },
+      { key: "prediction", label: "Plan Budget", icon: "📊" },
+      { key: "actual", label: "Expenses", icon: "💳" },
       { key: "settlements", label: "Settle", icon: "🤝" },
       { key: "categories", label: "Categories", icon: "🏷" },
       { key: "members", label: "Members", icon: "👥" },
@@ -3786,16 +4035,23 @@ function App() {
             </div>
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">
-                {user?.displayName || user?.email?.split("@")[0]}
+                {demoMode ? "Norway Demo" : user?.displayName || user?.email?.split("@")[0]}
               </div>
               <div className="sidebar-user-role">
-                {selectedTrip.accessRole === "owner" ? "Trip admin" : "Member"}
+                {demoMode ? "Demo mode" : selectedTrip.accessRole === "owner" ? "Trip admin" : "Member"}
               </div>
             </div>
-            {renderNotificationBell()}
+            {!demoMode ? renderNotificationBell() : null}
+            {demoMode ? (
+              <button className="link-button sidebar-logout" type="button" onClick={closeTrip}>
+                Exit
+              </button>
+            ) : null}
+            {!demoMode ? (
             <button className="link-button sidebar-logout" type="button" onClick={handleLogout}>
               Out
             </button>
+            ) : null}
           </div>
         </aside>
 
@@ -3814,7 +4070,8 @@ function App() {
               <img className="mobile-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
               <span className="mobile-topbar-tagline">Every trip. Every spend. Sorted.</span>
             </span>
-            {renderNotificationBell()}
+            {!demoMode ? renderNotificationBell() : null}
+            {!demoMode ? (
             <button
               className="primary-button small-button"
               type="button"
@@ -3822,6 +4079,7 @@ function App() {
             >
               + Add
             </button>
+            ) : null}
           </div>
           {tripDataLoading ? (
             <p className="muted" style={{ padding: "24px" }}>Loading trip data...</p>
@@ -3838,7 +4096,7 @@ function App() {
                   : undefined
               }
             >
-              {canManageSelectedTrip() ? (
+              {canManageSelectedTrip() && !demoMode ? (
               <div className="trip-hero-topright">
                 <button
                     className="trip-hero-invite"
@@ -3879,7 +4137,7 @@ function App() {
                   <div className="budget-stats">
                     <div className="budget-stat-row">
                       <div className="budget-stat">
-                        <span className="budget-stat-label">Predicted budget</span>
+                        <span className="budget-stat-label">Plan Budget</span>
                         <span className="budget-stat-value">{formatMoney(totals.predicted)}</span>
                       </div>
                       <div className="budget-stat">
@@ -3892,11 +4150,18 @@ function App() {
                           {remaining >= 0 ? formatMoney(remaining) : "-" + formatMoney(Math.abs(remaining))}
                         </span>
                       </div>
+                      {visiblePlanTotal > totals.predicted ? (
+                      <div className="budget-stat">
+                        <span className="budget-stat-label">Your visible plan</span>
+                        <span className="budget-stat-value">{formatMoney(visiblePlanTotal)}</span>
+                      </div>
+                      ) : null}
                     </div>
                     <div className="budget-message">{budgetMsg}</div>
                   </div>
                 </div>
 
+                {!demoMode ? (
                 <div className="dash-card quick-add-card">
                   <button
                     className="quick-add-btn"
@@ -3922,6 +4187,12 @@ function App() {
                     ))}
                   </div>
                 </div>
+                ) : (
+                <div className="dash-card quick-add-card">
+                  <div className="quick-add-title">Demo trip</div>
+                  <div className="small muted">Explore Plan Budget, Expenses, balances, and CSV export with sample Norway expenses.</div>
+                </div>
+                )}
               </div>
 
               {/* Row 2: Trip progress + Balances + Recent activity */}
@@ -3999,6 +4270,7 @@ function App() {
                               {suggestedSettlements[0].fromName} pays {suggestedSettlements[0].toName} {formatMoney(suggestedSettlements[0].amount)}
                             </div>
                           </div>
+                          {!demoMode ? (
                           <button
                             className="primary-button small-button"
                             type="button"
@@ -4007,6 +4279,7 @@ function App() {
                           >
                             Mark paid
                           </button>
+                          ) : null}
                         </div>
                       )}
                     </>
@@ -4078,45 +4351,208 @@ function App() {
         {activeTab !== "dashboard" ? (
           <div className="tab-page-content">
         {activeTab === "prediction" ? (
-          <section className="card">
-            <div className="section-header compact-header">
-              <h2>Prediction</h2>
-              <button
-                className="secondary-button small-button"
-                type="button"
-                onClick={openCreateCategory}
-              >
-                + New category
-              </button>
-            </div>
-            <p className="small muted">Set estimated cost per category in EUR.</p>
-            <form onSubmit={handleSavePredictions}>
-              {activeCategories.map(c => (
-                <label key={c.id}>
-                  {c.icon} {c.name}
+          <section className="plan-budget-page">
+            <section className="card plan-budget-editor">
+              <div className="section-header compact-header">
+                <div>
+                  <h2>Plan Budget</h2>
+                  <p className="small muted">
+                    Add separate budgets for everyone, selected people, or just you.
+                  </p>
+                </div>
+                {!demoMode ? (
+                <button
+                  className="secondary-button small-button"
+                  type="button"
+                  onClick={openCreateCategory}
+                >
+                  + New category
+                </button>
+                ) : null}
+              </div>
+
+              <form className="budget-form" onSubmit={handleSavePredictions}>
+                <label>
+                  Category
+                  <select
+                    value={budgetForm.categoryId}
+                    onChange={e => setBudgetForm({ ...budgetForm, categoryId: e.target.value })}
+                    required
+                  >
+                    <option value="">Choose category</option>
+                    {activeCategories.map(c => (
+                      <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Budget name
+                  <input
+                    type="text"
+                    value={budgetForm.title}
+                    placeholder="e.g. Group groceries"
+                    onChange={e => setBudgetForm({ ...budgetForm, title: e.target.value })}
+                  />
+                </label>
+
+                <label>
+                  Amount in EUR
                   <input
                     type="number"
                     min="0"
                     step="0.01"
-                    value={predictionDraft[c.id] || ""}
+                    value={budgetForm.estimatedEur}
                     placeholder="0.00"
-                    onChange={e =>
-                      setPredictionDraft({
-                        ...predictionDraft,
-                        [c.id]: e.target.value
-                      })
-                    }
+                    onChange={e => setBudgetForm({ ...budgetForm, estimatedEur: e.target.value })}
+                    required
                   />
                 </label>
-              ))}
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={savingPredictions}
-              >
-                {savingPredictions ? "Saving..." : "Save predictions"}
-              </button>
-            </form>
+
+                <div className="budget-scope-field">
+                  <span className="emoji-field-label">Who can see this?</span>
+                  <div className="budget-scope-options">
+                    {BUDGET_SCOPE_OPTIONS.map(option => (
+                      <button
+                        className={`scope-option${budgetForm.scope === option.value ? " selected" : ""}`}
+                        type="button"
+                        key={option.value}
+                        onClick={() =>
+                          setBudgetForm(current => ({
+                            ...current,
+                            scope: option.value,
+                            visibleMemberIds:
+                              option.value === "me" && currentUserMemberId
+                                ? [currentUserMemberId]
+                                : current.visibleMemberIds
+                          }))
+                        }
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {budgetForm.scope === "selected" ? (
+                  <div className="budget-member-picker">
+                    <span className="emoji-field-label">Choose people</span>
+                    <div className="member-chip-list">
+                      {activeMembers.map(member => (
+                        <button
+                          className={`member-chip${(budgetForm.visibleMemberIds || []).includes(member.id) ? " selected" : ""}`}
+                          type="button"
+                          key={member.id}
+                          onClick={() => toggleBudgetMember(member.id)}
+                        >
+                          {memberNameOf(member.id)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {!demoMode ? (
+                <div className="budget-form-actions">
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={savingPredictions}
+                  >
+                    {savingPredictions
+                      ? "Saving..."
+                      : editingBudgetId
+                      ? "Save budget entry"
+                      : "Add budget entry"}
+                  </button>
+                  {editingBudgetId ? (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => resetBudgetForm()}
+                    >
+                      Cancel editing
+                    </button>
+                  ) : null}
+                </div>
+                ) : null}
+              </form>
+            </section>
+
+            <section className="card">
+              <div className="budget-list-header">
+                <div>
+                  <h3>Budget entries</h3>
+                  <p className="small muted">
+                    Whole group entries count toward the group total. Selected and Only me entries stay out of it.
+                  </p>
+                </div>
+                <div className="budget-total-stack">
+                  <span>Group plan</span>
+                  <strong>{formatMoney(totals.predicted)}</strong>
+                </div>
+              </div>
+
+              {predictions.length === 0 ? (
+                <div className="empty-card">
+                  <h3>No budget entries yet</h3>
+                  <p className="muted">Add your first plan above.</p>
+                </div>
+              ) : (
+                <div className="budget-entry-list">
+                  {predictions.map(entry => {
+                    const category = categoriesById.get(entry.categoryId);
+                    const isGroup = normalizeBudgetScope(entry) === "group";
+                    return (
+                      <article className="budget-entry-card" key={entry.id}>
+                        <div className="budget-entry-main">
+                          <span
+                            className="category-dot"
+                            style={{
+                              backgroundColor: `${category?.color || "#0F766E"}22`,
+                              color: category?.color || "#0F766E"
+                            }}
+                          >
+                            {category?.icon || entry.categoryIcon || "📌"}
+                          </span>
+                          <div>
+                            <strong>{entry.title || entry.categoryName || category?.name || "Budget entry"}</strong>
+                            <p className="small muted">
+                              {category?.name || entry.categoryName || "Category"} · {budgetScopeLabel(entry)}
+                            </p>
+                            <p className="small muted">{budgetVisibleNames(entry)}</p>
+                          </div>
+                        </div>
+                        <div className="budget-entry-side">
+                          <strong>{formatMoney(entry.estimatedEur)}</strong>
+                          <span className={isGroup ? "pill" : "pill muted-pill"}>
+                            {isGroup ? "Group total" : "Personal view"}
+                          </span>
+                          {!demoMode ? (
+                          <div className="expense-actions">
+                            <button
+                              className="secondary-button small-button"
+                              type="button"
+                              onClick={() => startEditingBudget(entry)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="danger-button small-button"
+                              type="button"
+                              onClick={() => handleDeleteBudget(entry)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           </section>
         ) : null}
 
@@ -4125,6 +4561,7 @@ function App() {
             <div className="section-header">
               <h2>Expenses</h2>
               <div className="section-actions">
+                {!demoMode ? (
                 <button
                   className="secondary-button small-button"
                   type="button"
@@ -4132,6 +4569,8 @@ function App() {
                 >
                   + New category
                 </button>
+                ) : null}
+                {!demoMode ? (
                 <button
                   className="primary-button small-button"
                   type="button"
@@ -4139,6 +4578,7 @@ function App() {
                 >
                   + Add expense
                 </button>
+                ) : null}
               </div>
             </div>
             <section>
@@ -4146,7 +4586,7 @@ function App() {
                 <div className="empty-card">
                   <div className="empty-icon">💸</div>
                   <h3>No expenses yet</h3>
-                  <p className="muted">Add your first actual expense above.</p>
+                  <p className="muted">Add your first expense above.</p>
                 </div>
               ) : (
                 <div className="expense-list">
@@ -4197,6 +4637,7 @@ function App() {
                             {formatCurrency(e.originalAmount, e.originalCurrency)}
                           </span>
                         ) : null}
+                        {!demoMode ? (
                         <div className="expense-actions">
                           <button
                             className="secondary-button small-button"
@@ -4213,6 +4654,7 @@ function App() {
                             Delete
                           </button>
                         </div>
+                        ) : null}
                       </div>
                     </article>
                   ))}
@@ -4226,10 +4668,11 @@ function App() {
 
         {activeTab === "categories" ? (
           <section>
+            {!demoMode ? (
             <section className="card">
               <h2>{editingCategoryId ? "Edit category" : "Create category"}</h2>
               <p className="small muted">
-                Active categories appear in Prediction and Actual expense forms.
+                Active categories appear in Plan Budget and Expenses forms.
               </p>
 
               <form onSubmit={handleSaveCategory}>
@@ -4324,6 +4767,7 @@ function App() {
                 ) : null}
               </form>
             </section>
+            ) : null}
 
             <section className="card">
               <h2>Categories</h2>
@@ -4349,6 +4793,7 @@ function App() {
                           {c.isActive ? "Active" : "Inactive"}
                         </span>
                       </div>
+                      {!demoMode ? (
                       <div className="category-actions">
                         <button
                           className="secondary-button small-button"
@@ -4364,7 +4809,15 @@ function App() {
                         >
                           {c.isActive ? "Deactivate" : "Activate"}
                         </button>
+                        <button
+                          className="danger-button small-button"
+                          type="button"
+                          onClick={() => handleDeleteCategory(c)}
+                        >
+                          Delete
+                        </button>
                       </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -4773,13 +5226,14 @@ function App() {
               Refresh trip data
             </button>
 
+            {!demoMode ? (
             <section className="danger-zone">
               <h2>{canManageSelectedTrip() ? "Delete trip" : "Leave trip"}</h2>
               {canManageSelectedTrip() ? (
                 <>
                   <p className="small muted">
                     Permanently delete this trip for everyone, including members,
-                    expenses, settlements, predictions, categories, and invite links.
+                    expenses, settlements, plan budget, categories, and invite links.
                   </p>
                   <button
                     className="danger-button"
@@ -4813,6 +5267,7 @@ function App() {
                 </>
               )}
             </section>
+            ) : null}
           </section>
         ) : null}
           </div>
@@ -4830,9 +5285,9 @@ function App() {
             <span className="bottom-nav-label">Trips</span>
           </button>
           {[
-            { key: "dashboard", label: "Dashboard", icon: "⊞" },
-            { key: "prediction", label: "Prediction", icon: "📊" },
-            { key: "actual", label: "Actual", icon: "💳" },
+            { key: "dashboard", label: "Trip Overview", icon: "⊞" },
+            { key: "prediction", label: "Plan Budget", icon: "📊" },
+            { key: "actual", label: "Expenses", icon: "💳" },
             { key: "settlements", label: "Settle", icon: "🤝" },
             { key: "categories", label: "Categories", icon: "🏷" },
             { key: "members", label: "Members", icon: "👥" },
@@ -4850,6 +5305,7 @@ function App() {
           ))}
         </nav>
 
+        {!demoMode ? (
         <button
           className="floating-add-expense"
           type="button"
@@ -4858,6 +5314,7 @@ function App() {
           <span className="floating-add-icon">+</span>
           <span>Add Expense</span>
         </button>
+        ) : null}
 
         {expenseFeedback ? (
           <div className="expense-feedback" role="status">
@@ -4873,7 +5330,7 @@ function App() {
             <div className="expense-feedback-actions">
               <button type="button" onClick={undoLastExpense}>Undo</button>
               <button type="button" onClick={addAnotherExpense}>Add another</button>
-              <button type="button" onClick={viewDashboardAfterExpense}>View dashboard</button>
+              <button type="button" onClick={viewDashboardAfterExpense}>View trip overview</button>
             </div>
           </div>
         ) : null}
@@ -4966,7 +5423,7 @@ function App() {
           <form className="modal-form" onSubmit={handleSaveCategory}>
             <div className="modal-body">
               <p className="small muted">
-                Active categories appear in Prediction and Actual expense forms.
+                Active categories appear in Plan Budget and Expenses forms.
               </p>
 
               <label>
@@ -5177,6 +5634,68 @@ function App() {
     );
   }
 
+  function renderLandingPage() {
+    const displayName = user?.displayName || user?.email?.split("@")[0] || "traveler";
+    return (
+      <main className="landing-page">
+        <div className="landing-bg" aria-hidden="true">
+          <img className="landing-bg-art" src="/landingDesktopBG.svg" alt="" />
+        </div>
+        <section className="landing-shell">
+          <img className="landing-logo" src="/landingPage-logo.svg" alt="TripHisaab" />
+          <p className="landing-tagline">Every trip. Every spend. Sorted.</p>
+
+          <div className="landing-copy">
+            <h1>Plan, split, and track your trip expenses in one simple place.</h1>
+            <p>
+              TripHisaab helps you create a trip budget before you travel, log
+              real expenses on the go, split shared costs with family or friends,
+              and see who owes whom, all backed by Easy CSV export.
+            </p>
+          </div>
+
+          <div className="landing-actions">
+            {user ? (
+              <>
+                <button
+                  className="primary-button landing-google"
+                  type="button"
+                  onClick={() => setShowLanding(false)}
+                >
+                  {user.photoURL ? <img src={user.photoURL} alt="" /> : null}
+                  Continue as {displayName}
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={async () => {
+                    await signOut(auth);
+                    setShowLanding(false);
+                    await signInWithPopup(auth, googleProvider);
+                  }}
+                >
+                  Switch account
+                </button>
+              </>
+            ) : (
+              <button className="primary-button landing-google" type="button" onClick={handleGoogleLogin}>
+                Sign in with Google
+              </button>
+            )}
+            <button className="secondary-button" type="button" onClick={openDemoTrip}>
+              Try Demo Trip
+            </button>
+          </div>
+
+          <p className="landing-secondary">
+            Each trip gets its own Easy CSV export, so your expenses stay editable,
+            exportable, and under your control.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   // -------------------- Render: invite screen --------------------
   function renderInviteScreen() {
     return (
@@ -5231,14 +5750,18 @@ function App() {
 
   if (pendingInvite) return renderInviteScreen();
 
-  if (!user) {
+  if (selectedTrip) return renderTripScreen();
+
+  if (!user || showLanding) return renderLandingPage();
+
+  if (!user && !showLanding) {
     return (
       <main className="page center-page">
         <div className="logo">💼</div>
         <div>
           <h1>Expense Tracking</h1>
           <p className="muted intro-text">
-            Track travel expenses, trip budgets, shared costs, and predictions.
+            Track travel expenses, trip budgets, shared costs, and plan budgets.
           </p>
         </div>
         <button className="primary-button" onClick={handleGoogleLogin}>
@@ -5251,8 +5774,6 @@ function App() {
       </main>
     );
   }
-
-  if (selectedTrip) return renderTripScreen();
 
   {
     const today = todayIso();
