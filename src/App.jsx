@@ -427,10 +427,24 @@ function DonateButton({ inline = false }) {
 
   useEffect(() => {
     const id = idRef.current;
-    if (btnRef.current) btnRef.current.id = id;
+    const buttonHost = btnRef.current;
+    let didCancel = false;
+
+    if (buttonHost) {
+      buttonHost.id = id;
+      buttonHost.dataset.paypalRendered = "";
+      buttonHost.replaceChildren();
+    }
 
     const init = () => {
-      if (window.PayPal?.Donation?.Button && btnRef.current) {
+      if (
+        !didCancel &&
+        window.PayPal?.Donation?.Button &&
+        buttonHost &&
+        buttonHost.dataset.paypalRendered !== "true"
+      ) {
+        buttonHost.replaceChildren();
+        buttonHost.dataset.paypalRendered = "true";
         window.PayPal.Donation.Button({
           env: "production",
           hosted_button_id: "LQTZMMTWGUUFU",
@@ -457,6 +471,16 @@ function DonateButton({ inline = false }) {
         existing.addEventListener("load", init);
       }
     }
+
+    return () => {
+      didCancel = true;
+      const existing = document.querySelector('script[src*="donate-sdk"]');
+      existing?.removeEventListener("load", init);
+      if (buttonHost) {
+        buttonHost.dataset.paypalRendered = "";
+        buttonHost.replaceChildren();
+      }
+    };
   }, []);
 
   return (
@@ -3924,6 +3948,14 @@ function App() {
 
         {/* Bottom navigation — visible on mobile only */}
         <nav className="bottom-nav" data-tour="bottom-nav-tour">
+          <button
+            className="bottom-nav-item"
+            type="button"
+            onClick={closeTrip}
+          >
+            <span className="bottom-nav-icon">←</span>
+            <span className="bottom-nav-label">Trips</span>
+          </button>
           {[
             { key: "dashboard", label: "Dashboard", icon: "⊞" },
             { key: "prediction", label: "Prediction", icon: "📊" },
