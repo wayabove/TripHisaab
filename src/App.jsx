@@ -215,7 +215,7 @@ function calculateBalances(expenses, members, settlementRecords = []) {
     out[expense.paidByMemberId].paid += amount;
 
     let shares = {};
-    if (expense.splitType === "custom" && expense.customSplitSharesEur) {
+    if ((expense.splitType === "custom" || expense.splitType === "percent") && expense.customSplitSharesEur) {
       shares = expense.customSplitSharesEur;
     } else {
       const splitIds =
@@ -1161,6 +1161,8 @@ function App() {
     date: todayIso(),
     time: nowTimeIso()
   });
+  const [expenseFormTab, setExpenseFormTab] = useState("basic");
+  const expenseTouchStartXRef = useRef(null);
 
   const [categoryForm, setCategoryForm] = useState({
     name: "",
@@ -3208,23 +3210,35 @@ function App() {
   }
 
   function validateCustomSplit(formData) {
-    if (formData.expenseType !== "shared" || formData.splitType !== "custom") {
-      return true;
+    if (formData.expenseType !== "shared") return true;
+    if (formData.splitType === "custom") {
+      const total = Number(formData.originalAmount || 0);
+      const customTotal = getCustomSplitTotal(formData);
+      if (Math.abs(total - customTotal) > 0.02) {
+        alert(
+          `Custom split must equal the total expense amount.\n\nExpense total: ${formatCurrency(
+            total,
+            formData.originalCurrency
+          )}\nCustom split total: ${formatCurrency(customTotal, formData.originalCurrency)}`
+        );
+        return false;
+      }
+      if (getCustomSplitMemberIds(formData).length === 0) {
+        alert("Add at least one custom split amount.");
+        return false;
+      }
     }
-    const total = Number(formData.originalAmount || 0);
-    const customTotal = getCustomSplitTotal(formData);
-    if (Math.abs(total - customTotal) > 0.02) {
-      alert(
-        `Custom split must equal the total expense amount.\n\nExpense total: ${formatCurrency(
-          total,
-          formData.originalCurrency
-        )}\nCustom split total: ${formatCurrency(customTotal, formData.originalCurrency)}`
-      );
-      return false;
-    }
-    if (getCustomSplitMemberIds(formData).length === 0) {
-      alert("Add at least one custom split amount.");
-      return false;
+    if (formData.splitType === "percent") {
+      const pctTotal = getPercentageSplitTotal(formData);
+      if (Math.abs(pctTotal - 100) > 0.1) {
+        alert(`Percentages must total 100%.\n\nCurrent total: ${pctTotal.toFixed(1)}%`);
+        return false;
+      }
+      const hasAny = Object.values(formData.customSplitShares || {}).some(v => Number(v) > 0);
+      if (!hasAny) {
+        alert("Enter a percentage for at least one person.");
+        return false;
+      }
     }
     return true;
   }
@@ -3254,13 +3268,38 @@ function App() {
     if (formData.expenseType === "personal") {
       return formData.paidByMemberId ? [formData.paidByMemberId] : [];
     }
-    if (formData.splitType === "custom") {
+    if (formData.splitType === "custom" || formData.splitType === "percent") {
       return getCustomSplitMemberIds(formData).filter(id => activeIds.includes(id));
     }
     const selected = (formData.splitMemberIds || []).filter(id =>
       activeIds.includes(id)
     );
     return selected.length > 0 ? selected : activeIds;
+  }
+
+  function getPercentageSplitTotal(fd) {
+    return Object.values(fd.customSplitShares || {}).reduce((sum, v) => sum + Number(v || 0), 0);
+  }
+
+  function buildPercentSplitSharesOriginal(fd) {
+    const out = {};
+    const total = Number(fd.originalAmount || 0);
+    Object.entries(fd.customSplitShares || {}).forEach(([id, pct]) => {
+      const amount = (Number(pct || 0) / 100) * total;
+      if (amount > 0) out[id] = amount;
+    });
+    return out;
+  }
+
+  function buildPercentSplitSharesEur(fd) {
+    const out = {};
+    const currency = fd.originalCurrency || "EUR";
+    const total = Number(fd.originalAmount || 0);
+    Object.entries(fd.customSplitShares || {}).forEach(([id, pct]) => {
+      const amount = (Number(pct || 0) / 100) * total;
+      if (amount > 0) out[id] = convertToEur(amount, currency);
+    });
+    return out;
   }
 
   function toggleSplitMember(formData, setFormData, memberId) {
@@ -3301,6 +3340,7 @@ function App() {
     }
     setExpenseFeedback(null);
     setExpenseForm(buildFastExpenseForm(overrides));
+    setExpenseFormTab("basic");
     setIsAddExpenseModalOpen(true);
   }
 
@@ -3331,7 +3371,6 @@ function App() {
     const originalCurrency = normalizedExpenseForm.originalCurrency || "EUR";
 
     if (!normalizedExpenseForm.categoryId) return alert("Choose a category.");
-    if (!normalizedExpenseForm.description.trim()) return alert("Add a note or vendor.");
     if (!normalizedExpenseForm.paidByMemberId) return alert("Choose who paid.");
     if (!originalAmount || originalAmount <= 0) return alert("Enter a valid amount.");
     if (!validateCustomSplit(normalizedExpenseForm)) return;
@@ -3382,10 +3421,14 @@ function App() {
         customSplitSharesOriginal:
           normalizedExpenseForm.expenseType === "shared" && normalizedExpenseForm.splitType === "custom"
             ? normalizedExpenseForm.customSplitShares
+            : normalizedExpenseForm.expenseType === "shared" && normalizedExpenseForm.splitType === "percent"
+            ? buildPercentSplitSharesOriginal(normalizedExpenseForm)
             : {},
         customSplitSharesEur:
           normalizedExpenseForm.expenseType === "shared" && normalizedExpenseForm.splitType === "custom"
             ? buildCustomSplitSharesEur(normalizedExpenseForm)
+            : normalizedExpenseForm.expenseType === "shared" && normalizedExpenseForm.splitType === "percent"
+            ? buildPercentSplitSharesEur(normalizedExpenseForm)
             : {},
         paidByMemberId: normalizedExpenseForm.paidByMemberId,
         paidByMemberName: memberNameOf(normalizedExpenseForm.paidByMemberId),
@@ -3457,6 +3500,7 @@ function App() {
         ? activeMembers.map(m => m.id)
         : [defaultPayerId];
 
+    setExpenseFormTab("basic");
     setEditingExpenseId(expense.id);
     setExpenseEditForm({
       date: expense.date || todayIso(),
@@ -3541,14 +3585,16 @@ function App() {
               ? expenseEditForm.splitType
               : "none",
           customSplitSharesOriginal:
-            expenseEditForm.expenseType === "shared" &&
-            expenseEditForm.splitType === "custom"
+            expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "custom"
               ? expenseEditForm.customSplitShares
+              : expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "percent"
+              ? buildPercentSplitSharesOriginal(expenseEditForm)
               : {},
           customSplitSharesEur:
-            expenseEditForm.expenseType === "shared" &&
-            expenseEditForm.splitType === "custom"
+            expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "custom"
               ? buildCustomSplitSharesEur(expenseEditForm)
+              : expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "percent"
+              ? buildPercentSplitSharesEur(expenseEditForm)
               : {},
           paidByMemberId: expenseEditForm.paidByMemberId,
           paidByMemberName: memberNameOf(expenseEditForm.paidByMemberId),
@@ -4357,349 +4403,406 @@ function App() {
   // -------------------- Render: expense form --------------------
   function renderExpenseForm({ mode, formData, setFormData, onSubmit, saving, onCancel }) {
     const isEdit = mode === "edit";
-    const previewEur = convertToEur(
-      Number(formData.originalAmount || 0),
-      formData.originalCurrency || "EUR"
-    );
+    const totalAmount = Number(formData.originalAmount || 0);
+    const previewEur = convertToEur(totalAmount, formData.originalCurrency || "EUR");
+    const customTotal = getCustomSplitTotal(formData);
+    const percentTotal = getPercentageSplitTotal(formData);
+    const isShared = formData.expenseType === "shared";
 
-    if (!isEdit) {
-      return (
-        <form className="modal-form fast-expense-form" onSubmit={onSubmit}>
-          <div className="modal-body">
-            <label>
-              Amount
-              <input
-                className="fast-amount-input"
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.originalAmount}
-                placeholder="0.00"
-                onChange={e =>
-                  setFormData({ ...formData, originalAmount: e.target.value })
-                }
-                autoFocus
-                required
-              />
-            </label>
+    const AVATAR_COLORS = [
+      "#0f766e","#2563eb","#d97706","#7c3aed","#be185d","#0891b2","#15803d","#dc2626"
+    ];
+    function getMemberColor(memberId) {
+      const idx = activeMembers.findIndex(m => m.id === memberId);
+      return AVATAR_COLORS[Math.max(idx, 0) % AVATAR_COLORS.length];
+    }
+    function getMemberInitials(memberId) {
+      const name = memberNameOf(memberId);
+      return name ? name.charAt(0).toUpperCase() : "?";
+    }
+    function getMemberShortName(memberId) {
+      const name = memberNameOf(memberId);
+      if (!name) return "?";
+      const first = name.trim().split(" ")[0];
+      return first.length > 9 ? first.slice(0, 8) + "…" : first;
+    }
 
-            <label>
-              Category
-              <select
-                value={formData.categoryId}
-                onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-                required
-              >
-                <option value="">Choose category</option>
-                {activeCategories.map(c => (
-                  <option value={c.id} key={c.id}>
-                    {c.icon} {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+    function handleExpenseTypeChange(nextType) {
+      if (nextType === "personal" && expenseFormTab === "paidby") {
+        setExpenseFormTab("basic");
+      }
+      setFormData({
+        ...formData,
+        expenseType: nextType,
+        splitType: nextType === "shared" ? formData.splitType || "equal" : "equal",
+        splitMemberIds: nextType === "shared"
+          ? activeMembers.map(m => m.id)
+          : formData.paidByMemberId ? [formData.paidByMemberId] : [],
+        customSplitShares: nextType === "shared" ? formData.customSplitShares || {} : {}
+      });
+    }
 
-            <label>
-              Note / vendor
-              <input
-                type="text"
-                value={formData.description}
-                placeholder="e.g. Coffee, taxi, lunch"
-                onChange={e => setFormData({ ...formData, description: e.target.value })}
-                required
-              />
-            </label>
+    function handleSplitTypeChange(nextSplit) {
+      setFormData({
+        ...formData,
+        splitType: nextSplit,
+        splitMemberIds: nextSplit === "equal" ? activeMembers.map(m => m.id) : formData.splitMemberIds,
+        customSplitShares: (nextSplit === "custom" || nextSplit === "percent") ? formData.customSplitShares || {} : {}
+      });
+    }
 
-            <p className="small muted fast-expense-defaults">
-              Today · {formData.originalCurrency || selectedTrip?.defaultCurrency || "EUR"} · paid by{" "}
-              {formData.paidByMemberId ? memberNameOf(formData.paidByMemberId) : "me"}
-            </p>
-          </div>
-          <footer className="modal-footer">
-            {onCancel ? (
-              <button className="secondary-button" type="button" onClick={onCancel}>
-                Cancel
-              </button>
-            ) : null}
-            <button className="primary-button" type="submit" disabled={saving}>
-              {saving ? "Adding..." : "Add expense"}
-            </button>
-          </footer>
-        </form>
-      );
+    // Tabs vary by expense type
+    const EXP_TABS = isShared
+      ? [
+          { id: "basic",  label: "Basic",   icon: "📋" },
+          { id: "paidby", label: "Paid by", icon: "👥" },
+          { id: "notes",  label: "Notes",   icon: "📝" },
+        ]
+      : [
+          { id: "basic", label: "Basic", icon: "📋" },
+          { id: "notes", label: "Notes", icon: "📝" },
+        ];
+
+    // Clamp active tab to valid tabs for current type
+    const validTabIds = EXP_TABS.map(t => t.id);
+    const activeTab = validTabIds.includes(expenseFormTab) ? expenseFormTab : "basic";
+
+    // Swipe handlers
+    function onTouchStart(e) {
+      expenseTouchStartXRef.current = e.touches[0].clientX;
+    }
+    function onTouchEnd(e) {
+      if (expenseTouchStartXRef.current === null) return;
+      const dx = e.changedTouches[0].clientX - expenseTouchStartXRef.current;
+      expenseTouchStartXRef.current = null;
+      if (Math.abs(dx) < 50) return;
+      const idx = EXP_TABS.findIndex(t => t.id === activeTab);
+      if (dx < 0 && idx < EXP_TABS.length - 1) setExpenseFormTab(EXP_TABS[idx + 1].id);
+      else if (dx > 0 && idx > 0) setExpenseFormTab(EXP_TABS[idx - 1].id);
     }
 
     return (
-      <form className="modal-form" onSubmit={onSubmit}>
-        <div className="modal-body">
-          <p className="small muted">{ratesStatusLabel}</p>
-          <div className="grid-2">
-            <label>
-              Date
-              <input
-                type="date"
-                value={formData.date}
-                onClick={openDatePicker}
-                onChange={e => setFormData({ ...formData, date: e.target.value })}
-                required
-              />
-            </label>
-            <label>
-              Time
-              <input
-                type="time"
-                value={formData.time}
-                onChange={e => setFormData({ ...formData, time: e.target.value })}
-                required
-              />
-            </label>
-          </div>
+      <form className="modal-form exp-tabbed-form" onSubmit={onSubmit}>
 
-          <label>
-            Category
-            <select
-              value={formData.categoryId}
-              onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-              required
+        {/* Tab navigation */}
+        <div className="exp-tab-nav">
+          {EXP_TABS.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`exp-tab-btn${activeTab === tab.id ? " active" : ""}`}
+              onClick={() => setExpenseFormTab(tab.id)}
             >
-              <option value="">Choose category</option>
-              {activeCategories.map(c => (
-                <option value={c.id} key={c.id}>
-                  {c.icon} {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
+              <span className="exp-tab-icon">{tab.icon}</span>
+              <span className="exp-tab-label">{tab.label}</span>
+            </button>
+          ))}
+        </div>
 
-          <label>
-            Description
-            <input
-              type="text"
-              value={formData.description}
-              placeholder="e.g. Lunch"
-              onChange={e => setFormData({ ...formData, description: e.target.value })}
-            />
-          </label>
+        <div
+          className="modal-body exp-tab-body"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
 
-          <div className="grid-2">
-            <label>
-              Original amount
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.originalAmount}
-                placeholder="0.00"
-                onChange={e =>
-                  setFormData({ ...formData, originalAmount: e.target.value })
-                }
-                required
-              />
-            </label>
-            <label>
-              Currency
-              <select
-                value={formData.originalCurrency}
-                onChange={e =>
-                  setFormData({ ...formData, originalCurrency: e.target.value })
-                }
-              >
-                {SUPPORTED_CURRENCIES.map(c => (
-                  <option value={c} key={c}>{c}</option>
-                ))}
-              </select>
-            </label>
-          </div>
+          {/* ── Basic ── */}
+          {activeTab === "basic" && (
+            <div className="exp-tab-content">
 
-          <p className="small muted">
-            Converted estimate: <strong>{formatMoney(previewEur)}</strong> · 1 EUR ={" "}
-            {getCurrencyRate(formData.originalCurrency).toFixed(4)}{" "}
-            {formData.originalCurrency}
-          </p>
+              {/* Amount + Currency at the top */}
+              <div className="grid-2">
+                <label>
+                  Amount
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.originalAmount}
+                    placeholder="0.00"
+                    autoFocus
+                    onChange={e => setFormData({ ...formData, originalAmount: e.target.value })}
+                    required
+                  />
+                </label>
+                <label>
+                  Currency
+                  <select
+                    value={formData.originalCurrency}
+                    onChange={e => setFormData({ ...formData, originalCurrency: e.target.value })}
+                  >
+                    {SUPPORTED_CURRENCIES.map(c => (
+                      <option value={c} key={c}>{c}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
 
-          <label>
-            Expense type
-            <select
-              value={formData.expenseType}
-              onChange={e => {
-                const nextType = e.target.value;
-                setFormData({
-                  ...formData,
-                  expenseType: nextType,
-                  splitType:
-                    nextType === "shared" ? formData.splitType || "equal" : "equal",
-                  splitMemberIds:
-                    nextType === "shared"
-                      ? activeMembers.map(m => m.id)
-                      : formData.paidByMemberId
-                      ? [formData.paidByMemberId]
-                      : [],
-                  customSplitShares:
-                    nextType === "shared" ? formData.customSplitShares || {} : {}
-                });
-              }}
-            >
-              <option value="personal">Personal expense</option>
-              <option value="shared">Shared expense</option>
-            </select>
-          </label>
+              {/* EUR rate preview */}
+              {totalAmount > 0 && (
+                <div className="exp-rate-preview">
+                  <span>≈ <strong>{formatMoney(previewEur)}</strong></span>
+                  <span className="exp-rate-note">
+                    1 EUR = {getCurrencyRate(formData.originalCurrency).toFixed(4)} {formData.originalCurrency}
+                  </span>
+                </div>
+              )}
 
-          <label>
-            Paid by
-            <select
-              value={formData.paidByMemberId}
-              onChange={e =>
-                setFormData({
-                  ...formData,
-                  paidByMemberId: e.target.value,
-                  splitMemberIds:
-                    formData.expenseType === "personal"
-                      ? [e.target.value]
-                      : formData.splitMemberIds
-                })
-              }
-              required
-            >
-              <option value="">Choose payer</option>
-              {activeMembers.map(m => (
-                <option value={m.id} key={m.id}>{memberNameOf(m.id)}</option>
-              ))}
-            </select>
-          </label>
+              <div className="grid-2">
+                <label>
+                  Date
+                  <input
+                    type="date"
+                    value={formData.date}
+                    onClick={openDatePicker}
+                    onChange={e => setFormData({ ...formData, date: e.target.value })}
+                    required
+                  />
+                </label>
+                <label>
+                  Time
+                  <input
+                    type="time"
+                    value={formData.time}
+                    onChange={e => setFormData({ ...formData, time: e.target.value })}
+                    required
+                  />
+                </label>
+              </div>
 
-          {formData.expenseType === "shared" ? (
-            <div className="split-box">
-              <strong>Split type</strong>
               <label>
-                How should this be split?
+                Category
                 <select
-                  value={formData.splitType || "equal"}
-                  onChange={e =>
-                    setFormData({
-                      ...formData,
-                      splitType: e.target.value,
-                      splitMemberIds:
-                        e.target.value === "equal"
-                          ? activeMembers.map(m => m.id)
-                          : formData.splitMemberIds,
-                      customSplitShares:
-                        e.target.value === "custom"
-                          ? formData.customSplitShares || {}
-                          : {}
-                    })
-                  }
+                  value={formData.categoryId}
+                  onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+                  required
                 >
-                  <option value="equal">Equal split</option>
-                  <option value="custom">Custom exact amounts</option>
+                  <option value="">Choose category</option>
+                  {activeCategories.map(c => (
+                    <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
+                  ))}
                 </select>
               </label>
 
-              {(formData.splitType || "equal") === "equal" ? (
+              <div className="exp-section-header">Expense type</div>
+              <div className="exp-type-toggle">
+                <button
+                  type="button"
+                  className={`exp-type-btn${formData.expenseType === "personal" ? " active" : ""}`}
+                  onClick={() => handleExpenseTypeChange("personal")}
+                >
+                  👤 Personal
+                </button>
+                <button
+                  type="button"
+                  className={`exp-type-btn${formData.expenseType === "shared" ? " active" : ""}`}
+                  onClick={() => handleExpenseTypeChange("shared")}
+                >
+                  👥 Shared
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Paid by + Split (shared only) ── */}
+          {activeTab === "paidby" && (
+            <div className="exp-tab-content">
+
+              <label>
+                Who paid?
+                <select
+                  value={formData.paidByMemberId}
+                  onChange={e => setFormData({ ...formData, paidByMemberId: e.target.value })}
+                  required
+                >
+                  <option value="">Choose payer</option>
+                  {activeMembers.map(m => (
+                    <option value={m.id} key={m.id}>{memberNameOf(m.id)}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="exp-section-header">How to split?</div>
+
+              <div className="exp-split-tabs">
+                {[
+                  { id: "equal",   label: "Equal" },
+                  { id: "custom",  label: "Custom" },
+                  { id: "percent", label: "%" },
+                ].map(st => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    className={`split-type-btn${formData.splitType === st.id ? " active" : ""}`}
+                    onClick={() => handleSplitTypeChange(st.id)}
+                  >
+                    {st.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* ---- Equal split: tap-to-toggle member tiles ---- */}
+              {formData.splitType === "equal" && (
                 <>
-                  <strong>Split equally between</strong>
-                  <p className="small muted">
-                    Select everyone who should share this expense.
+                  <div className="member-tile-grid">
+                    {activeMembers.map(m => {
+                      const included = (formData.splitMemberIds || []).includes(m.id);
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className={`member-tile${included ? " selected" : ""}`}
+                          onClick={() => toggleSplitMember(formData, setFormData, m.id)}
+                        >
+                          <div className="member-tile-avatar" style={{ background: included ? getMemberColor(m.id) : undefined }}>
+                            {getMemberInitials(m.id)}
+                          </div>
+                          <span className="member-tile-name">{getMemberShortName(m.id)}</span>
+                          {included && <span className="member-tile-check">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(formData.splitMemberIds || []).length > 0 && totalAmount > 0 && (
+                    <div className="exp-summary-card balanced">
+                      <span className="exp-summary-label">Each pays</span>
+                      <strong className="exp-summary-amount">
+                        {formatCurrency(totalAmount / (formData.splitMemberIds || []).length, formData.originalCurrency || "EUR")}
+                      </strong>
+                      <span className="exp-summary-meta">{(formData.splitMemberIds || []).length} people</span>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ---- Custom exact amounts: tiles with amount input ---- */}
+              {formData.splitType === "custom" && (
+                <>
+                  <p className="exp-split-hint">
+                    Enter each person's share in {formData.originalCurrency || "EUR"}. Must equal the total.
                   </p>
-                  <div className="checkbox-grid">
-                    {activeMembers.map(m => (
-                      <label className="check-row" key={m.id}>
-                        <input
-                          type="checkbox"
-                          checked={(formData.splitMemberIds || []).includes(m.id)}
-                          onChange={() =>
-                            toggleSplitMember(formData, setFormData, m.id)
-                          }
-                        />
-                        <span>{memberNameOf(m.id)}</span>
-                      </label>
-                    ))}
+                  <div className="member-tile-grid">
+                    {activeMembers.map(m => {
+                      const val = (formData.customSplitShares || {})[m.id] || "";
+                      const hasValue = Number(val) > 0;
+                      return (
+                        <div key={m.id} className={`member-tile has-input${hasValue ? " selected" : ""}`}>
+                          <div className="member-tile-avatar" style={{ background: hasValue ? getMemberColor(m.id) : undefined }}>
+                            {getMemberInitials(m.id)}
+                          </div>
+                          <span className="member-tile-name">{getMemberShortName(m.id)}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={val}
+                            placeholder="0.00"
+                            className="member-tile-input"
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => updateCustomSplitShare(formData, setFormData, m.id, e.target.value)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className={`exp-split-total${totalAmount > 0 && Math.abs(totalAmount - customTotal) < 0.02 ? " balanced" : ""}`}>
+                    <span>Split total: <strong>{formatCurrency(customTotal, formData.originalCurrency || "EUR")}</strong></span>
+                    <span className="muted">/ {formatCurrency(totalAmount, formData.originalCurrency || "EUR")}</span>
                   </div>
                 </>
-              ) : (
+              )}
+
+              {/* ---- Percentage split: tiles with % input ---- */}
+              {formData.splitType === "percent" && (
                 <>
-                  <strong>Custom exact shares</strong>
-                  <p className="small muted">
-                    Enter each person's exact share in{" "}
-                    {formData.originalCurrency || "EUR"}. The total must equal the
-                    expense amount.
-                  </p>
-                  <div className="checkbox-grid">
-                    {activeMembers.map(m => (
-                      <label className="check-row" key={m.id}>
-                        <span style={{ flex: 1 }}>{memberNameOf(m.id)}</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={(formData.customSplitShares || {})[m.id] || ""}
-                          placeholder="0.00"
-                          onChange={e =>
-                            updateCustomSplitShare(
-                              formData,
-                              setFormData,
-                              m.id,
-                              e.target.value
-                            )
-                          }
-                        />
-                      </label>
-                    ))}
+                  <p className="exp-split-hint">Enter each person's share as a percentage. Must total 100%.</p>
+                  <div className="member-tile-grid">
+                    {activeMembers.map(m => {
+                      const val = (formData.customSplitShares || {})[m.id] || "";
+                      const hasValue = Number(val) > 0;
+                      return (
+                        <div key={m.id} className={`member-tile has-input${hasValue ? " selected" : ""}`}>
+                          <div className="member-tile-avatar" style={{ background: hasValue ? getMemberColor(m.id) : undefined }}>
+                            {getMemberInitials(m.id)}
+                          </div>
+                          <span className="member-tile-name">{getMemberShortName(m.id)}</span>
+                          <div className="member-tile-pct-wrap">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={val}
+                              placeholder="0"
+                              className="member-tile-input"
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => updateCustomSplitShare(formData, setFormData, m.id, e.target.value)}
+                            />
+                            <span className="member-tile-pct-suffix">%</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <p className="small muted">
-                    Custom total:{" "}
-                    <strong>
-                      {formatCurrency(
-                        getCustomSplitTotal(formData),
-                        formData.originalCurrency
-                      )}
-                    </strong>{" "}
-                    / Expense total:{" "}
-                    <strong>
-                      {formatCurrency(
-                        Number(formData.originalAmount || 0),
-                        formData.originalCurrency
-                      )}
-                    </strong>
-                  </p>
+                  <div className={`exp-split-total${Math.abs(percentTotal - 100) < 0.1 && percentTotal > 0 ? " balanced" : ""}`}>
+                    <span>Total: <strong>{percentTotal.toFixed(1)}%</strong></span>
+                    {totalAmount > 0 && percentTotal > 0 && (
+                      <span className="muted">≈ {formatCurrency(totalAmount * percentTotal / 100, formData.originalCurrency || "EUR")}</span>
+                    )}
+                  </div>
                 </>
               )}
             </div>
-          ) : null}
+          )}
 
-          <label>
-            Payment method
-            <select
-              value={formData.paymentMethod}
-              onChange={e =>
-                setFormData({ ...formData, paymentMethod: e.target.value })
-              }
-            >
-              <option value="card">Card</option>
-              <option value="cash">Cash</option>
-              <option value="bank">Bank transfer</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
+          {/* ── Notes ── */}
+          {activeTab === "notes" && (
+            <div className="exp-tab-content">
+              <label>
+                Description
+                <input
+                  type="text"
+                  value={formData.description}
+                  placeholder="e.g. Lunch, taxi, hotel (optional)"
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                />
+              </label>
 
-          <label>
-            Notes
-            <input
-              type="text"
-              value={formData.notes}
-              placeholder="Optional"
-              onChange={e => setFormData({ ...formData, notes: e.target.value })}
-            />
-          </label>
+              <label>
+                Payment method
+                <select
+                  value={formData.paymentMethod}
+                  onChange={e => setFormData({ ...formData, paymentMethod: e.target.value })}
+                >
+                  <option value="card">💳 Card</option>
+                  <option value="cash">💵 Cash</option>
+                  <option value="bank">🏦 Bank transfer</option>
+                  <option value="other">🔄 Other</option>
+                </select>
+              </label>
+
+              <label>
+                Notes
+                <textarea
+                  value={formData.notes}
+                  placeholder="Any additional notes… (optional)"
+                  rows={5}
+                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                  style={{ resize: "vertical" }}
+                />
+              </label>
+            </div>
+          )}
 
         </div>
+
         <footer className="modal-footer">
-          {onCancel ? (
+          {onCancel && (
             <button className="secondary-button" type="button" onClick={onCancel}>
               Cancel
             </button>
-          ) : null}
+          )}
           <button className="primary-button" type="submit" disabled={saving}>
-            {saving ? "Saving..." : isEdit ? "Save expense" : "Add expense"}
+            {saving ? "Saving…" : isEdit ? "Save expense" : "Add expense"}
           </button>
         </footer>
       </form>
@@ -5399,7 +5502,7 @@ function App() {
     };
     const splitLabelOf = expense => {
       if (expense.expenseType !== "shared") return "-";
-      return expense.splitType === "custom" ? "Custom split" : "Equal split";
+      return expense.splitType === "custom" ? "Custom split" : expense.splitType === "percent" ? "% split" : "Equal split";
     };
 
     const navItems = [
@@ -6280,14 +6383,16 @@ function App() {
                             ? `Shared · ${
                                 e.splitType === "custom"
                                   ? "Custom split"
+                                  : e.splitType === "percent"
+                                  ? "% split"
                                   : "Equal split"
                               } · Paid by ${memberNameOf(e.paidByMemberId)}`
                             : `Personal · Paid by ${memberNameOf(e.paidByMemberId)}`}
                         </p>
                         {e.expenseType === "shared" &&
-                        e.splitType === "custom" ? (
+                        (e.splitType === "custom" || e.splitType === "percent") ? (
                           <p className="small muted">
-                            Custom split ·{" "}
+                            {e.splitType === "percent" ? "% split" : "Custom split"} ·{" "}
                             {Object.entries(e.customSplitSharesEur || {})
                               .map(
                                 ([id, amount]) =>

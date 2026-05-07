@@ -3956,6 +3956,105 @@ p {
   color: var(--text);
 }
 
+/* ---- Member tile grid (expense form split section) ---- */
+.member-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 10px;
+}
+
+.member-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  position: relative;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.member-tile:hover { border-color: var(--primary); background: var(--primary-muted); }
+.member-tile.selected {
+  border-color: var(--primary);
+  background: var(--primary-muted);
+}
+.member-tile.has-input { cursor: default; }
+
+.member-tile-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  font-weight: var(--weight-black);
+  color: #fff;
+  background: var(--border);
+  flex-shrink: 0;
+  transition: background var(--transition-fast);
+}
+.member-tile.selected .member-tile-avatar { /* color set inline */ }
+
+.member-tile-name {
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  color: var(--text-secondary);
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-tile.selected .member-tile-name { color: var(--primary-dark); }
+
+.member-tile-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 9px;
+  font-weight: var(--weight-black);
+  display: grid;
+  place-items: center;
+}
+
+.member-tile-input {
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  padding: 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  color: var(--text);
+  margin-top: 2px;
+}
+.member-tile-input:focus { border-color: var(--primary); outline: none; }
+
+.member-tile-pct-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  justify-content: center;
+}
+.member-tile-pct-suffix {
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  color: var(--muted);
+}
+
 /* ---- Category breakdown card ---- */
 
 .breakdown-card h3 {
@@ -4888,4 +4987,285 @@ p {
     border-radius: 14px;
     padding: 18px 16px 14px;
   }
+}
+
+/* ============================================================
+   Expense form — tabbed redesign
+   ============================================================ */
+
+/* --- Tab navigation bar --- */
+.exp-tab-nav {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.exp-tab-nav::-webkit-scrollbar { display: none; }
+
+.exp-tab-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 6px 9px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+  min-width: 56px;
+}
+.exp-tab-btn:hover { color: var(--text); }
+.exp-tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.exp-tab-icon { font-size: 16px; line-height: 1; }
+.exp-tab-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* --- Tab content area --- */
+.exp-tab-body { padding: 18px 22px; }
+.exp-tab-content { display: grid; gap: 14px; }
+
+/* --- Section header --- */
+.exp-section-header {
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* --- Expense type toggle (Personal / Shared) --- */
+.exp-type-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--bg);
+  padding: 3px;
+  gap: 3px;
+}
+
+.exp-type-btn {
+  flex: 1;
+  padding: 9px 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.exp-type-btn:hover:not(.active) { background: var(--surface); color: var(--text); }
+.exp-type-btn.active {
+  background: var(--primary);
+  color: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* --- "Paid by" member selector --- */
+.member-select-list { display: grid; gap: 8px; }
+
+.member-select-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.member-select-row:hover { border-color: var(--primary); background: var(--primary-muted); }
+.member-select-row.selected {
+  border-color: var(--primary);
+  background: var(--primary-muted);
+}
+
+.member-avatar-chip {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 15px;
+  font-weight: var(--weight-black);
+  flex-shrink: 0;
+}
+.member-avatar-chip.small {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.member-select-name { flex: 1; font-weight: var(--weight-semibold); color: var(--text); }
+
+.member-select-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: var(--weight-black);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+/* --- Check row with avatar (split tab) --- */
+.member-check-row {
+  font-weight: var(--weight-semibold);
+}
+.member-check-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
+/* --- Split type segmented control --- */
+.exp-split-tabs {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--bg);
+  padding: 3px;
+  gap: 3px;
+}
+
+.split-type-btn {
+  flex: 1;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.split-type-btn:hover:not(.active) { background: var(--surface); color: var(--text); }
+.split-type-btn.active {
+  background: var(--primary);
+  color: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* --- Split hints & totals --- */
+.exp-split-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.split-amount-input {
+  width: 90px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.pct-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.pct-suffix {
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  color: var(--muted);
+}
+
+.exp-split-total {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.exp-split-total.balanced {
+  background: var(--success-soft);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+/* --- Equal-split summary card --- */
+.exp-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+.exp-summary-card.balanced {
+  background: var(--primary-muted);
+  border-color: var(--primary);
+}
+.exp-summary-label { font-size: 13px; color: var(--muted); }
+.exp-summary-amount {
+  font-size: 20px;
+  font-weight: var(--weight-black);
+  color: var(--primary);
+}
+.exp-summary-meta { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+/* --- Exchange rate preview --- */
+.exp-rate-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: var(--radius-xs);
+  background: var(--info-soft);
+  font-size: 13px;
+  color: var(--info);
+}
+.exp-rate-note { font-size: 12px; opacity: 0.8; }
+
+/* --- Footer: tab nav + submit --- */
+.exp-form-footer {
+  align-items: center;
+}
+.exp-footer-nav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+.exp-footer-nav .primary-button { min-width: 120px; }
+
+/* --- Responsive --- */
+@media (max-width: 480px) {
+  .exp-tab-label  { display: none; }
+  .exp-tab-btn    { min-width: 44px; padding: 10px 4px 9px; }
+  .exp-tab-icon   { font-size: 18px; }
+  .exp-tab-body   { padding: 14px 16px; }
+  .split-type-btn { font-size: 12px; padding: 8px 8px; }
+  .member-tile-grid { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 8px; }
+  .member-tile-avatar { width: 36px; height: 36px; font-size: 15px; }
 }
