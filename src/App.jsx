@@ -87,12 +87,37 @@ const BUDGET_SCOPE_OPTIONS = [
   { value: "me", label: "Only me" }
 ];
 
+const TASK_TYPE_OPTIONS = [
+  { value: "general", label: "General" },
+  { value: "booking", label: "Booking" },
+  { value: "payment", label: "Payment" },
+  { value: "receipt", label: "Receipt" },
+  { value: "packing", label: "Packing" },
+  { value: "document", label: "Document" }
+];
+
+const TASK_SCOPE_OPTIONS = [
+  { value: "group", label: "Whole group" },
+  { value: "selected_members", label: "Selected people" },
+  { value: "personal", label: "Only me" }
+];
+
 const EMPTY_BUDGET_FORM = {
   categoryId: "",
   title: "",
   estimatedEur: "",
   scope: "group",
   visibleMemberIds: []
+};
+
+const EMPTY_TASK_FORM = {
+  title: "",
+  type: "general",
+  scope: "group",
+  assignedTo: [],
+  selectedMemberIds: [],
+  dueDate: "",
+  notes: ""
 };
 
 const MONEY_EPSILON = 0.01;
@@ -147,6 +172,85 @@ function canUserSeeExpense(expense, currentUserId, isAdmin = false) {
   if (normalizeExpenseScope(expense) === "group") return true;
   if (normalizeExpenseScope(expense) === "personal") return expense.paidByMemberId === currentUserId;
   return expense?.splitMemberIds?.includes(currentUserId);
+}
+
+function canUserSeeTask(task, currentUserId) {
+  if (!task) return false;
+  if (task.visibleTo === "all") return true;
+  if (Array.isArray(task.visibleTo) && task.visibleTo.includes(currentUserId)) return true;
+  if (Array.isArray(task.assignedTo) && task.assignedTo.includes(currentUserId)) return true;
+  return task.createdBy === currentUserId;
+}
+
+function canUserCompleteTask(task, currentUserId) {
+  if (!task || !currentUserId) return false;
+  return task.createdBy === currentUserId
+    || (Array.isArray(task.assignedTo) && task.assignedTo.includes(currentUserId));
+}
+
+function canUserEditTask(task, currentUserId, isAdmin = false) {
+  if (!task) return false;
+  if (isAdmin) return true;
+  if (!currentUserId) return false;
+  return task.createdBy === currentUserId;
+}
+
+function getVisibleTasks(tasks, currentUserId) {
+  return tasks.filter(task => task.isActive !== false && canUserSeeTask(task, currentUserId));
+}
+
+function getPendingTasks(tasks) {
+  return tasks.filter(task => task.isActive !== false && (task.status || "todo") === "todo");
+}
+
+function getDoneTasks(tasks) {
+  return tasks.filter(task => task.isActive !== false && task.status === "done");
+}
+
+function getTasksAssignedToMe(tasks, currentUserId) {
+  return tasks.filter(task =>
+    task.isActive !== false
+    && Array.isArray(task.assignedTo)
+    && task.assignedTo.includes(currentUserId)
+  );
+}
+
+function getTaskCreatedTime(task) {
+  if (task?.createdAt?.seconds) return task.createdAt.seconds * 1000;
+  if (typeof task?.createdAt === "string") {
+    const parsed = Date.parse(task.createdAt);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+function getOverviewTasks(tasks, currentUserId) {
+  const today = todayIso();
+  return getPendingTasks(getVisibleTasks(tasks, currentUserId))
+    .slice()
+    .sort((a, b) => {
+      const aAssigned = a.assignedTo?.includes(currentUserId) ? 1 : 0;
+      const bAssigned = b.assignedTo?.includes(currentUserId) ? 1 : 0;
+      if (aAssigned !== bAssigned) return bAssigned - aAssigned;
+      const aOverdue = a.dueDate && a.dueDate < today ? 1 : 0;
+      const bOverdue = b.dueDate && b.dueDate < today ? 1 : 0;
+      if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+      const aGroup = a.scope === "group" ? 1 : 0;
+      const bGroup = b.scope === "group" ? 1 : 0;
+      if (aGroup !== bGroup) return bGroup - aGroup;
+      return getTaskCreatedTime(b) - getTaskCreatedTime(a);
+    })
+    .slice(0, 5);
+}
+
+function getTaskSummary(tasks, currentUserId) {
+  const visibleTasks = getVisibleTasks(tasks, currentUserId);
+  return {
+    assignedToMeCount: getTasksAssignedToMe(visibleTasks, currentUserId).length,
+    groupTaskCount: visibleTasks.filter(task => task.scope === "group").length,
+    doneCount: getDoneTasks(visibleTasks).length,
+    pendingCount: getPendingTasks(visibleTasks).length
+  };
 }
 
 function isActiveSharedExpense(expense) {
@@ -1260,6 +1364,7 @@ function App() {
   const [predictions, setPredictions] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [settlements, setSettlements] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [selectedNotification, setSelectedNotification] = useState(null);
 
@@ -1291,6 +1396,12 @@ function App() {
   const [savingPredictions, setSavingPredictions] = useState(false);
   const [budgetForm, setBudgetForm] = useState(EMPTY_BUDGET_FORM);
   const [editingBudgetId, setEditingBudgetId] = useState(null);
+
+  const [taskForm, setTaskForm] = useState(EMPTY_TASK_FORM);
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [savingTask, setSavingTask] = useState(false);
+  const [taskFilter, setTaskFilter] = useState("all");
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
 
   const [settingsTripForm, setSettingsTripForm] = useState({
     name: "",
@@ -1638,6 +1749,21 @@ function App() {
   const currentUserBalance = useMemo(
     () => balances.find(b => b.memberId === currentUserMemberId) || null,
     [balances, currentUserMemberId]
+  );
+
+  const visibleTasks = useMemo(
+    () => getVisibleTasks(tasks, currentUserMemberId),
+    [tasks, currentUserMemberId]
+  );
+
+  const taskSummary = useMemo(
+    () => getTaskSummary(tasks, currentUserMemberId),
+    [tasks, currentUserMemberId]
+  );
+
+  const overviewTasks = useMemo(
+    () => getOverviewTasks(tasks, currentUserMemberId),
+    [tasks, currentUserMemberId]
   );
 
   const expenseStats = useMemo(() => {
@@ -2583,7 +2709,7 @@ function App() {
     }
 
     const confirmed = window.confirm(
-      `Delete "${targetTrip.name}" permanently?\n\nThis removes the trip, members, expenses, settlements, plan budget, categories, and invite links for everyone.`
+      `Delete "${targetTrip.name}" permanently?\n\nThis removes the trip, members, expenses, settlements, tasks, plan budget, categories, and invite links for everyone.`
     );
     if (!confirmed) return;
 
@@ -2595,6 +2721,7 @@ function App() {
         "predictions",
         "expenses",
         "settlements",
+        "tasks",
         "invites"
       ];
       const snaps = await Promise.all(
@@ -2885,8 +3012,10 @@ function App() {
     setPredictions([]);
     setExpenses([]);
     setSettlements([]);
+    setTasks([]);
     setNotifications([]);
     setSelectedNotification(null);
+    closeTaskModal();
     cancelCategoryForm();
     cancelEditingExpense();
     setMemberForm({ displayName: "", email: "" });
@@ -2916,6 +3045,7 @@ function App() {
       setPredictions(DEMO_PREDICTIONS);
       setExpenses(DEMO_EXPENSES);
       setSettlements(DEMO_SETTLEMENTS);
+      setTasks([]);
       setNotifications([]);
       setTripDataLoading(false);
       return;
@@ -2953,6 +3083,43 @@ function App() {
           .reduce((map, d) => map.set(d.id, { id: d.id, ...d.data() }), new Map())
           .values()
       );
+      const taskCollection = collection(db, "trips", tripId, "tasks");
+      const canLoadAllTasks = tripContext?.ownerId === user?.uid;
+      const taskSnaps = canLoadAllTasks
+        ? [await getDocs(taskCollection)]
+        : await Promise.all([
+            getDocs(query(taskCollection, where("scope", "==", "group"))).catch(() => ({ docs: [] })),
+            loadedCurrentUserMemberId
+              ? getDocs(
+                  query(
+                    taskCollection,
+                    where("visibleTo", "array-contains", loadedCurrentUserMemberId)
+                  )
+                ).catch(() => ({ docs: [] }))
+              : Promise.resolve({ docs: [] }),
+            loadedCurrentUserMemberId
+              ? getDocs(
+                  query(
+                    taskCollection,
+                    where("assignedTo", "array-contains", loadedCurrentUserMemberId)
+                  )
+                ).catch(() => ({ docs: [] }))
+              : Promise.resolve({ docs: [] }),
+            loadedCurrentUserMemberId
+              ? getDocs(
+                  query(
+                    taskCollection,
+                    where("createdBy", "==", loadedCurrentUserMemberId)
+                  )
+                ).catch(() => ({ docs: [] }))
+              : Promise.resolve({ docs: [] })
+          ]);
+      const loadedTasks = Array.from(
+        taskSnaps
+          .flatMap(snap => snap.docs)
+          .reduce((map, d) => map.set(d.id, { id: d.id, ...d.data() }), new Map())
+          .values()
+      ).filter(task => canLoadAllTasks || canUserSeeTask(task, loadedCurrentUserMemberId));
       const expenseCollection = collection(db, "trips", tripId, "expenses");
       const canLoadAllExpenses = tripContext?.ownerId === user?.uid;
       const expenseSnaps = canLoadAllExpenses
@@ -3032,6 +3199,16 @@ function App() {
         String(b.date || "").localeCompare(String(a.date || ""))
       );
 
+      loadedTasks.sort((a, b) => {
+        if ((a.status || "todo") !== (b.status || "todo")) {
+          return (a.status || "todo") === "todo" ? -1 : 1;
+        }
+        if (a.dueDate || b.dueDate) {
+          return String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31"));
+        }
+        return getTaskCreatedTime(b) - getTaskCreatedTime(a);
+      });
+
       const firstActiveCategory = loadedCategories.find(c => c.isActive);
       const activeLoadedMembers = loadedMembers.filter(m => m.status !== "inactive");
 
@@ -3054,6 +3231,7 @@ function App() {
       setPredictions(loadedPredictions);
       setExpenses(loadedExpenses);
       setSettlements(loadedSettlements);
+      setTasks(loadedTasks);
       setNotifications(loadedNotifications);
       setBudgetForm(current => ({
         ...current,
@@ -3878,6 +4056,214 @@ function App() {
     }
   }
 
+  // -------------------- Tasks --------------------
+  function taskTypeLabel(type) {
+    return TASK_TYPE_OPTIONS.find(option => option.value === type)?.label || "General";
+  }
+
+  function taskScopeLabel(scope) {
+    if (scope === "group") return "Group";
+    if (scope === "selected_members") return "Shared";
+    if (scope === "personal") return "Private";
+    return "Task";
+  }
+
+  function formatTaskDate(date) {
+    if (!date) return "";
+    const parsed = new Date(`${date}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return date;
+    return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  function taskMemberListLabel(memberIds, maxNames = 2) {
+    const ids = Array.from(new Set((memberIds || []).filter(Boolean)));
+    if (ids.length === 0) return "Unassigned";
+    const names = ids.slice(0, maxNames).map(memberNameOf);
+    const extraCount = ids.length - names.length;
+    return extraCount > 0 ? `${names.join(" + ")} + ${extraCount}` : names.join(" + ");
+  }
+
+  function normalizeTaskFormForSave() {
+    const fallbackAssignee = currentUserMemberId || activeMembers[0]?.id || "";
+    let assignedTo = taskForm.assignedTo?.length
+      ? Array.from(new Set(taskForm.assignedTo))
+      : fallbackAssignee
+      ? [fallbackAssignee]
+      : [];
+    const creatorId = currentUserMemberId || fallbackAssignee;
+    let scope = taskForm.scope || "group";
+    let visibleTo;
+
+    if (scope === "personal") {
+      assignedTo = creatorId ? [creatorId] : assignedTo;
+      visibleTo = creatorId ? [creatorId] : [];
+    } else if (scope === "selected_members") {
+      visibleTo = Array.from(
+        new Set([...(taskForm.selectedMemberIds || []), creatorId].filter(Boolean))
+      );
+    } else {
+      scope = "group";
+      visibleTo = "all";
+    }
+
+    return {
+      title: taskForm.title.trim(),
+      type: taskForm.type || "general",
+      scope,
+      visibleTo,
+      assignedTo,
+      dueDate: taskForm.dueDate || null,
+      notes: taskForm.notes.trim(),
+      createdBy: creatorId
+    };
+  }
+
+  function resetTaskForm() {
+    setTaskForm({
+      ...EMPTY_TASK_FORM,
+      assignedTo: currentUserMemberId ? [currentUserMemberId] : [],
+      selectedMemberIds: currentUserMemberId ? [currentUserMemberId] : []
+    });
+    setEditingTaskId(null);
+  }
+
+  function openCreateTask() {
+    resetTaskForm();
+    setIsTaskModalOpen(true);
+  }
+
+  function closeTaskModal() {
+    setIsTaskModalOpen(false);
+    setEditingTaskId(null);
+    setTaskForm(EMPTY_TASK_FORM);
+  }
+
+  function startEditingTask(task) {
+    if (!canUserEditTask(task, currentUserMemberId, canManageSelectedTrip())) return;
+    setEditingTaskId(task.id);
+    setTaskForm({
+      title: task.title || "",
+      type: task.type || "general",
+      scope: task.scope || "group",
+      assignedTo: Array.isArray(task.assignedTo) ? task.assignedTo : [],
+      selectedMemberIds: Array.isArray(task.visibleTo) ? task.visibleTo : [],
+      dueDate: task.dueDate || "",
+      notes: task.notes || ""
+    });
+    setIsTaskModalOpen(true);
+  }
+
+  async function handleSaveTask(event) {
+    event.preventDefault();
+    if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to manage tasks.");
+    const normalized = normalizeTaskFormForSave();
+    if (!normalized.title) return alert("Task title is required.");
+    if (!normalized.createdBy) return alert("Could not find your trip member profile yet.");
+    if (!normalized.assignedTo.length) return alert("Assign this task to at least one member.");
+    if (
+      normalized.scope === "selected_members"
+      && (!Array.isArray(normalized.visibleTo) || normalized.visibleTo.length === 0)
+    ) {
+      return alert("Choose at least one person who can see this task.");
+    }
+
+    setSavingTask(true);
+    try {
+      if (editingTaskId) {
+        const task = tasks.find(t => t.id === editingTaskId);
+        if (!canUserEditTask(task, currentUserMemberId, canManageSelectedTrip())) {
+          alert("Only the task creator can edit this task.");
+          return;
+        }
+        await updateDoc(doc(db, "trips", selectedTrip.id, "tasks", editingTaskId), {
+          ...normalized,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await addDoc(collection(db, "trips", selectedTrip.id, "tasks"), {
+          tripId: selectedTrip.id,
+          ...normalized,
+          status: "todo",
+          completedBy: null,
+          completedAt: null,
+          isActive: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+      closeTaskModal();
+      await loadTripData(selectedTrip.id);
+    } catch (error) {
+      console.error("Could not save task:", error);
+      alert("Could not save task. Check your Firestore rules.");
+    } finally {
+      setSavingTask(false);
+    }
+  }
+
+  async function handleMarkTaskDone(task) {
+    if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to update tasks.");
+    if (!canUserCompleteTask(task, currentUserMemberId)) {
+      alert("Only assigned members or the creator can complete this task.");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "trips", selectedTrip.id, "tasks", task.id), {
+        status: "done",
+        completedBy: currentUserMemberId,
+        completedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      await loadTripData(selectedTrip.id);
+    } catch (error) {
+      console.error("Could not complete task:", error);
+      alert("Could not mark task done.");
+    }
+  }
+
+  async function handleReopenTask(task) {
+    if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to update tasks.");
+    if (!canUserCompleteTask(task, currentUserMemberId)) {
+      alert("Only assigned members or the creator can reopen this task.");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "trips", selectedTrip.id, "tasks", task.id), {
+        status: "todo",
+        completedBy: null,
+        completedAt: null,
+        updatedAt: serverTimestamp()
+      });
+      await loadTripData(selectedTrip.id);
+    } catch (error) {
+      console.error("Could not reopen task:", error);
+      alert("Could not reopen task.");
+    }
+  }
+
+  async function handleArchiveTask(task) {
+    if (!selectedTrip) return;
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to archive tasks.");
+    if (!canUserEditTask(task, currentUserMemberId, canManageSelectedTrip())) {
+      alert("Only the task creator can archive this task.");
+      return;
+    }
+    if (!window.confirm(`Archive "${task.title}"?`)) return;
+    try {
+      await updateDoc(doc(db, "trips", selectedTrip.id, "tasks", task.id), {
+        isActive: false,
+        updatedAt: serverTimestamp()
+      });
+      await loadTripData(selectedTrip.id);
+    } catch (error) {
+      console.error("Could not archive task:", error);
+      alert("Could not archive task.");
+    }
+  }
+
   // -------------------- Categories --------------------
   function startEditingCategory(category) {
     setEditingCategoryId(category.id);
@@ -4616,6 +5002,39 @@ function App() {
           s.status
         ]));
       });
+    });
+    rows.push("");
+
+    rows.push(csvRow(["Tasks"]));
+    rows.push(csvRow([
+      "Task ID", "Trip ID", "Title", "Type", "Scope", "Visible To", "Assigned To",
+      "Status", "Due Date", "Notes", "Created By", "Completed By", "Completed At",
+      "Created At", "Updated At", "Is Active"
+    ]));
+    tasks.forEach(task => {
+      const visibleTo = task.visibleTo === "all"
+        ? "All"
+        : Array.isArray(task.visibleTo)
+        ? task.visibleTo.map(memberNameOf).join(" | ")
+        : "";
+      rows.push(csvRow([
+        task.id,
+        task.tripId || selectedTrip.id,
+        task.title || "",
+        taskTypeLabel(task.type),
+        TASK_SCOPE_OPTIONS.find(option => option.value === task.scope)?.label || task.scope || "",
+        visibleTo,
+        (task.assignedTo || []).map(memberNameOf).join(" | "),
+        task.status === "done" ? "Done" : "Todo",
+        task.dueDate || "",
+        task.notes || "",
+        task.createdBy ? memberNameOf(task.createdBy) : "",
+        task.completedBy ? memberNameOf(task.completedBy) : "",
+        task.completedAt?.toDate?.()?.toLocaleString?.() || "",
+        task.createdAt?.toDate?.()?.toLocaleString?.() || "",
+        task.updatedAt?.toDate?.()?.toLocaleString?.() || "",
+        task.isActive === false ? "No" : "Yes"
+      ]));
     });
     rows.push("");
 
@@ -5751,6 +6170,7 @@ function App() {
       { key: "prediction", label: "Plan Budget", icon: "📊" },
       { key: "actual", label: "Expenses", icon: "💳" },
       { key: "settlements", label: "Settle", icon: "🤝" },
+      { key: "tasks", label: "Tasks", icon: "✓" },
       { key: "categories", label: "Categories", icon: "🏷" },
       { key: "members", label: "Members", icon: "👥" },
       { key: "settings", label: "Settings", icon: "⚙" },
@@ -6008,11 +6428,63 @@ function App() {
                       <div className="dash-action-icon" style={{ background: "var(--warning-soft)", color: "var(--warning)" }}>🤝</div>
                       <span>View Settlements</span>
                     </button>
+                    {!demoMode ? (
+                    <button className="dash-action-btn" type="button" onClick={openCreateTask}>
+                      <div className="dash-action-icon" style={{ background: "var(--primary-muted)", color: "var(--primary)" }}>✓</div>
+                      <span>New Task</span>
+                    </button>
+                    ) : null}
                     <button className="dash-action-btn" type="button" onClick={() => setActiveTab("categories")}>
                       <div className="dash-action-icon" style={{ background: "#f3e8ff", color: "#7c3aed" }}>🏷️</div>
                       <span>Add Category</span>
                     </button>
                   </div>
+                </div>
+              </div>
+
+              <div className="dash-row">
+                <div className="dash-card next-actions-card">
+                  <div className="dash-card-header">
+                    <div>
+                      <h3>Next actions</h3>
+                      <p className="dash-card-sub">Track what still needs to be done before everyone is settled.</p>
+                    </div>
+                    <button className="link-button" type="button" onClick={() => setActiveTab("tasks")}>
+                      View all tasks →
+                    </button>
+                  </div>
+                  {overviewTasks.length === 0 ? (
+                    <div className="task-empty-inline">
+                      <p>No pending tasks.</p>
+                      <span>Add a task to keep your trip organized.</span>
+                    </div>
+                  ) : (
+                    <div className="overview-task-list">
+                      {overviewTasks.map(task => {
+                        const canComplete = canUserCompleteTask(task, currentUserMemberId);
+                        return (
+                          <div className="overview-task-row" key={task.id}>
+                            <button
+                              className="task-status-button overview-task-check"
+                              type="button"
+                              disabled={!canComplete}
+                              aria-label="Mark task done"
+                              onClick={() => handleMarkTaskDone(task)}
+                            >
+                              <span aria-hidden="true">✓</span>
+                            </button>
+                            <button className="overview-task-main" type="button" onClick={() => setActiveTab("tasks")}>
+                              <strong>{task.title}</strong>
+                              <small>
+                                Assigned to {taskMemberListLabel(task.assignedTo)} · {taskScopeLabel(task.scope)}
+                                {task.type ? ` · ${taskTypeLabel(task.type)}` : ""}
+                              </small>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -6801,6 +7273,135 @@ function App() {
           </section>
         ) : null}
 
+        {activeTab === "tasks" ? (() => {
+          const taskStats = [
+            { label: "Assigned to me", value: taskSummary.assignedToMeCount, tone: "mint" },
+            { label: "Group tasks", value: taskSummary.groupTaskCount, tone: "blue" },
+            { label: "Pending", value: taskSummary.pendingCount, tone: "peach" },
+            { label: "Done", value: taskSummary.doneCount, tone: "violet" }
+          ];
+          const filteredTasks = visibleTasks.filter(task => {
+            if (taskFilter === "assigned") return task.assignedTo?.includes(currentUserMemberId);
+            if (taskFilter === "group") return task.scope === "group";
+            if (taskFilter === "private") return task.scope === "personal" || task.scope === "selected_members";
+            if (taskFilter === "done") return task.status === "done";
+            return true;
+          });
+          const emptyCopy = {
+            all: ["No tasks yet.", "Create your first trip task to keep everyone organized."],
+            assigned: ["Nothing assigned to you.", "You're all caught up."],
+            group: ["No group tasks yet.", "Add shared tasks like bookings, receipts, or payment reminders."],
+            private: ["No private tasks yet.", "Private tasks are only visible to you or selected members."],
+            done: ["No completed tasks yet.", "Completed tasks will appear here."]
+          }[taskFilter] || ["No tasks yet.", "Create your first trip task to keep everyone organized."];
+
+          return (
+            <section className="tasks-page">
+              <div className="tasks-head">
+                <div>
+                  <h2>Trip Tasks</h2>
+                  <p className="muted">Plan, assign, and track what needs to be done.</p>
+                </div>
+                {!demoMode ? (
+                  <button className="primary-button" type="button" onClick={openCreateTask}>
+                    + New task
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="task-summary-grid">
+                {taskStats.map(stat => (
+                  <article className="task-summary-card" key={stat.label}>
+                    <span className={`task-summary-icon ${stat.tone}`}>✓</span>
+                    <div>
+                      <strong>{stat.value}</strong>
+                      <p>{stat.label}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="task-filter-pills">
+                {[
+                  ["all", "All"],
+                  ["assigned", "Assigned to me"],
+                  ["group", "Group"],
+                  ["private", "Private"],
+                  ["done", "Done"]
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    className={taskFilter === value ? "active" : ""}
+                    type="button"
+                    onClick={() => setTaskFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="task-list">
+                {filteredTasks.length === 0 ? (
+                  <div className="task-empty-state">
+                    <h3>{emptyCopy[0]}</h3>
+                    <p className="muted">{emptyCopy[1]}</p>
+                  </div>
+                ) : (
+                  filteredTasks.map(task => {
+                    const isDone = task.status === "done";
+                    const canComplete = canUserCompleteTask(task, currentUserMemberId);
+                    const canEdit = canUserEditTask(task, currentUserMemberId, canManageSelectedTrip());
+                    const completedText = task.completedBy
+                      ? `Done by ${memberNameOf(task.completedBy)}${task.completedAt?.toDate ? ` · ${task.completedAt.toDate().toLocaleDateString()}` : ""}`
+                      : "Done";
+                    return (
+                      <article className={`task-card${isDone ? " done" : ""}`} key={task.id}>
+                        <button
+                          className="task-status-button"
+                          type="button"
+                          disabled={!canComplete}
+                          aria-label={isDone ? "Reopen task" : "Mark task done"}
+                          onClick={() => isDone ? handleReopenTask(task) : handleMarkTaskDone(task)}
+                        >
+                          <span aria-hidden="true">{isDone ? "✓" : ""}</span>
+                        </button>
+                        <div className="task-card-main">
+                          <div className="task-card-title-row">
+                            <h3>{task.title}</h3>
+                            <span className={`pill${isDone ? " muted-pill" : ""}`}>{isDone ? "Done" : "Todo"}</span>
+                          </div>
+                          <p className="task-meta">
+                            {isDone
+                              ? completedText
+                              : `${taskTypeLabel(task.type)} · ${taskScopeLabel(task.scope)} task · Assigned to ${taskMemberListLabel(task.assignedTo)}`}
+                            {task.dueDate && !isDone ? ` · Due ${formatTaskDate(task.dueDate)}` : ""}
+                          </p>
+                          {task.notes ? <p className="task-notes">{task.notes}</p> : null}
+                        </div>
+                        {!demoMode ? (
+                          <div className="task-card-actions">
+                            {canComplete ? (
+                              <button className="secondary-button small-button" type="button" onClick={() => isDone ? handleReopenTask(task) : handleMarkTaskDone(task)}>
+                                {isDone ? "Undo" : "Mark done"}
+                              </button>
+                            ) : null}
+                            {canEdit ? (
+                              <>
+                                <button className="secondary-button small-button" type="button" onClick={() => startEditingTask(task)}>Edit</button>
+                                <button className="danger-button small-button" type="button" onClick={() => handleArchiveTask(task)}>Archive</button>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+          );
+        })() : null}
+
         {activeTab === "settlements" ? renderSettlementsTab() : null}
 
         {activeTab === "categories" ? (() => {
@@ -6846,7 +7447,7 @@ function App() {
                 </div>
                 <div className="categories-toolbar">
                   <label className="category-search">
-                    <span aria-hidden="true">?</span>
+                    <span aria-hidden="true">⌕</span>
                     <input
                       type="search"
                       value={categorySearch}
@@ -6950,7 +7551,7 @@ function App() {
                                 color: category.color || "#0F766E"
                               }}
                             >
-                              {category.icon || "??"}
+                              {category.icon || "📌"}
                             </span>
                             <div className="category-table-main">
                               <strong>{category.name}</strong>
@@ -6959,7 +7560,7 @@ function App() {
                             <span className={category.isActive ? "pill" : "pill muted-pill"}>
                               {category.isActive ? "Active" : "Inactive"}
                             </span>
-                            <span className="category-usage">? {usageLabel}</span>
+                            <span className="category-usage">◔ {usageLabel}</span>
                             {!demoMode ? (
                               <div className="category-menu-actions">
                                 <button className="secondary-button small-button" type="button" onClick={() => startEditingCategory(category)}>Edit</button>
@@ -7035,7 +7636,7 @@ function App() {
                               aria-label={`Use ${color}`}
                               onClick={() => setCategoryForm({ ...categoryForm, color })}
                             >
-                              {categoryForm.color === color ? "?" : ""}
+                              {categoryForm.color === color ? "✓" : ""}
                             </button>
                           ))}
                         </div>
@@ -7047,7 +7648,7 @@ function App() {
                             className="category-dot category-dot-large"
                             style={{ backgroundColor: `${categoryForm.color}22`, color: categoryForm.color }}
                           >
-                            {categoryForm.icon || "??"}
+                            {categoryForm.icon || "📌"}
                           </span>
                           <div>
                             <strong>{categoryForm.name || "Category name"}</strong>
@@ -7406,7 +8007,7 @@ function App() {
               <h2>Export</h2>
               <p className="small muted">
                 Download a full CSV summary with trip details, totals, categories,
-                expenses, balances, suggested settlements, and settlement history.
+                    expenses, tasks, balances, suggested settlements, and settlement history.
               </p>
               <button
                 className="primary-button"
@@ -7476,7 +8077,7 @@ function App() {
                 <>
                   <p className="small muted">
                     Permanently delete this trip for everyone, including members,
-                    expenses, settlements, plan budget, categories, and invite links.
+                    expenses, settlements, tasks, plan budget, categories, and invite links.
                   </p>
                   <button
                     className="danger-button"
@@ -7532,6 +8133,7 @@ function App() {
             { key: "prediction", label: "Plan Budget", icon: "📊" },
             { key: "actual", label: "Expenses", icon: "💳" },
             { key: "settlements", label: "Settle", icon: "🤝" },
+            { key: "tasks", label: "Tasks", icon: "✓" },
             { key: "categories", label: "Categories", icon: "🏷" },
             { key: "members", label: "Members", icon: "👥" },
             { key: "settings", label: "Settings", icon: "⚙" },
@@ -7707,6 +8309,156 @@ function App() {
             saving: savingExpenseEdit,
             onCancel: cancelEditingExpense,
           })}
+        </Modal>
+
+        {/* Create / edit task modal */}
+        <Modal
+          isOpen={isTaskModalOpen}
+          onClose={closeTaskModal}
+          title={editingTaskId ? "Edit task" : "New task"}
+        >
+          <form className="modal-form task-form" onSubmit={handleSaveTask}>
+            <div className="modal-body">
+              <p className="small muted">
+                Add tasks for bookings, receipts, payments, packing, and documents.
+              </p>
+
+              <label>
+                Task title
+                <input
+                  type="text"
+                  value={taskForm.title}
+                  placeholder="e.g. Upload hotel receipt"
+                  onChange={e => setTaskForm({ ...taskForm, title: e.target.value })}
+                  autoFocus
+                  required
+                />
+              </label>
+
+              <div className="grid-2">
+                <label>
+                  Type
+                  <select
+                    value={taskForm.type}
+                    onChange={e => setTaskForm({ ...taskForm, type: e.target.value })}
+                  >
+                    {TASK_TYPE_OPTIONS.map(option => (
+                      <option value={option.value} key={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Due date
+                  <input
+                    type="date"
+                    value={taskForm.dueDate}
+                    onClick={openDatePicker}
+                    onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                  />
+                </label>
+              </div>
+
+              <div className="task-form-section">
+                <div className="create-trip-img-label">Assign to</div>
+                <div className="checkbox-grid compact-checkbox-grid">
+                  {activeMembers.map(member => {
+                    const checked = taskForm.assignedTo.includes(member.id);
+                    const lockedToMe = taskForm.scope === "personal" && member.id !== currentUserMemberId;
+                    return (
+                      <label className="check-row" key={member.id}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={lockedToMe}
+                          onChange={e => {
+                            const assignedTo = e.target.checked
+                              ? [...taskForm.assignedTo, member.id]
+                              : taskForm.assignedTo.filter(id => id !== member.id);
+                            setTaskForm({ ...taskForm, assignedTo });
+                          }}
+                        />
+                        {memberNameOf(member.id)}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <label>
+                Visibility
+                <select
+                  value={taskForm.scope}
+                  onChange={e => {
+                    const scope = e.target.value;
+                    setTaskForm(current => ({
+                      ...current,
+                      scope,
+                      selectedMemberIds:
+                        scope === "selected_members" && currentUserMemberId && !current.selectedMemberIds.includes(currentUserMemberId)
+                          ? [...current.selectedMemberIds, currentUserMemberId]
+                          : current.selectedMemberIds,
+                      assignedTo:
+                        scope === "personal" && currentUserMemberId
+                          ? [currentUserMemberId]
+                          : current.assignedTo
+                    }));
+                  }}
+                >
+                  {TASK_SCOPE_OPTIONS.map(option => (
+                    <option value={option.value} key={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              {taskForm.scope === "selected_members" ? (
+                <div className="task-form-section">
+                  <div className="create-trip-img-label">Selected people</div>
+                  <p className="small muted">Group tasks are visible to everyone. Private tasks stay with selected members.</p>
+                  <div className="checkbox-grid compact-checkbox-grid">
+                    {activeMembers.map(member => {
+                      const checked = taskForm.selectedMemberIds.includes(member.id);
+                      const isCreator = member.id === currentUserMemberId;
+                      return (
+                        <label className="check-row" key={member.id}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={isCreator}
+                            onChange={e => {
+                              const selectedMemberIds = e.target.checked
+                                ? [...taskForm.selectedMemberIds, member.id]
+                                : taskForm.selectedMemberIds.filter(id => id !== member.id);
+                              setTaskForm({ ...taskForm, selectedMemberIds });
+                            }}
+                          />
+                          {memberNameOf(member.id)}{isCreator ? " (you)" : ""}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <label>
+                Notes
+                <textarea
+                  value={taskForm.notes}
+                  placeholder="Optional details"
+                  onChange={e => setTaskForm({ ...taskForm, notes: e.target.value })}
+                  rows={3}
+                />
+              </label>
+            </div>
+
+            <footer className="modal-footer">
+              <button className="secondary-button" type="button" onClick={closeTaskModal}>
+                Cancel
+              </button>
+              <button className="primary-button" type="submit" disabled={savingTask}>
+                {savingTask ? "Saving..." : editingTaskId ? "Save changes" : "Create task"}
+              </button>
+            </footer>
+          </form>
         </Modal>
 
         {/* Create category modal */}

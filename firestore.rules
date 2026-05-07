@@ -157,6 +157,64 @@ service cloud.firestore {
         );
     }
 
+    function taskMemberCanSee(data) {
+      return data.visibleTo == "all"
+        || (
+          data.keys().hasAny(["visibleTo"])
+          && data.visibleTo is list
+          && data.visibleTo.hasAny(requestMemberKeys())
+        )
+        || (
+          data.keys().hasAny(["assignedTo"])
+          && data.assignedTo is list
+          && data.assignedTo.hasAny(requestMemberKeys())
+        )
+        || data.createdBy in requestMemberKeys();
+    }
+
+    function canReadTask(tripId, data) {
+      return isOwner(tripId) || taskMemberCanSee(data);
+    }
+
+    function canCreateTask(tripId, data) {
+      return canReadTrip(tripId)
+        && data.tripId == tripId
+        && data.title is string
+        && data.title.size() > 0
+        && data.type in ["general", "booking", "payment", "receipt", "packing", "document"]
+        && data.scope in ["group", "selected_members", "personal"]
+        && data.status in ["todo", "done"]
+        && data.assignedTo is list
+        && data.assignedTo.size() > 0
+        && data.createdBy in requestMemberKeys()
+        && (
+          data.visibleTo == "all"
+          || (
+            data.visibleTo is list
+            && data.visibleTo.hasAny(requestMemberKeys())
+          )
+        );
+    }
+
+    function canCompleteTask(data) {
+      return data.createdBy in requestMemberKeys()
+        || (
+          data.keys().hasAny(["assignedTo"])
+          && data.assignedTo is list
+          && data.assignedTo.hasAny(requestMemberKeys())
+        );
+    }
+
+    function isTaskStatusOnlyUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(["status", "completedBy", "completedAt", "updatedAt"])
+        && request.resource.data.status in ["todo", "done"]
+        && (
+          request.resource.data.completedBy == null
+          || request.resource.data.completedBy in requestMemberKeys()
+        );
+    }
+
     function isSelfUser(userId) {
       return signedIn() && request.auth.uid == userId;
     }
@@ -228,6 +286,20 @@ service cloud.firestore {
           && canReadSettlement(tripId, resource.data)
           && canWriteSettlement(request.resource.data);
         allow delete: if canReadTrip(tripId) && canReadSettlement(tripId, resource.data);
+      }
+
+      match /tasks/{taskId} {
+        allow get, list: if canReadTrip(tripId) && canReadTask(tripId, resource.data);
+        allow create: if canCreateTask(tripId, request.resource.data);
+        allow update: if canReadTrip(tripId)
+          && canReadTask(tripId, resource.data)
+          && (
+            isOwner(tripId)
+            || resource.data.createdBy in requestMemberKeys()
+            || (canCompleteTask(resource.data) && isTaskStatusOnlyUpdate())
+          );
+        allow delete: if canReadTrip(tripId)
+          && (isOwner(tripId) || resource.data.createdBy in requestMemberKeys());
       }
 
       match /notifications/{notificationId} {
