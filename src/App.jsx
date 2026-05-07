@@ -69,6 +69,9 @@ const TRIP_IMAGE_MAX_BYTES = 260 * 1024;
 const PROFILE_IMAGE_SIZE = 256;
 const PROFILE_IMAGE_QUALITY = 0.82;
 const MEMBER_DIRECTORY_STORAGE_KEY = "triphisaab-member-directory";
+const APP_VIEW_STORAGE_KEY = "triphisaab-app-view";
+const LAST_TRIP_STORAGE_KEY = "triphisaab-last-trip";
+const LAST_TAB_STORAGE_KEY = "triphisaab-last-tab";
 const CATEGORY_EMOJI_OPTIONS = [
   "📌", "✈️", "🚆", "🚕", "🚌", "⛽", "🏨", "🏠",
   "🍽️", "☕", "🍕", "🛒", "🛍️", "🎟️", "🎡", "🏖️",
@@ -91,6 +94,247 @@ const EMPTY_BUDGET_FORM = {
   scope: "group",
   visibleMemberIds: []
 };
+
+const MONEY_EPSILON = 0.01;
+
+function roundMoney(amount) {
+  return Math.round(Number(amount || 0) * 100) / 100;
+}
+
+function memberDisplayName(member) {
+  return member?.displayName || member?.name || member?.email || member?.id || "Unknown member";
+}
+
+function cleanDisplayName(name) {
+  const raw = String(name || "").trim();
+  if (!raw) return "Unknown member";
+  if (raw.includes("@")) return raw;
+  return raw
+    .split(/\s+/)
+    .map(part => {
+      if (!part) return part;
+      const mostlyLowerOrUpper = part === part.toLowerCase() || part === part.toUpperCase();
+      return mostlyLowerOrUpper
+        ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+        : part;
+    })
+    .join(" ");
+}
+
+function normalizeExpenseScope(expense) {
+  if (expense?.scope === "group" || expense?.scope === "selected_members" || expense?.scope === "personal") {
+    return expense.scope;
+  }
+  return expense?.expenseType === "shared" ? "group" : "personal";
+}
+
+function expenseVisibleIds(expense, members = []) {
+  if (expense?.visibleTo === "all") return members.map(m => m.id);
+  if (Array.isArray(expense?.visibleTo)) return expense.visibleTo;
+  if (normalizeExpenseScope(expense) === "selected_members") {
+    return expense?.splitMemberIds?.length ? expense.splitMemberIds : [];
+  }
+  if (normalizeExpenseScope(expense) === "personal") {
+    return expense?.paidByMemberId ? [expense.paidByMemberId] : [];
+  }
+  return members.map(m => m.id);
+}
+
+function canUserSeeExpense(expense, currentUserId, isAdmin = false) {
+  if (isAdmin) return true;
+  if (expense?.visibleTo === "all") return true;
+  if (Array.isArray(expense?.visibleTo)) return expense.visibleTo.includes(currentUserId);
+  if (normalizeExpenseScope(expense) === "group") return true;
+  if (normalizeExpenseScope(expense) === "personal") return expense.paidByMemberId === currentUserId;
+  return expense?.splitMemberIds?.includes(currentUserId);
+}
+
+function isActiveSharedExpense(expense) {
+  return expense?.isActive !== false
+    && expense?.expenseType === "shared"
+    && Number(expense?.amountEur || 0) > 0;
+}
+
+function getGroupSettlementExpenses(expenses) {
+  return expenses.filter(expense => {
+    if (!isActiveSharedExpense(expense)) return false;
+    return normalizeExpenseScope(expense) === "group"
+      || expense.visibleTo === "all"
+      || expense.countsTowardGroupSettlement === true;
+  });
+}
+
+function getPrivateSettlementGroups(expenses, currentUserId, isAdmin = false) {
+  const groups = new Map();
+  expenses.forEach(expense => {
+    if (!isActiveSharedExpense(expense)) return;
+    const selectedScope =
+      normalizeExpenseScope(expense) === "selected_members"
+      || Array.isArray(expense.visibleTo);
+    if (!selectedScope || expense.visibleTo === "all") return;
+    if (!canUserSeeExpense(expense, currentUserId, isAdmin)) return;
+
+    const ids = Array.from(
+      new Set(expenseVisibleIds(expense).filter(Boolean))
+    ).sort();
+    if (ids.length < 2) return;
+    const groupId = ids.join("__");
+    if (!groups.has(groupId)) {
+      groups.set(groupId, {
+        settlementGroupId: groupId,
+        memberIds: ids,
+        expenses: []
+      });
+    }
+    groups.get(groupId).expenses.push(expense);
+  });
+  return Array.from(groups.values());
+}
+
+function calculateBalances(expenses, members, settlementRecords = []) {
+  const out = {};
+  members.forEach(member => {
+    out[member.id] = {
+      memberId: member.id,
+      userId: member.id,
+      name: memberDisplayName(member),
+      email: member.email || "",
+      paid: 0,
+      share: 0,
+      owes: 0,
+      settledPaid: 0,
+      settledReceived: 0,
+      net: 0
+    };
+  });
+
+  expenses.forEach(expense => {
+    if (!isActiveSharedExpense(expense)) return;
+    const amount = roundMoney(expense.amountEur);
+    if (amount <= 0 || !out[expense.paidByMemberId]) return;
+    out[expense.paidByMemberId].paid += amount;
+
+    let shares = {};
+    if (expense.splitType === "custom" && expense.customSplitSharesEur) {
+      shares = expense.customSplitSharesEur;
+    } else {
+      const splitIds =
+        expense.splitMemberIds?.length > 0
+          ? expense.splitMemberIds
+          : members.map(member => member.id);
+      const share = splitIds.length > 0 ? amount / splitIds.length : 0;
+      splitIds.forEach(id => {
+        shares[id] = share;
+      });
+    }
+
+    Object.entries(shares).forEach(([memberId, share]) => {
+      if (out[memberId]) out[memberId].share += Number(share || 0);
+    });
+  });
+
+  settlementRecords
+    .filter(record => (record.status || "paid") === "paid")
+    .forEach(record => {
+      const amount = roundMoney(record.amountEur || record.amount);
+      if (out[record.fromMemberId || record.fromUserId]) {
+        out[record.fromMemberId || record.fromUserId].settledPaid += amount;
+      }
+      if (out[record.toMemberId || record.toUserId]) {
+        out[record.toMemberId || record.toUserId].settledReceived += amount;
+      }
+    });
+
+  Object.values(out).forEach(balance => {
+    balance.paid = roundMoney(balance.paid);
+    balance.share = roundMoney(balance.share);
+    balance.owes = balance.share;
+    balance.settledPaid = roundMoney(balance.settledPaid);
+    balance.settledReceived = roundMoney(balance.settledReceived);
+    balance.net = roundMoney(
+      balance.paid - balance.share + balance.settledPaid - balance.settledReceived
+    );
+  });
+
+  return Object.values(out);
+}
+
+function generateSettlementSuggestions(balances, currency = "EUR") {
+  const debtors = balances
+    .filter(balance => balance.net < -MONEY_EPSILON)
+    .map(balance => ({ ...balance, amount: roundMoney(Math.abs(balance.net)) }))
+    .sort((a, b) => b.amount - a.amount);
+  const creditors = balances
+    .filter(balance => balance.net > MONEY_EPSILON)
+    .map(balance => ({ ...balance, amount: roundMoney(balance.net) }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const suggestions = [];
+  let debtorIndex = 0;
+  let creditorIndex = 0;
+  while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+    const debtor = debtors[debtorIndex];
+    const creditor = creditors[creditorIndex];
+    const amount = roundMoney(Math.min(debtor.amount, creditor.amount));
+    if (amount > MONEY_EPSILON) {
+      suggestions.push({
+        id: `${debtor.memberId}-${creditor.memberId}-${amount.toFixed(2)}`,
+        fromUserId: debtor.memberId,
+        fromMemberId: debtor.memberId,
+        fromName: debtor.name,
+        toUserId: creditor.memberId,
+        toMemberId: creditor.memberId,
+        toName: creditor.name,
+        amount,
+        currency,
+        status: "pending"
+      });
+    }
+    debtor.amount = roundMoney(debtor.amount - amount);
+    creditor.amount = roundMoney(creditor.amount - amount);
+    if (debtor.amount <= MONEY_EPSILON) debtorIndex += 1;
+    if (creditor.amount <= MONEY_EPSILON) creditorIndex += 1;
+  }
+  return suggestions;
+}
+
+function getSmartSettleSummary(expenses, members, currentUserId, settlementRecords = [], isAdmin = false, currency = "EUR") {
+  const activeMembers = members.filter(member => member.status !== "inactive");
+  const groupExpenses = getGroupSettlementExpenses(expenses);
+  const groupSettlements = settlementRecords.filter(record =>
+    (record.settlementLayer || "group") === "group"
+  );
+  const groupBalances = calculateBalances(groupExpenses, activeMembers, groupSettlements);
+
+  const privateSettlements = getPrivateSettlementGroups(expenses, currentUserId, isAdmin)
+    .map(group => {
+      const groupMembers = activeMembers.filter(member => group.memberIds.includes(member.id));
+      const paidRecords = settlementRecords.filter(record =>
+        record.settlementLayer === "private"
+        && record.settlementGroupId === group.settlementGroupId
+      );
+      const balances = calculateBalances(group.expenses, groupMembers, paidRecords);
+      return {
+        settlementGroupId: group.settlementGroupId,
+        memberIds: group.memberIds,
+        memberNames: groupMembers.map(memberDisplayName),
+        totalSpent: roundMoney(
+          group.expenses.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
+        ),
+        balances,
+        suggestions: generateSettlementSuggestions(balances, currency)
+      };
+    });
+
+  return {
+    groupSettlement: {
+      totalSpent: roundMoney(groupExpenses.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)),
+      balances: groupBalances,
+      suggestions: generateSettlementSuggestions(groupBalances, currency)
+    },
+    privateSettlements
+  };
+}
 
 const DEMO_TRIP_ID = "demo-norway-trip";
 const DEMO_MEMBERS = [
@@ -632,13 +876,25 @@ function App() {
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [tripSearch, setTripSearch] = useState("");
-  const [showLanding, setShowLanding] = useState(true);
+  const [showLanding, setShowLanding] = useState(() => {
+    try {
+      return localStorage.getItem(APP_VIEW_STORAGE_KEY) !== "app";
+    } catch {
+      return true;
+    }
+  });
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isStandaloneApp, setIsStandaloneApp] = useState(false);
 
   const [selectedTrip, setSelectedTrip] = useState(null);
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem(LAST_TAB_STORAGE_KEY) || "dashboard";
+    } catch {
+      return "dashboard";
+    }
+  });
   const [tripDataLoading, setTripDataLoading] = useState(false);
   const [deletingTrip, setDeletingTrip] = useState(false);
   const [leavingTrip, setLeavingTrip] = useState(false);
@@ -669,6 +925,9 @@ function App() {
   });
   const [savingSettlement, setSavingSettlement] = useState(false);
   const [approvingNotificationId, setApprovingNotificationId] = useState("");
+  const [expandedSmartSettleId, setExpandedSmartSettleId] = useState("");
+  const [pendingSmartSettlement, setPendingSmartSettlement] = useState(null);
+  const [smartSettleToast, setSmartSettleToast] = useState("");
 
   const [savingPredictions, setSavingPredictions] = useState(false);
   const [budgetForm, setBudgetForm] = useState(EMPTY_BUDGET_FORM);
@@ -767,11 +1026,31 @@ function App() {
       setUser(currentUser);
       setAuthLoading(false);
       if (currentUser) {
+        setShowLanding(false);
+        try {
+          localStorage.setItem(APP_VIEW_STORAGE_KEY, "app");
+        } catch {
+          /* localStorage unavailable */
+        }
         await createUserProfileIfNeeded(currentUser);
-        await loadTrips(currentUser.uid, currentUser.email);
+        const loadedTrips = await loadTrips(currentUser.uid, currentUser.email);
+        try {
+          const lastTripId = localStorage.getItem(LAST_TRIP_STORAGE_KEY);
+          if (lastTripId) {
+            const lastTrip = loadedTrips.find(trip => trip.id === lastTripId);
+            if (lastTrip) {
+              setSelectedTrip(lastTrip);
+              setActiveTab(localStorage.getItem(LAST_TAB_STORAGE_KEY) || "dashboard");
+              await loadTripData(lastTrip.id, lastTrip);
+            }
+          }
+        } catch {
+          /* localStorage unavailable */
+        }
       } else {
         setTrips([]);
         setSelectedTrip(null);
+        setShowLanding(true);
         setUserProfile({
           profileImageDataUrl: "",
           tutorialCompletedAt: null,
@@ -780,7 +1059,37 @@ function App() {
       }
     });
     return () => unsubscribe();
+  // Auth restore intentionally runs once on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(APP_VIEW_STORAGE_KEY, showLanding ? "landing" : "app");
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, [showLanding]);
+
+  useEffect(() => {
+    try {
+      if (selectedTrip && selectedTrip.id !== DEMO_TRIP_ID && selectedTrip.isDemo !== true) {
+        localStorage.setItem(LAST_TRIP_STORAGE_KEY, selectedTrip.id);
+      } else if (!selectedTrip) {
+        localStorage.removeItem(LAST_TRIP_STORAGE_KEY);
+      }
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, [selectedTrip]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAST_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!user || !userProfile.loaded || pendingInvite) return;
@@ -802,6 +1111,12 @@ function App() {
       });
     }
   }, [selectedTrip]);
+
+  useEffect(() => {
+    if (!smartSettleToast) return;
+    const timer = window.setTimeout(() => setSmartSettleToast(""), 2200);
+    return () => window.clearTimeout(timer);
+  }, [smartSettleToast]);
 
   // -------------------- Memoized lookups & derived data --------------------
   const membersById = useMemo(() => {
@@ -877,7 +1192,7 @@ function App() {
     memberId => {
       const m = membersById.get(memberId);
       if (!m) return "Unknown member";
-      return m.displayName || m.email || "Unnamed member";
+      return cleanDisplayName(m.displayName || m.email || "Unnamed member");
     },
     [membersById]
   );
@@ -906,59 +1221,13 @@ function App() {
   );
 
   const balances = useMemo(() => {
-    const out = {};
-    members.forEach(m => {
-      out[m.id] = {
-        memberId: m.id,
-        name: m.displayName || m.email || "Unnamed member",
-        email: m.email || "",
-        paid: 0,
-        owes: 0,
-        settledPaid: 0,
-        settledReceived: 0,
-        net: 0
-      };
-    });
-
-    expenses.forEach(expense => {
-      if (expense.expenseType !== "shared") return;
-      const amount = Number(expense.amountEur || 0);
-      const payer = out[expense.paidByMemberId];
-      if (!payer) return;
-      payer.paid += amount;
-
-      let owedShares;
-      if (expense.splitType === "custom" && expense.customSplitSharesEur) {
-        owedShares = expense.customSplitSharesEur;
-      } else {
-        const splitIds =
-          expense.splitMemberIds?.length > 0
-            ? expense.splitMemberIds
-            : members.map(m => m.id);
-        const share = splitIds.length > 0 ? amount / splitIds.length : 0;
-        owedShares = {};
-        splitIds.forEach(id => {
-          owedShares[id] = share;
-        });
-      }
-
-      Object.entries(owedShares).forEach(([memberId, share]) => {
-        if (out[memberId]) out[memberId].owes += Number(share || 0);
-      });
-    });
-
-    settlements.forEach(s => {
-      const amount = Number(s.amountEur || 0);
-      if (out[s.fromMemberId]) out[s.fromMemberId].settledPaid += amount;
-      if (out[s.toMemberId]) out[s.toMemberId].settledReceived += amount;
-    });
-
-    Object.values(out).forEach(b => {
-      b.net = b.paid - b.owes + b.settledPaid - b.settledReceived;
-    });
-
-    return Object.values(out);
-  }, [members, expenses, settlements]);
+    const groupSettlements = settlements.filter(s => (s.settlementLayer || "group") === "group");
+    return calculateBalances(
+      getGroupSettlementExpenses(expenses),
+      activeMembers,
+      groupSettlements
+    );
+  }, [activeMembers, expenses, settlements]);
 
   const currentUserMemberId = useMemo(
     () => {
@@ -987,6 +1256,19 @@ function App() {
           String(b.createdAtIso || "").localeCompare(String(a.createdAtIso || ""))
         ),
     [currentUserMemberId, notifications]
+  );
+
+  const smartSettleSummary = useMemo(
+    () =>
+      getSmartSettleSummary(
+        expenses,
+        members,
+        currentUserMemberId,
+        settlements,
+        Boolean(user && selectedTrip && selectedTrip.ownerId === user.uid),
+        selectedTrip?.defaultCurrency || "EUR"
+      ),
+    [currentUserMemberId, expenses, members, selectedTrip, settlements, user]
   );
 
   const unreadNotificationCount = useMemo(
@@ -1338,6 +1620,11 @@ function App() {
   async function handleGoogleLogin() {
     try {
       setShowLanding(false);
+      try {
+        localStorage.setItem(APP_VIEW_STORAGE_KEY, "app");
+      } catch {
+        /* localStorage unavailable */
+      }
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error("Google login failed:", error);
@@ -1380,6 +1667,12 @@ function App() {
     try {
       await signOut(auth);
       setShowLanding(true);
+      try {
+        localStorage.setItem(APP_VIEW_STORAGE_KEY, "landing");
+        localStorage.removeItem(LAST_TRIP_STORAGE_KEY);
+      } catch {
+        /* localStorage unavailable */
+      }
       closeTrip();
     } catch (error) {
       console.error("Logout failed:", error);
@@ -1655,9 +1948,11 @@ function App() {
         return bT - aT;
       });
       setTrips(loaded);
+      return loaded;
     } catch (error) {
       console.error("Could not load trips:", error);
       alert("Could not load trips. Check your Firestore rules.");
+      return [];
     } finally {
       setTripLoading(false);
     }
@@ -1975,8 +2270,25 @@ function App() {
 
   async function openTrip(trip) {
     setSelectedTrip(trip);
-    setActiveTab("dashboard");
-    await loadTripData(trip.id);
+    const storedTab = (() => {
+      try {
+        return localStorage.getItem(LAST_TRIP_STORAGE_KEY) === trip.id
+          ? localStorage.getItem(LAST_TAB_STORAGE_KEY) || "dashboard"
+          : "dashboard";
+      } catch {
+        return "dashboard";
+      }
+    })();
+    setActiveTab(storedTab);
+    setShowLanding(false);
+    try {
+      localStorage.setItem(APP_VIEW_STORAGE_KEY, "app");
+      localStorage.setItem(LAST_TRIP_STORAGE_KEY, trip.id);
+      localStorage.setItem(LAST_TAB_STORAGE_KEY, storedTab);
+    } catch {
+      /* localStorage unavailable */
+    }
+    await loadTripData(trip.id, trip);
   }
 
   async function openDemoTrip() {
@@ -1995,12 +2307,21 @@ function App() {
       imageDataUrl: ""
     });
     setActiveTab("dashboard");
-    await loadTripData(DEMO_TRIP_ID);
+    await loadTripData(DEMO_TRIP_ID, { id: DEMO_TRIP_ID, isDemo: true });
   }
 
   function closeTrip() {
+    const wasDemoMode = isDemoMode();
     setSelectedTrip(null);
     setActiveTab("dashboard");
+    if (wasDemoMode) setShowLanding(true);
+    try {
+      localStorage.removeItem(LAST_TRIP_STORAGE_KEY);
+      localStorage.setItem(LAST_TAB_STORAGE_KEY, "dashboard");
+      if (wasDemoMode) localStorage.setItem(APP_VIEW_STORAGE_KEY, "landing");
+    } catch {
+      /* localStorage unavailable */
+    }
     setMembers([]);
     setMemberProfilesByEmail({});
     setCategories([]);
@@ -2016,7 +2337,7 @@ function App() {
     setInviteLink("");
   }
 
-  async function loadTripData(tripId) {
+  async function loadTripData(tripId, tripContext = selectedTrip) {
     if (tripId === DEMO_TRIP_ID) {
       setTripDataLoading(true);
       setMembers(DEMO_MEMBERS);
@@ -2032,19 +2353,58 @@ function App() {
     setTripDataLoading(true);
     try {
       // Parallelize the base reads; budget visibility depends on the loaded member id.
-      const [membersSnap, categoriesSnap, expensesSnap, settlementsSnap] =
+      const [membersSnap, categoriesSnap] =
         await Promise.all([
           getDocs(collection(db, "trips", tripId, "members")),
-          getDocs(collection(db, "trips", tripId, "categories")),
-          getDocs(collection(db, "trips", tripId, "expenses")),
-          getDocs(collection(db, "trips", tripId, "settlements"))
+          getDocs(collection(db, "trips", tripId, "categories"))
         ]);
 
       const loadedMembers = membersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedCategories = categoriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const loadedExpenses = expensesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const loadedSettlements = settlementsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedCurrentUserMemberId = getCurrentUserMemberIdFromList(loadedMembers);
+      const settlementCollection = collection(db, "trips", tripId, "settlements");
+      const settlementSnaps = tripContext?.ownerId === user?.uid
+        ? [await getDocs(settlementCollection)]
+        : await Promise.all([
+            getDocs(query(settlementCollection, where("settlementLayer", "==", "group"))),
+            getDocs(query(settlementCollection, where("settlementLayer", "==", null))).catch(() => ({ docs: [] })),
+            loadedCurrentUserMemberId
+              ? getDocs(
+                  query(
+                    settlementCollection,
+                    where("settlementMemberIds", "array-contains", loadedCurrentUserMemberId)
+                  )
+                ).catch(() => ({ docs: [] }))
+              : Promise.resolve({ docs: [] })
+          ]);
+      const loadedSettlements = Array.from(
+        settlementSnaps
+          .flatMap(snap => snap.docs)
+          .reduce((map, d) => map.set(d.id, { id: d.id, ...d.data() }), new Map())
+          .values()
+      );
+      const expenseCollection = collection(db, "trips", tripId, "expenses");
+      const canLoadAllExpenses = tripContext?.ownerId === user?.uid;
+      const expenseSnaps = canLoadAllExpenses
+        ? [await getDocs(expenseCollection)]
+        : await Promise.all([
+            getDocs(query(expenseCollection, where("scope", "==", "group"))),
+            getDocs(query(expenseCollection, where("scope", "==", null))).catch(() => ({ docs: [] })),
+            loadedCurrentUserMemberId
+              ? getDocs(
+                  query(
+                    expenseCollection,
+                    where("visibleTo", "array-contains", loadedCurrentUserMemberId)
+                  )
+                ).catch(() => ({ docs: [] }))
+              : Promise.resolve({ docs: [] })
+          ]);
+      const loadedExpenses = Array.from(
+        expenseSnaps
+          .flatMap(snap => snap.docs)
+          .reduce((map, d) => map.set(d.id, { id: d.id, ...d.data() }), new Map())
+          .values()
+      );
       const predictionCollection = collection(db, "trips", tripId, "predictions");
       const predictionReads = [
         getDocs(query(predictionCollection, where("scope", "==", "group"))),
@@ -2139,7 +2499,7 @@ function App() {
         ...prev,
         categoryId: prev.categoryId || firstActiveCategory?.id || "",
         originalCurrency:
-          prev.originalCurrency || selectedTrip?.defaultCurrency || "EUR",
+          prev.originalCurrency || tripContext?.defaultCurrency || "EUR",
         paidByMemberId: prev.paidByMemberId || defaultPayerId,
         splitMemberIds:
           prev.splitMemberIds?.length > 0
@@ -2658,6 +3018,22 @@ function App() {
     try {
       const category = categoriesById.get(normalizedExpenseForm.categoryId);
       const amountEur = convertToEur(originalAmount, originalCurrency);
+      const isGroupExpense =
+        normalizedExpenseForm.expenseType === "shared"
+        && splitMemberIds.length >= activeMembers.length
+        && activeMembers.every(member => splitMemberIds.includes(member.id));
+      const expenseScope =
+        normalizedExpenseForm.expenseType === "personal"
+          ? "personal"
+          : isGroupExpense
+          ? "group"
+          : "selected_members";
+      const visibleTo =
+        expenseScope === "group"
+          ? "all"
+          : expenseScope === "personal"
+          ? [normalizedExpenseForm.paidByMemberId]
+          : Array.from(new Set([...splitMemberIds, normalizedExpenseForm.paidByMemberId].filter(Boolean)));
       const expenseRef = await addDoc(collection(db, "trips", selectedTrip.id, "expenses"), {
         date: normalizedExpenseForm.date,
         time: normalizedExpenseForm.time,
@@ -2687,6 +3063,10 @@ function App() {
         paidByMemberId: normalizedExpenseForm.paidByMemberId,
         paidByMemberName: memberNameOf(normalizedExpenseForm.paidByMemberId),
         splitMemberIds,
+        scope: expenseScope,
+        visibleTo,
+        countsTowardGroupSettlement: expenseScope === "group",
+        isActive: true,
         createdBy: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -2795,6 +3175,22 @@ function App() {
     setSavingExpenseEdit(true);
     try {
       const category = categoriesById.get(expenseEditForm.categoryId);
+      const isGroupExpense =
+        expenseEditForm.expenseType === "shared"
+        && splitMemberIds.length >= activeMembers.length
+        && activeMembers.every(member => splitMemberIds.includes(member.id));
+      const expenseScope =
+        expenseEditForm.expenseType === "personal"
+          ? "personal"
+          : isGroupExpense
+          ? "group"
+          : "selected_members";
+      const visibleTo =
+        expenseScope === "group"
+          ? "all"
+          : expenseScope === "personal"
+          ? [expenseEditForm.paidByMemberId]
+          : Array.from(new Set([...splitMemberIds, expenseEditForm.paidByMemberId].filter(Boolean)));
       await updateDoc(
         doc(db, "trips", selectedTrip.id, "expenses", editingExpenseId),
         {
@@ -2830,6 +3226,10 @@ function App() {
           paidByMemberId: expenseEditForm.paidByMemberId,
           paidByMemberName: memberNameOf(expenseEditForm.paidByMemberId),
           splitMemberIds,
+          scope: expenseScope,
+          visibleTo,
+          countsTowardGroupSettlement: expenseScope === "group",
+          isActive: true,
           updatedAt: serverTimestamp()
         }
       );
@@ -3035,13 +3435,43 @@ function App() {
   }
 
   async function handleMarkSettlementPaid(suggested) {
-    await saveSettlement({
-      date: todayIso(),
-      fromMemberId: suggested.fromMemberId,
-      toMemberId: suggested.toMemberId,
-      amountEur: suggested.amount,
-      notes: "Marked paid from suggested settlement"
-    });
+    setPendingSmartSettlement({ suggestion: suggested, layer: "group", settlementGroupId: null });
+  }
+
+  async function handleMarkSmartSettlementPaid(suggested, settlementLayer = "group", settlementGroupId = null) {
+    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to record settlements.");
+    if (!selectedTrip || !user) return;
+    setSavingSettlement(true);
+    try {
+      await createCompletedSettlement(
+        {
+          date: todayIso(),
+          fromMemberId: suggested.fromMemberId || suggested.fromUserId,
+          toMemberId: suggested.toMemberId || suggested.toUserId,
+          amountEur: suggested.amount,
+          notes: "Marked as paid from Smart Settle"
+        },
+        Number(suggested.amount || 0),
+        {
+          settlementLayer,
+          settlementGroupId,
+          settlementMemberIds:
+            settlementLayer === "private" && settlementGroupId
+              ? settlementGroupId.split("__")
+              : "all",
+          currency: suggested.currency || selectedTrip.defaultCurrency || "EUR",
+          source: "smart_settle"
+        }
+      );
+      await loadTripData(selectedTrip.id);
+      setPendingSmartSettlement(null);
+      setSmartSettleToast("Settlement marked as paid.");
+    } catch (error) {
+      console.error("Could not mark Smart Settle payment as paid:", error);
+      alert("Could not mark this settlement as paid.");
+    } finally {
+      setSavingSettlement(false);
+    }
   }
 
   async function saveSettlement(data) {
@@ -3111,9 +3541,15 @@ function App() {
       toMemberId: data.toMemberId,
       toMemberName: memberNameOf(data.toMemberId),
       amountEur: amount,
+      currency: extra.currency || selectedTrip.defaultCurrency || "EUR",
+      settlementLayer: extra.settlementLayer || "group",
+      settlementGroupId: extra.settlementGroupId || null,
+      settlementMemberIds: extra.settlementMemberIds || "all",
+      status: extra.status || "paid",
       notes: data.notes || "",
       createdBy: user.uid,
       createdAt: serverTimestamp(),
+      paidAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       ...extra
     });
@@ -3226,6 +3662,52 @@ function App() {
     } catch (error) {
       console.error("Could not delete settlement:", error);
       alert("Could not delete settlement.");
+    }
+  }
+
+  async function copySmartSettleSummary() {
+    const lines = ["TripHisaab Smart Settle Summary", ""];
+    const groupSuggestions = smartSettleSummary.groupSettlement.suggestions;
+    const privateGroups = smartSettleSummary.privateSettlements.filter(
+      group => group.suggestions.length > 0
+    );
+    const totalPending = roundMoney(
+      [...groupSuggestions, ...privateGroups.flatMap(group => group.suggestions)]
+        .reduce((sum, suggestion) => sum + Number(suggestion.amount || 0), 0)
+    );
+
+    lines.push("Group settlement:");
+    if (groupSuggestions.length === 0) {
+      lines.push("No group settlements.");
+    } else {
+      groupSuggestions.forEach((suggestion, index) => {
+        lines.push(
+          `${index + 1}. ${cleanDisplayName(suggestion.fromName)} pays ${cleanDisplayName(suggestion.toName)} ${formatMoney(suggestion.amount)}`
+        );
+      });
+    }
+
+    lines.push("", `Total pending: ${formatMoney(totalPending)}`, "", "Private settlements:");
+    if (privateGroups.length === 0) {
+      lines.push("No private settlements.");
+    } else {
+      privateGroups.forEach(group => {
+        lines.push(`${group.memberNames.map(cleanDisplayName).join(" + ")}:`);
+        group.suggestions.forEach((suggestion, index) => {
+          lines.push(
+            `${index + 1}. ${cleanDisplayName(suggestion.fromName)} pays ${cleanDisplayName(suggestion.toName)} ${formatMoney(suggestion.amount)}`
+          );
+        });
+      });
+    }
+    lines.push("", "Small personal expenses are excluded.");
+
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setSmartSettleToast("Settlement summary copied.");
+    } catch (error) {
+      console.error("Could not copy Smart Settle summary:", error);
+      alert(lines.join("\n"));
     }
   }
 
@@ -3423,7 +3905,7 @@ function App() {
       csvRow([
         "Date", "Time", "Description", "Category", "Expense type", "Split type",
         "Paid by", "Amount EUR", "Original amount", "Original currency",
-        "Payment method", "Rate source", "Split details", "Notes"
+        "Payment method", "Rate source", "Scope", "Visible to", "Split details", "Notes"
       ])
     );
     expenses.forEach(e => {
@@ -3450,6 +3932,12 @@ function App() {
           e.originalCurrency || "EUR",
           e.paymentMethod || "",
           e.ratesSource || "",
+          normalizeExpenseScope(e),
+          e.visibleTo === "all"
+            ? "All"
+            : Array.isArray(e.visibleTo)
+            ? e.visibleTo.map(memberNameOf).join(" | ")
+            : "",
           splitDetails,
           e.notes || ""
         ])
@@ -3478,26 +3966,43 @@ function App() {
     });
     rows.push("");
 
-    rows.push(csvRow(["Suggested Settlements"]));
-    rows.push(csvRow(["From", "To", "Amount EUR"]));
-    if (suggestedSettlements.length === 0) {
-      rows.push(csvRow(["Everyone is settled up", "", ""]));
+    rows.push(csvRow(["Smart Settle Suggestions"]));
+    rows.push(csvRow(["Layer", "Private group", "From", "To", "Amount EUR", "Status"]));
+    if (smartSettleSummary.groupSettlement.suggestions.length === 0) {
+      rows.push(csvRow(["Group", "", "Everyone is settled", "", "", ""]));
     } else {
-      suggestedSettlements.forEach(s => {
-        rows.push(csvRow([s.fromName, s.toName, s.amount.toFixed(2)]));
+      smartSettleSummary.groupSettlement.suggestions.forEach(s => {
+        rows.push(csvRow(["Group", "", s.fromName, s.toName, s.amount.toFixed(2), s.status]));
       });
     }
+    smartSettleSummary.privateSettlements.forEach(group => {
+      group.suggestions.forEach(s => {
+        rows.push(csvRow([
+          "Private",
+          group.memberNames.join(" + "),
+          s.fromName,
+          s.toName,
+          s.amount.toFixed(2),
+          s.status
+        ]));
+      });
+    });
     rows.push("");
 
     rows.push(csvRow(["Settlement History"]));
-    rows.push(csvRow(["Date", "From", "To", "Amount EUR", "Notes"]));
+    rows.push(csvRow(["Date", "Layer", "Private group", "From", "To", "Amount EUR", "Currency", "Status", "Paid At", "Notes"]));
     settlements.forEach(s => {
       rows.push(
         csvRow([
           s.date || "",
+          s.settlementLayer === "private" ? "Private" : "Group",
+          s.settlementGroupId || "",
           s.fromMemberName || memberNameOf(s.fromMemberId),
           s.toMemberName || memberNameOf(s.toMemberId),
           Number(s.amountEur || 0).toFixed(2),
+          s.currency || selectedTrip.defaultCurrency || "EUR",
+          s.status || "paid",
+          s.paidAt?.toDate?.()?.toLocaleString?.() || "",
           s.notes || ""
         ])
       );
@@ -3860,66 +4365,260 @@ function App() {
 
   // -------------------- Render: settlements tab --------------------
   function renderSettlementsTab() {
-    return (
-      <section>
-        <section className="card">
-          <h2>Suggested settlements</h2>
-          {suggestedSettlements.length === 0 ? (
-            <p className="muted">Everyone is settled up.</p>
-          ) : (
-            <div className="settlement-list">
-              {suggestedSettlements.map((s, i) => (
-                <div className="settlement-row" key={i}>
-                  <div>
-                    <strong>{s.fromName}</strong> pays <strong>{s.toName}</strong>
-                    <p className="small muted">
-                      Suggested amount: {formatMoney(s.amount)}
-                    </p>
-                  </div>
-                  {!isDemoMode() ? (
-                  <button
-                    className="primary-button small-button"
-                    type="button"
-                    disabled={savingSettlement}
-                    onClick={() => handleMarkSettlementPaid(s)}
-                  >
-                    Mark paid
-                  </button>
-                  ) : null}
-                </div>
+    const groupSettlement = smartSettleSummary.groupSettlement;
+    const privateSettlements = smartSettleSummary.privateSettlements;
+    const privateGroupsWithSuggestions = privateSettlements.filter(group => group.suggestions.length > 0);
+    const pendingSuggestions = [
+      ...groupSettlement.suggestions,
+      ...privateGroupsWithSuggestions.flatMap(group => group.suggestions)
+    ];
+    const pendingTotal = roundMoney(
+      pendingSuggestions.reduce((sum, suggestion) => sum + Number(suggestion.amount || 0), 0)
+    );
+    const peopleInvolved = new Set();
+    pendingSuggestions.forEach(suggestion => {
+      peopleInvolved.add(suggestion.fromMemberId || suggestion.fromUserId);
+      peopleInvolved.add(suggestion.toMemberId || suggestion.toUserId);
+    });
+    const receiverIds = new Set(groupSettlement.suggestions.map(s => s.toMemberId || s.toUserId));
+    const singleGroupReceiver =
+      groupSettlement.suggestions.length > 0 && receiverIds.size === 1
+        ? groupSettlement.suggestions[0]
+        : null;
+    const groupSettlementSentence = singleGroupReceiver
+      ? `${cleanDisplayName(singleGroupReceiver.toName)} should receive ${formatMoney(
+          groupSettlement.suggestions.reduce((sum, s) => sum + Number(s.amount || 0), 0)
+        )} total.`
+      : `${groupSettlement.suggestions.length} ${
+          groupSettlement.suggestions.length === 1 ? "payment" : "payments"
+        } needed to settle group expenses.`;
+    const hasExpenses = expenses.some(expense => expense.isActive !== false);
+    const summaryCards = [
+      {
+        label: "Pending total",
+        value: formatMoney(pendingTotal),
+        detail: "Needs to be settled",
+        icon: "€",
+        tone: "mint"
+      },
+      {
+        label: "Payments needed",
+        value: pendingSuggestions.length,
+        detail: "Minimum payments",
+        icon: "⇄",
+        tone: "blue"
+      },
+      {
+        label: "People involved",
+        value: peopleInvolved.size,
+        detail: "In this settlement",
+        icon: "👥",
+        tone: "purple"
+      },
+      {
+        label: "Private groups",
+        value: privateGroupsWithSuggestions.length,
+        detail: "With private settlements",
+        icon: "👪",
+        tone: "amber"
+      }
+    ];
+    const renderSuggestionCard = (suggestion, layer, settlementGroupId, balancesForLayer) => {
+      const cardId = `${layer}-${settlementGroupId || "group"}-${suggestion.id}`;
+      const fromBalance = balancesForLayer.find(b => b.memberId === suggestion.fromMemberId);
+      const toBalance = balancesForLayer.find(b => b.memberId === suggestion.toMemberId);
+      const expanded = expandedSmartSettleId === cardId;
+      const fromInitial = cleanDisplayName(suggestion.fromName).slice(0, 1).toUpperCase();
+      return (
+        <div className="smart-settle-row" key={cardId}>
+          <div className="smart-settle-avatar" aria-hidden="true">
+            {fromInitial}
+          </div>
+          <div className="smart-settle-main">
+            <div className="smart-settle-route">
+              <strong>{cleanDisplayName(suggestion.fromName)}</strong>
+              <span aria-hidden="true">→</span>
+              <strong>{cleanDisplayName(suggestion.toName)}</strong>
+            </div>
+            <p className="small muted">
+              {layer === "private" ? "Private settlement" : "Group settlement"}
+            </p>
+          </div>
+          <div className="smart-settle-side">
+            <strong className="smart-settle-amount">{formatMoney(suggestion.amount)}</strong>
+            <span className="pill pending-pill">Pending</span>
+          </div>
+          <div className="settlement-actions">
+            <button
+              className="secondary-button small-button"
+              type="button"
+              onClick={() => setExpandedSmartSettleId(expanded ? "" : cardId)}
+            >
+              ☷ Breakdown
+            </button>
+            {!isDemoMode() ? (
+            <button
+              className="primary-button small-button"
+              type="button"
+              disabled={savingSettlement}
+              onClick={() => setPendingSmartSettlement({ suggestion, layer, settlementGroupId })}
+            >
+              ✓ Mark paid
+            </button>
+            ) : null}
+          </div>
+          {expanded ? (
+            <div className="smart-settle-breakdown">
+              {[fromBalance, toBalance].filter(Boolean).map(balance => (
+                <p className="small muted" key={balance.memberId}>
+                  <strong>{cleanDisplayName(balance.name)}</strong>: paid {formatMoney(balance.paid)}, share {formatMoney(balance.share)}, net {formatMoney(balance.net)}
+                </p>
               ))}
             </div>
-          )}
-        </section>
+          ) : null}
+        </div>
+      );
+    };
 
-        <section className="card">
-          <h2>Settlement history</h2>
+    return (
+      <section className="smart-settle-page">
+        <div className="smart-settle-hero">
+          <div>
+            <h2>Smart Settle</h2>
+            <p className="muted">See who pays whom and settle trip expenses with the fewest payments.</p>
+          </div>
+          <div className="smart-settle-toolbar">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={copySmartSettleSummary}
+            >
+              ⧉ Copy summary
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={tripDataLoading}
+              onClick={() => selectedTrip ? loadTripData(selectedTrip.id) : null}
+            >
+              ↻ Recalculate
+            </button>
+          </div>
+        </div>
+
+        <div className="smart-settle-summary-grid">
+          {summaryCards.map(card => (
+            <div className="smart-summary-card" key={card.label}>
+              <div className={`smart-summary-icon ${card.tone}`}>{card.icon}</div>
+              <div>
+                <span>{card.label}</span>
+                <strong>{card.value}</strong>
+                <p>{card.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {!hasExpenses ? (
+          <section className="card smart-empty-card">
+            <p className="muted">No expenses added yet.</p>
+          </section>
+        ) : (
+          <div className="smart-settle-grid">
+            <section className="card smart-settle-panel group-panel">
+              <div>
+                <h3>Group Settlement</h3>
+                <p className="small muted">Shared expenses visible to everyone.</p>
+              </div>
+              {groupSettlement.suggestions.length > 0 ? (
+                <p className="smart-settle-summary-sentence">
+                  <span aria-hidden="true">✓</span>
+                  {groupSettlementSentence}
+                </p>
+              ) : null}
+              {groupSettlement.suggestions.length === 0 ? (
+                <p className="muted">Everyone is settled for group expenses.</p>
+              ) : (
+                <div className="settlement-list">
+                  {groupSettlement.suggestions.map(suggestion =>
+                    renderSuggestionCard(suggestion, "group", null, groupSettlement.balances)
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section className="card smart-settle-panel private-panel">
+              <div>
+                <h3>Private Settlements</h3>
+                <p className="small muted">Settlements only visible to selected members.</p>
+              </div>
+              {privateGroupsWithSuggestions.length === 0 ? (
+                <div className="private-empty-state">
+                  <div className="private-empty-icon" aria-hidden="true">
+                    <span>👥</span>
+                    <small>🔒</small>
+                  </div>
+                  <h4>No private settlements yet.</h4>
+                  <p className="muted">
+                    Private settlements appear here for expenses shared only with selected members, like couples, families, or sub-groups.
+                  </p>
+                </div>
+              ) : (
+                <div className="private-settlement-list">
+                  {privateGroupsWithSuggestions.map(group => (
+                    <div className="private-settlement-group" key={group.settlementGroupId}>
+                      <h4>{group.memberNames.map(cleanDisplayName).join(" + ")}</h4>
+                      <p className="small muted">Total shared privately: {formatMoney(group.totalSpent)}</p>
+                      <div className="settlement-list">
+                        {group.suggestions.map(suggestion =>
+                          renderSuggestionCard(
+                            suggestion,
+                            "private",
+                            group.settlementGroupId,
+                            group.balances
+                          )
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        <section className="card smart-settle-panel">
+          <h2>Settlement History</h2>
           {settlements.length === 0 ? (
-            <p className="muted">No settlements recorded yet.</p>
+            <p className="muted">No settlements recorded yet. Paid settlements will appear here.</p>
           ) : (
-            <div className="settlement-list">
+            <div className="settlement-history-list">
               {settlements.map(s => (
-                <div className="settlement-row" key={s.id}>
+                <div className="settlement-history-row" key={s.id}>
+                  <span className="history-check" aria-hidden="true">✓</span>
+                  <div className="smart-settle-avatar history-avatar" aria-hidden="true">
+                    {cleanDisplayName(s.fromMemberName || memberNameOf(s.fromMemberId)).slice(0, 1).toUpperCase()}
+                  </div>
                   <div>
                     <strong>
-                      {s.fromMemberName || memberNameOf(s.fromMemberId)}
-                    </strong>{" "}
-                    paid{" "}
-                    <strong>
-                      {s.toMemberName || memberNameOf(s.toMemberId)}
+                      {cleanDisplayName(s.fromMemberName || memberNameOf(s.fromMemberId))}
+                      {" → "}
+                      {cleanDisplayName(s.toMemberName || memberNameOf(s.toMemberId))}
                     </strong>
-                    <p className="small muted">
-                      {s.date} · {formatMoney(s.amountEur)}
-                    </p>
-                    {s.notes ? <p className="small muted">{s.notes}</p> : null}
+                    <p className="small muted">{s.notes || "Settlement payment"}</p>
                   </div>
+                  <strong className="history-amount">{formatMoney(s.amountEur)}</strong>
+                  <span className="pill paid-pill">Paid</span>
+                  <p className="small muted history-date">
+                    Paid on {s.paidAt?.toDate?.()?.toLocaleString?.() || s.date || "recorded date"}
+                  </p>
                   {!isDemoMode() ? (
                   <button
-                    className="danger-button small-button"
+                    className="secondary-button small-button"
                     type="button"
                     onClick={() => handleDeleteSettlement(s)}
                   >
-                    Delete
+                    View details
                   </button>
                   ) : null}
                 </div>
@@ -3927,20 +4626,6 @@ function App() {
             </div>
           )}
         </section>
-
-        {!isDemoMode() ? (
-        <button
-          className="primary-button"
-          type="button"
-          onClick={() => {
-            resetSettlementForm();
-            setIsSettlementModalOpen(true);
-          }}
-        >
-          Settle Up
-        </button>
-        ) : null}
-
       </section>
     );
   }
@@ -3971,6 +4656,34 @@ function App() {
 
     const userInitial = (user?.displayName || user?.email || "?")[0].toUpperCase();
     const demoMode = isDemoMode();
+    const spendingBreakdown = categories
+      .map((category, index) => {
+        const actual = actualByCategoryId.get(category.id) || 0;
+        return {
+          ...category,
+          actual,
+          color: category.color || [
+            "#0f766e",
+            "#2563eb",
+            "#7c3aed",
+            "#ea580c",
+            "#16a34a",
+            "#db2777"
+          ][index % 6]
+        };
+      })
+      .filter(category => category.actual > 0);
+    let breakdownCursor = 0;
+    const breakdownGradient = spendingBreakdown.length > 0
+      ? spendingBreakdown
+          .map(category => {
+            const start = breakdownCursor;
+            const end = breakdownCursor + (category.actual / totals.actual) * 100;
+            breakdownCursor = end;
+            return `${category.color} ${start}% ${end}%`;
+          })
+          .join(", ")
+      : "#e5e7eb 0% 100%";
 
     const navItems = [
       { key: "dashboard", label: "Trip Overview", icon: "⊞" },
@@ -4227,13 +4940,6 @@ function App() {
                       <h3>Balances</h3>
                       <p className="dash-card-sub">Who owes who?</p>
                     </div>
-                    <button
-                      className="secondary-button small-button"
-                      type="button"
-                      onClick={() => { resetSettlementForm(); setIsSettlementModalOpen(true); }}
-                    >
-                      + Settle Up
-                    </button>
                   </div>
                   {balances.length === 0 ? (
                     <p className="muted small">No members yet.</p>
@@ -4319,28 +5025,34 @@ function App() {
               </div>
 
               {/* Row 3: Category breakdown */}
-              {categories.length > 0 && (
+              {spendingBreakdown.length > 0 && (
                 <div className="dash-card breakdown-card">
                   <h3>Where your money goes</h3>
-                  <p className="dash-card-sub">Category breakdown</p>
-                  <div className="breakdown-items">
-                    {categories.map(c => {
-                      const actual = actualByCategoryId.get(c.id) || 0;
-                      const pct = totals.actual > 0
-                        ? Math.min(100, Math.round((actual / totals.actual) * 100))
-                        : 0;
-                      return (
-                        <div className="breakdown-item" key={c.id}>
-                          <div className="breakdown-cat-icon">{c.icon}</div>
-                          <div className="breakdown-cat-name">{c.name}</div>
-                          <div className="breakdown-bar-wrap">
-                            <div className="breakdown-bar-fill" style={{ width: `${pct}%` }} />
+                  <p className="dash-card-sub">Spending by category</p>
+                  <div className="breakdown-ring-layout">
+                    <div
+                      className="breakdown-ring"
+                      style={{ background: `conic-gradient(${breakdownGradient})` }}
+                      aria-label="Spending category chart"
+                    >
+                      <div className="breakdown-ring-center">
+                        <span>Total</span>
+                        <strong>{formatMoney(totals.actual)}</strong>
+                      </div>
+                    </div>
+                    <div className="breakdown-items">
+                      {spendingBreakdown.map(c => {
+                        const pct = Math.max(1, Math.round((c.actual / totals.actual) * 100));
+                        return (
+                          <div className="breakdown-item" key={c.id}>
+                            <div className="breakdown-cat-icon" style={{ color: c.color }}>{c.icon}</div>
+                            <div className="breakdown-cat-name">{c.name}</div>
+                            <div className="breakdown-amount">{formatMoney(c.actual)}</div>
+                            <div className="breakdown-pct">{pct}%</div>
                           </div>
-                          <div className="breakdown-amount">{formatMoney(actual)}</div>
-                          <div className="breakdown-pct">{pct}%</div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
@@ -5335,6 +6047,58 @@ function App() {
           </div>
         ) : null}
 
+        {smartSettleToast ? (
+          <div className="smart-settle-toast" role="status">
+            {smartSettleToast}
+          </div>
+        ) : null}
+
+        <Modal
+          isOpen={Boolean(pendingSmartSettlement)}
+          onClose={() => setPendingSmartSettlement(null)}
+          title="Mark this settlement as paid?"
+        >
+          <div className="modal-body">
+            {pendingSmartSettlement ? (
+              <div className="confirm-settlement-card">
+                <p>
+                  <strong>{cleanDisplayName(pendingSmartSettlement.suggestion.fromName)}</strong>{" "}
+                  will pay{" "}
+                  <strong>{cleanDisplayName(pendingSmartSettlement.suggestion.toName)}</strong>.
+                </p>
+                <strong className="confirm-settlement-amount">
+                  {formatMoney(pendingSmartSettlement.suggestion.amount)}
+                </strong>
+              </div>
+            ) : null}
+          </div>
+          <footer className="modal-footer">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setPendingSmartSettlement(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={savingSettlement || !pendingSmartSettlement}
+              onClick={() =>
+                pendingSmartSettlement
+                  ? handleMarkSmartSettlementPaid(
+                      pendingSmartSettlement.suggestion,
+                      pendingSmartSettlement.layer,
+                      pendingSmartSettlement.settlementGroupId
+                    )
+                  : null
+              }
+            >
+              {savingSettlement ? "Saving..." : "Mark as paid"}
+            </button>
+          </footer>
+        </Modal>
+
         {/* Add expense modal */}
         <Modal
           isOpen={isAddExpenseModalOpen}
@@ -5533,7 +6297,7 @@ function App() {
         <Modal
           isOpen={isSettlementModalOpen}
           onClose={() => setIsSettlementModalOpen(false)}
-          title="Settle Up"
+          title="Record settlement"
         >
           <form className="modal-form" onSubmit={handleRecordSettlement}>
             <div className="modal-body">
@@ -5623,7 +6387,7 @@ function App() {
                 type="submit"
                 disabled={savingSettlement}
               >
-                {savingSettlement ? "Settling..." : "Settle Up"}
+                {savingSettlement ? "Saving..." : "Record settlement"}
               </button>
             </footer>
           </form>
@@ -5660,7 +6424,14 @@ function App() {
                 <button
                   className="primary-button landing-google"
                   type="button"
-                  onClick={() => setShowLanding(false)}
+                  onClick={() => {
+                    setShowLanding(false);
+                    try {
+                      localStorage.setItem(APP_VIEW_STORAGE_KEY, "app");
+                    } catch {
+                      /* localStorage unavailable */
+                    }
+                  }}
                 >
                   {user.photoURL ? <img src={user.photoURL} alt="" /> : null}
                   Continue as {displayName}

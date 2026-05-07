@@ -86,6 +86,77 @@ service cloud.firestore {
         );
     }
 
+    function isGroupExpense(data) {
+      return !data.keys().hasAny(["scope"])
+        || data.scope == "group"
+        || data.visibleTo == "all"
+        || data.countsTowardGroupSettlement == true;
+    }
+
+    function canReadExpense(tripId, data) {
+      return isOwner(tripId)
+        || isGroupExpense(data)
+        || (
+          data.keys().hasAny(["visibleTo"])
+          && data.visibleTo is list
+          && data.visibleTo.hasAny(requestMemberKeys())
+        );
+    }
+
+    function canWriteExpense(data) {
+      return !data.keys().hasAny(["scope"])
+        || (
+          data.scope in ["group", "selected_members", "personal"]
+          && (
+            data.visibleTo == "all"
+            || (
+              data.visibleTo is list
+              && data.visibleTo.hasAny(requestMemberKeys())
+            )
+          )
+          && (
+            data.scope != "group"
+            || data.visibleTo == "all"
+            || data.countsTowardGroupSettlement == true
+          )
+        );
+    }
+
+    function isGroupSettlement(data) {
+      return !data.keys().hasAny(["settlementLayer"])
+        || data.settlementLayer == "group"
+        || data.settlementMemberIds == "all";
+    }
+
+    function canReadSettlement(tripId, data) {
+      return isOwner(tripId)
+        || isGroupSettlement(data)
+        || (
+          data.keys().hasAny(["settlementMemberIds"])
+          && data.settlementMemberIds is list
+          && data.settlementMemberIds.hasAny(requestMemberKeys())
+        )
+        || data.fromMemberId in requestMemberKeys()
+        || data.toMemberId in requestMemberKeys();
+    }
+
+    function canWriteSettlement(data) {
+      return !data.keys().hasAny(["settlementLayer"])
+        || (
+          data.settlementLayer in ["group", "private"]
+          && data.status in ["pending", "paid", "cancelled"]
+          && (
+            data.settlementMemberIds == "all"
+            || (
+              data.settlementMemberIds is list
+              && data.settlementMemberIds.hasAny(requestMemberKeys())
+            )
+            || data.fromMemberId in requestMemberKeys()
+            || data.toMemberId in requestMemberKeys()
+          )
+        );
+    }
+
     function isSelfUser(userId) {
       return signedIn() && request.auth.uid == userId;
     }
@@ -142,13 +213,21 @@ service cloud.firestore {
       }
 
       match /expenses/{expenseId} {
-        allow get, list: if canReadTrip(tripId);
-        allow create, update, delete: if canReadTrip(tripId);
+        allow get, list: if canReadTrip(tripId) && canReadExpense(tripId, resource.data);
+        allow create: if canReadTrip(tripId) && canWriteExpense(request.resource.data);
+        allow update: if canReadTrip(tripId)
+          && canReadExpense(tripId, resource.data)
+          && canWriteExpense(request.resource.data);
+        allow delete: if canReadTrip(tripId) && canReadExpense(tripId, resource.data);
       }
 
       match /settlements/{settlementId} {
-        allow get, list: if canReadTrip(tripId);
-        allow create, update, delete: if canReadTrip(tripId);
+        allow get, list: if canReadTrip(tripId) && canReadSettlement(tripId, resource.data);
+        allow create: if canReadTrip(tripId) && canWriteSettlement(request.resource.data);
+        allow update: if canReadTrip(tripId)
+          && canReadSettlement(tripId, resource.data)
+          && canWriteSettlement(request.resource.data);
+        allow delete: if canReadTrip(tripId) && canReadSettlement(tripId, resource.data);
       }
 
       match /notifications/{notificationId} {
