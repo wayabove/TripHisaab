@@ -3584,11 +3584,60 @@ p {
 }
 
 .dash-row-2col {
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr 1fr;
 }
 
 .dash-row-3col {
   grid-template-columns: repeat(3, 1fr);
+}
+
+.dash-row-budget {
+  grid-template-columns: 2fr 1fr;
+}
+
+/* ---- Stat summary row ---- */
+.dash-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.dash-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.dash-stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.dash-stat-label {
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+
+.dash-stat-value {
+  font-size: 18px;
+  font-weight: var(--weight-black);
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 .dash-card {
@@ -3632,7 +3681,7 @@ p {
 
 .budget-card {
   display: flex;
-  gap: 22px;
+  gap: 24px;
   align-items: center;
 }
 
@@ -3704,6 +3753,46 @@ p {
   color: var(--text);
 }
 
+.budget-progress-track {
+  height: 8px;
+  background: var(--border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.budget-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width 600ms ease;
+}
+
+.budget-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.budget-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.budget-legend-item span:nth-child(2) { flex: 1; }
+
+.budget-legend-item strong { font-weight: var(--weight-bold); color: var(--text); }
+
+.budget-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .budget-message {
   padding: 9px 14px;
   background: var(--primary-soft);
@@ -3713,7 +3802,48 @@ p {
   font-weight: 650;
 }
 
-/* ---- Quick Add card ---- */
+/* ---- Quick actions card ---- */
+
+.dash-quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.dash-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  color: var(--text-secondary);
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+  text-align: center;
+}
+
+.dash-action-btn:hover {
+  border-color: var(--primary);
+  background: var(--primary-muted);
+  color: var(--primary-dark);
+}
+
+.dash-action-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}
+
+/* ---- Quick Add card (legacy, kept for demo mode) ---- */
 
 .quick-add-card {
   display: flex;
@@ -3902,6 +4032,145 @@ p {
   padding: 10px 12px;
   background: #f3e8ff;
   border-radius: 12px;
+}
+
+/* ---- Settlement snapshot strip ---- */
+.settle-snapshot-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--primary-muted);
+  border: 1px solid var(--primary-soft);
+  border-radius: var(--radius-sm);
+}
+
+.settle-snapshot-strip-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.settle-snapshot-strip-body { flex: 1; min-width: 0; }
+
+.settle-snapshot-strip-title {
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  color: var(--primary-dark);
+}
+
+.settle-snapshot-strip-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- Trip progress (redesigned) ---- */
+.progress-track-lg {
+  height: 8px;
+  margin: 14px 0;
+}
+
+.progress-dates-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.progress-date-block { text-align: center; }
+
+/* ---- Group snapshot ---- */
+.dash-group-avatars {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.dash-group-member {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.dash-group-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  background-position: center;
+  background-size: cover;
+  color: var(--primary-dark);
+  display: grid;
+  place-items: center;
+  font-weight: var(--weight-black);
+  font-size: 16px;
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 2px var(--border);
+}
+
+.dash-group-avatar.has-image { color: transparent; }
+
+.dash-group-more {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  border: 1.5px dashed var(--border);
+  box-shadow: none;
+}
+
+.dash-group-name {
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  color: var(--muted);
+  text-align: center;
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- At a glance ---- */
+.dash-glance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dash-glance-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.dash-glance-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  font-weight: var(--weight-black);
+}
+
+.dash-glance-icon.success { background: var(--success-soft); color: var(--success); }
+.dash-glance-icon.danger  { background: var(--danger-soft);  color: var(--danger);  }
+.dash-glance-icon.info    { background: var(--info-soft);    color: var(--info);    }
+.dash-glance-icon.primary { background: var(--primary-muted); color: var(--primary); }
+
+.dash-glance-title {
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  color: var(--text);
+  margin-bottom: 1px;
+}
+
+.dash-glance-sub {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 /* ---- Recent activity ---- */
@@ -4171,6 +4440,14 @@ p {
   .dash-row-3col {
     grid-template-columns: 1fr 1fr;
   }
+
+  .dash-stats-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dash-row-budget {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ============================================================
@@ -4327,13 +4604,58 @@ p {
   }
 
   .dash-row-2col,
-  .dash-row-3col {
+  .dash-row-3col,
+  .dash-row-budget {
     grid-template-columns: 1fr;
+  }
+
+  .dash-stats-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .dash-stat-card {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .dash-stat-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .dash-stat-value {
+    font-size: 15px;
   }
 
   .budget-card {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .settle-snapshot-strip {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settle-snapshot-strip .primary-button {
+    width: 100%;
+  }
+
+  .dash-quick-actions {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .dash-action-btn {
+    padding: 10px 6px;
+    font-size: 11px;
+  }
+
+  .dash-action-icon {
+    width: 34px;
+    height: 34px;
+    font-size: 16px;
   }
 
   .tab-page-content {

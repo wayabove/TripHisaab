@@ -5643,20 +5643,56 @@ function App() {
               ) : null}
               <h1 className="trip-hero-title">{selectedTrip.name}</h1>
               <div className="trip-hero-dates">
-                📅 {selectedTrip.startDate} → {selectedTrip.endDate}
+                📅 {selectedTrip.startDate} – {selectedTrip.endDate}
               </div>
             </div>
 
             <div className="dashboard-content">
-              {/* Row 1: Budget card + Quick Add */}
-              <div className="dash-row dash-row-2col">
+
+              {/* ── Stat summary row ── */}
+              <div className="dash-stats-row">
+                <div className="dash-stat-card">
+                  <div className="dash-stat-icon" style={{ background: "var(--primary-muted)", color: "var(--primary)" }}>💼</div>
+                  <div>
+                    <div className="dash-stat-label">Planned Budget</div>
+                    <div className="dash-stat-value">{formatMoney(totals.predicted)}</div>
+                  </div>
+                </div>
+                <div className="dash-stat-card">
+                  <div className="dash-stat-icon" style={{ background: "var(--info-soft)", color: "var(--info)" }}>💳</div>
+                  <div>
+                    <div className="dash-stat-label">Total Spent</div>
+                    <div className="dash-stat-value">{formatMoney(totals.actual)}</div>
+                  </div>
+                </div>
+                <div className="dash-stat-card">
+                  <div className="dash-stat-icon" style={{ background: remaining >= 0 ? "var(--success-soft)" : "var(--danger-soft)", color: remaining >= 0 ? "var(--success)" : "var(--danger)" }}>🎯</div>
+                  <div>
+                    <div className="dash-stat-label">Remaining Budget</div>
+                    <div className={`dash-stat-value ${remaining >= 0 ? "positive" : "negative"}`}>
+                      {remaining >= 0 ? formatMoney(remaining) : "–" + formatMoney(Math.abs(remaining))}
+                    </div>
+                  </div>
+                </div>
+                <div className="dash-stat-card">
+                  <div className="dash-stat-icon" style={{ background: "#f3e8ff", color: "#7c3aed" }}>📅</div>
+                  <div>
+                    <div className="dash-stat-label">Trip Duration</div>
+                    <div className="dash-stat-value">{totalDays} days</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Row 1: Budget overview + Quick actions ── */}
+              <div className="dash-row dash-row-budget">
                 <div className="dash-card budget-card">
                   <div className="budget-donut-wrap">
                     <svg width="130" height="130" viewBox="0 0 130 130">
                       <circle cx="65" cy="65" r={r} fill="none" stroke="#e5e7eb" strokeWidth="12" />
                       <circle
                         cx="65" cy="65" r={r} fill="none"
-                        stroke="var(--primary)" strokeWidth="12"
+                        stroke={budgetPct >= 100 ? "var(--danger)" : budgetPct >= 80 ? "var(--warning)" : "var(--primary)"}
+                        strokeWidth="12"
                         strokeDasharray={`${dashFill} ${circ}`}
                         strokeLinecap="round"
                         transform="rotate(-90, 65, 65)"
@@ -5664,116 +5700,82 @@ function App() {
                     </svg>
                     <div className="budget-donut-label">
                       <span className="budget-donut-pct">{budgetPct}%</span>
-                      <span className="budget-donut-sub">of budget<br/>spent</span>
+                      <span className="budget-donut-sub">of budget<br/>used</span>
                     </div>
                   </div>
                   <div className="budget-stats">
-                    <div className="budget-stat-row">
-                      <div className="budget-stat">
-                        <span className="budget-stat-label">Plan Budget</span>
-                        <span className="budget-stat-value">{formatMoney(totals.predicted)}</span>
+                    <div className="budget-progress-track">
+                      <div
+                        className="budget-progress-fill"
+                        style={{
+                          width: `${Math.min(100, budgetPct)}%`,
+                          background: budgetPct >= 100 ? "var(--danger)" : budgetPct >= 80 ? "var(--warning)" : "var(--primary)"
+                        }}
+                      />
+                    </div>
+                    <div className="budget-legend">
+                      <div className="budget-legend-item">
+                        <span className="budget-legend-dot" style={{ background: budgetPct >= 100 ? "var(--danger)" : "var(--primary)" }} />
+                        <span>Budget used</span>
+                        <strong>{budgetPct}%</strong>
                       </div>
-                      <div className="budget-stat">
-                        <span className="budget-stat-label">Spent</span>
-                        <span className="budget-stat-value">{formatMoney(totals.actual)}</span>
+                      <div className="budget-legend-item">
+                        <span className="budget-legend-dot" style={{ background: "var(--info)" }} />
+                        <span>Spent</span>
+                        <strong>{formatMoney(totals.actual)}</strong>
                       </div>
-                      <div className="budget-stat">
-                        <span className="budget-stat-label">Remaining</span>
-                        <span className={`budget-stat-value ${remaining >= 0 ? "positive" : "negative"}`}>
-                          {remaining >= 0 ? formatMoney(remaining) : "-" + formatMoney(Math.abs(remaining))}
-                        </span>
+                      <div className="budget-legend-item">
+                        <span className="budget-legend-dot" style={{ background: "#34d399" }} />
+                        <span>Remaining</span>
+                        <strong className={remaining >= 0 ? "positive" : "negative"}>
+                          {remaining >= 0 ? formatMoney(remaining) : "–" + formatMoney(Math.abs(remaining))}
+                        </strong>
                       </div>
-                      {visiblePlanTotal > totals.predicted ? (
-                      <div className="budget-stat">
-                        <span className="budget-stat-label">Your visible plan</span>
-                        <span className="budget-stat-value">{formatMoney(visiblePlanTotal)}</span>
-                      </div>
-                      ) : null}
                     </div>
                     <div className="budget-message">{budgetMsg}</div>
                   </div>
                 </div>
 
-                {!demoMode ? (
-                <div className="dash-card quick-add-card">
-                  <button
-                    className="quick-add-btn"
-                    type="button"
-                    onClick={() => openFastExpenseModal()}
-                  >
-                    <div className="quick-add-circle">+</div>
-                    <div>
-                      <div className="quick-add-title">+ Add expense</div>
-                      <div className="small muted">Snap it. Track it. Done.</div>
-                    </div>
-                  </button>
-                  <div className="quick-add-chips">
-                    {activeCategories.slice(0, 4).map(c => (
-                      <button
-                        key={c.id}
-                        className="quick-add-chip"
-                        type="button"
-                          onClick={() => openFastExpenseModal({ categoryId: c.id })}
-                      >
-                        {c.icon} {c.name}
-                      </button>
-                    ))}
+                <div className="dash-card">
+                  <h3>Quick actions</h3>
+                  <p className="dash-card-sub">Jump to what you need</p>
+                  <div className="dash-quick-actions">
+                    {!demoMode ? (
+                    <button className="dash-action-btn" type="button" onClick={() => openFastExpenseModal()}>
+                      <div className="dash-action-icon" style={{ background: "#fff7ed", color: "#ea580c" }}>➕</div>
+                      <span>Add Expense</span>
+                    </button>
+                    ) : null}
+                    <button className="dash-action-btn" type="button" onClick={() => setActiveTab("prediction")}>
+                      <div className="dash-action-icon" style={{ background: "var(--info-soft)", color: "var(--info)" }}>📊</div>
+                      <span>Add Budget</span>
+                    </button>
+                    <button className="dash-action-btn" type="button" onClick={() => setActiveTab("settlements")}>
+                      <div className="dash-action-icon" style={{ background: "var(--warning-soft)", color: "var(--warning)" }}>🤝</div>
+                      <span>View Settlements</span>
+                    </button>
+                    <button className="dash-action-btn" type="button" onClick={() => setActiveTab("categories")}>
+                      <div className="dash-action-icon" style={{ background: "#f3e8ff", color: "#7c3aed" }}>🏷️</div>
+                      <span>Add Category</span>
+                    </button>
                   </div>
                 </div>
-                ) : (
-                <div className="dash-card quick-add-card">
-                  <div className="quick-add-title">Demo trip</div>
-                  <div className="small muted">Explore Plan Budget, Expenses, balances, and CSV export with sample Norway expenses.</div>
-                </div>
-                )}
               </div>
 
-              {/* Row 2: Trip progress + Balances + Recent activity */}
-              <div className="dash-row dash-row-3col">
+              {/* ── Row 2: Settlement snapshot + Recent expenses ── */}
+              <div className="dash-row dash-row-2col">
                 <div className="dash-card">
-                  <h3>Trip progress 🚗</h3>
-                  <p className="dash-card-sub">
-                    {daysLeft > 0 ? "Still plenty of road ahead 🌴" : "Trip has ended 🏁"}
-                  </p>
-                  <div className="progress-days">
-                    <div className="progress-day-block">
-                      <div className="progress-day-num">{daysIn}</div>
-                      <div className="progress-day-label">day{daysIn !== 1 ? "s" : ""} in</div>
-                    </div>
-                    <div className="progress-day-divider" />
-                    <div className="progress-day-block">
-                      <div className="progress-day-num highlight">{daysLeft}</div>
-                      <div className="progress-day-label">day{daysLeft !== 1 ? "s" : ""} left</div>
-                    </div>
-                  </div>
-                  <div className="progress-track">
-                    <div
-                      className="progress-track-fill"
-                      style={{ width: `${Math.min(100, Math.round((daysIn / totalDays) * 100))}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="dash-card">
-                  <div className="dash-card-header">
-                    <div>
-                      <h3>Balances</h3>
-                      <p className="dash-card-sub">Who owes who?</p>
-                    </div>
-                  </div>
+                  <h3>Settlement snapshot</h3>
+                  <p className="dash-card-sub">Who owes whom?</p>
                   {balances.length === 0 ? (
                     <p className="muted small">No members yet.</p>
                   ) : (
                     <>
-                      {balances.slice(0, 3).map(b => (
+                      {balances.slice(0, 4).map(b => (
                         <div className="dash-balance-item" key={b.memberId}>
                           <div
                             className={`dash-balance-avatar${memberImageOf(b) ? " has-image" : ""}`}
-                            style={
-                              memberImageOf(b)
-                                ? { backgroundImage: `url(${memberImageOf(b)})` }
-                                : undefined
-                            }
+                            style={memberImageOf(b) ? { backgroundImage: `url(${memberImageOf(b)})` } : undefined}
                           >
                             {!memberImageOf(b) ? memberInitialOf(b) : null}
                           </div>
@@ -5784,28 +5786,26 @@ function App() {
                             </div>
                           </div>
                           <div className={`dash-balance-amount ${b.net >= 0.01 ? "positive" : b.net <= -0.01 ? "negative" : ""}`}>
-                            {b.net >= 0 ? "+" : "-"}{formatMoney(Math.abs(b.net))}
+                            {b.net >= 0 ? "+" : "–"}{formatMoney(Math.abs(b.net))}
                           </div>
                         </div>
                       ))}
                       {suggestedSettlements.length > 0 && (
-                        <div className="suggested-strip">
-                          <div>
-                            <div className="small" style={{ fontWeight: 700 }}>💜 Suggested settlement</div>
-                            <div className="small muted">
+                        <div className="settle-snapshot-strip">
+                          <div className="settle-snapshot-strip-icon">✨</div>
+                          <div className="settle-snapshot-strip-body">
+                            <div className="settle-snapshot-strip-title">Suggested settlement</div>
+                            <div className="settle-snapshot-strip-sub">
                               {suggestedSettlements[0].fromName} pays {suggestedSettlements[0].toName} {formatMoney(suggestedSettlements[0].amount)}
                             </div>
                           </div>
-                          {!demoMode ? (
                           <button
                             className="primary-button small-button"
                             type="button"
-                            disabled={savingSettlement}
-                            onClick={() => handleMarkSettlementPaid(suggestedSettlements[0])}
+                            onClick={() => setActiveTab("settlements")}
                           >
-                            Mark paid
+                            Open Smart Settle
                           </button>
-                          ) : null}
                         </div>
                       )}
                     </>
@@ -5813,42 +5813,141 @@ function App() {
                 </div>
 
                 <div className="dash-card">
-                  <h3>Recent activity</h3>
-                  <p className="dash-card-sub">Latest expenses</p>
+                  <div className="dash-card-header">
+                    <div>
+                      <h3>Recent expenses</h3>
+                      <p className="dash-card-sub">Latest transactions</p>
+                    </div>
+                    <button className="link-button" style={{ fontSize: "13px", whiteSpace: "nowrap" }} type="button" onClick={() => setActiveTab("actual")}>
+                      View all →
+                    </button>
+                  </div>
                   {expenses.length === 0 ? (
                     <p className="muted small">No expenses yet.</p>
                   ) : (
-                    <>
-                      {expenses.slice(0, 3).map(e => (
-                        <div className="dash-activity-item" key={e.id}>
-                          <div className="dash-activity-icon">{e.categoryIcon || "💸"}</div>
-                          <div className="dash-activity-info">
-                            <div className="dash-activity-name">{e.categoryName}</div>
-                            <div className="dash-activity-meta">
-                              Paid by {memberNameOf(e.paidByMemberId)} · {e.date}
-                            </div>
+                    expenses.slice(0, 5).map(e => (
+                      <div className="dash-activity-item" key={e.id}>
+                        <div className="dash-activity-icon">{e.categoryIcon || "💸"}</div>
+                        <div className="dash-activity-info">
+                          <div className="dash-activity-name">{e.description || e.categoryName}</div>
+                          <div className="dash-activity-meta">
+                            Paid by {memberNameOf(e.paidByMemberId)} · {e.date}
                           </div>
-                          <div className="dash-activity-amount">{formatMoney(e.amountEur)}</div>
                         </div>
-                      ))}
-                      <button
-                        className="link-button"
-                        style={{ marginTop: "8px", fontSize: "13px" }}
-                        type="button"
-                        onClick={() => setActiveTab("actual")}
-                      >
-                        View all activity →
-                      </button>
-                    </>
+                        <div className="dash-activity-amount">{formatMoney(e.amountEur)}</div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
 
-              {/* Row 3: Category breakdown */}
+              {/* ── Row 3: Trip progress + Group snapshot + At a glance ── */}
+              <div className="dash-row dash-row-3col">
+
+                <div className="dash-card">
+                  <h3>Trip progress</h3>
+                  <p className="dash-card-sub">{daysLeft > 0 ? "We're on track! Enjoy the journey 🎉" : "Trip has ended 🏁"}</p>
+                  <div className="progress-track progress-track-lg">
+                    <div
+                      className="progress-track-fill"
+                      style={{ width: `${Math.min(100, Math.round((daysIn / totalDays) * 100))}%` }}
+                    />
+                  </div>
+                  <div className="progress-dates-row">
+                    <div className="progress-date-block">
+                      <div className="progress-day-num">{daysIn}</div>
+                      <div className="progress-day-label">Days completed</div>
+                    </div>
+                    <div className="progress-date-block">
+                      <div className="progress-day-num highlight">{daysLeft}</div>
+                      <div className="progress-day-label">Days remaining</div>
+                    </div>
+                    <div className="progress-date-block">
+                      <div className="progress-day-num" style={{ fontSize: "14px", letterSpacing: 0 }}>{selectedTrip.endDate}</div>
+                      <div className="progress-day-label">Trip ends</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="dash-card">
+                  <h3>Group snapshot</h3>
+                  <p className="dash-card-sub">{activeMembers.length} member{activeMembers.length !== 1 ? "s" : ""}</p>
+                  <div className="dash-group-avatars">
+                    {activeMembers.slice(0, 5).map(m => (
+                      <div key={m.id} className="dash-group-member">
+                        <div
+                          className={`dash-group-avatar${memberImageOf(m) ? " has-image" : ""}`}
+                          style={memberImageOf(m) ? { backgroundImage: `url(${memberImageOf(m)})` } : undefined}
+                        >
+                          {!memberImageOf(m) ? memberInitialOf(m) : null}
+                        </div>
+                        <div className="dash-group-name">
+                          {(m.displayName || m.name || m.email || "").split(" ")[0]}
+                        </div>
+                      </div>
+                    ))}
+                    {activeMembers.length > 5 && (
+                      <div className="dash-group-member">
+                        <div className="dash-group-avatar dash-group-more">+{activeMembers.length - 5}</div>
+                        <div className="dash-group-name">more</div>
+                      </div>
+                    )}
+                  </div>
+                  <button className="secondary-button small-button" style={{ marginTop: "14px", width: "100%" }} type="button" onClick={() => setActiveTab("members")}>
+                    View all members
+                  </button>
+                </div>
+
+                <div className="dash-card">
+                  <h3>At a glance</h3>
+                  <div className="dash-glance-list">
+                    <div className="dash-glance-item">
+                      <div className={`dash-glance-icon ${remaining >= 0 ? "success" : "danger"}`}>
+                        {remaining >= 0 ? "✓" : "!"}
+                      </div>
+                      <div>
+                        <div className="dash-glance-title">{remaining >= 0 ? "On budget" : "Over budget"}</div>
+                        <div className="dash-glance-sub">
+                          {remaining >= 0 ? `You're ${formatMoney(remaining)} under budget` : `${formatMoney(Math.abs(remaining))} over budget`}
+                        </div>
+                      </div>
+                    </div>
+                    {totals.actual > 0 && daysIn > 0 && (
+                      <div className="dash-glance-item">
+                        <div className="dash-glance-icon info">📊</div>
+                        <div>
+                          <div className="dash-glance-title">Keep it balanced</div>
+                          <div className="dash-glance-sub">Average spend per day: {formatMoney(totals.actual / daysIn)}</div>
+                        </div>
+                      </div>
+                    )}
+                    {suggestedSettlements.length > 0 && (
+                      <div className="dash-glance-item">
+                        <div className="dash-glance-icon primary">🤝</div>
+                        <div>
+                          <div className="dash-glance-title">Smart settle available</div>
+                          <div className="dash-glance-sub">{suggestedSettlements.length} suggested settlement{suggestedSettlements.length !== 1 ? "s" : ""}</div>
+                        </div>
+                      </div>
+                    )}
+                    {totals.actual === 0 && (
+                      <div className="dash-glance-item">
+                        <div className="dash-glance-icon info">🌍</div>
+                        <div>
+                          <div className="dash-glance-title">Ready to track</div>
+                          <div className="dash-glance-sub">Add your first expense to get started</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Row 4: Spending by category ── */}
               {spendingBreakdown.length > 0 && (
                 <div className="dash-card breakdown-card">
-                  <h3>Where your money goes</h3>
-                  <p className="dash-card-sub">Spending by category</p>
+                  <h3>Spending by category</h3>
+                  <p className="dash-card-sub">Where your money goes</p>
                   <div className="breakdown-ring-layout">
                     <div
                       className="breakdown-ring"
@@ -5876,6 +5975,7 @@ function App() {
                   </div>
                 </div>
               )}
+
             </div>
           </>
         ) : null}
