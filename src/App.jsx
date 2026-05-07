@@ -729,6 +729,165 @@ function Modal({ isOpen, onClose, title, children }) {
   );
 }
 
+function parseIsoDateParts(isoDate) {
+  const [year, month, day] = String(isoDate || "").split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+}
+
+function dateFromIso(isoDate) {
+  const parts = parseIsoDateParts(isoDate);
+  if (!parts) return null;
+  return new Date(parts.year, parts.month - 1, parts.day);
+}
+
+function isoFromDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addMonths(date, months) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function formatTripDateRange(startDate, endDate) {
+  if (!startDate && !endDate) return "Select trip dates";
+  if (startDate === endDate || !endDate) return startDate;
+  return `${startDate} -> ${endDate}`;
+}
+
+function DateRangePicker({ label, startDate, endDate, onChange }) {
+  const pickerRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectingEnd, setSelectingEnd] = useState(false);
+  const [viewDate, setViewDate] = useState(() => dateFromIso(startDate) || new Date());
+  const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+  const calendarStart = addDays(monthStart, -monthStart.getDay());
+  const monthName = monthStart.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric"
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePointerDown = event => {
+      if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isOpen]);
+
+  function handleDateSelect(date) {
+    const nextDate = isoFromDate(date);
+    if (!selectingEnd) {
+      onChange(nextDate, nextDate);
+      setSelectingEnd(true);
+      return;
+    }
+
+    if (startDate && nextDate < startDate) {
+      onChange(nextDate, startDate);
+    } else {
+      onChange(startDate || nextDate, nextDate);
+    }
+    setSelectingEnd(false);
+    setIsOpen(false);
+  }
+
+  return (
+    <div className="date-range-picker" ref={pickerRef}>
+      <span className="date-range-label">{label}</span>
+      <button
+        className="date-range-trigger"
+        type="button"
+        aria-expanded={isOpen}
+        onClick={() => {
+          const nextOpen = !isOpen;
+          const currentStart = dateFromIso(startDate);
+          if (nextOpen && currentStart) {
+            setViewDate(new Date(currentStart.getFullYear(), currentStart.getMonth(), 1));
+          }
+          setIsOpen(nextOpen);
+          setSelectingEnd(false);
+        }}
+      >
+        <span>{formatTripDateRange(startDate, endDate)}</span>
+        <span aria-hidden="true">Calendar</span>
+      </button>
+      {isOpen ? (
+        <div className="date-range-popover">
+          <div className="date-range-head">
+            <button
+              type="button"
+              className="date-range-nav"
+              aria-label="Previous month"
+              onClick={() => setViewDate(date => addMonths(date, -1))}
+            >
+              &lt;
+            </button>
+            <strong>{monthName}</strong>
+            <button
+              type="button"
+              className="date-range-nav"
+              aria-label="Next month"
+              onClick={() => setViewDate(date => addMonths(date, 1))}
+            >
+              &gt;
+            </button>
+          </div>
+          <div className="date-range-status">
+            {selectingEnd ? "Select an end date" : "Select a start date"}
+          </div>
+          <div className="date-range-weekdays">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
+              <span key={day}>{day}</span>
+            ))}
+          </div>
+          <div className="date-range-grid">
+            {Array.from({ length: 42 }, (_, index) => {
+              const day = addDays(calendarStart, index);
+              const iso = isoFromDate(day);
+              const isOutsideMonth = day.getMonth() !== monthStart.getMonth();
+              const isStart = iso === startDate;
+              const isEnd = iso === endDate;
+              const isInRange =
+                startDate &&
+                endDate &&
+                iso > startDate &&
+                iso < endDate;
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  className={[
+                    "date-range-day",
+                    isOutsideMonth ? "outside" : "",
+                    isInRange ? "in-range" : "",
+                    isStart || isEnd ? "selected" : ""
+                  ].filter(Boolean).join(" ")}
+                  onClick={() => handleDateSelect(day)}
+                >
+                  {day.getDate()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Preloader() {
   const [progress, setProgress] = useState(0);
 
@@ -1173,6 +1332,9 @@ function App() {
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [savingCategory, setSavingCategory] = useState(false);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [categorySearch, setCategorySearch] = useState("");
+  const [categoryStatusFilter, setCategoryStatusFilter] = useState("all");
+  const [categoryPage, setCategoryPage] = useState(1);
   const [savingProfilePicture, setSavingProfilePicture] = useState(false);
 
   const [form, setForm] = useState({
@@ -1189,7 +1351,8 @@ function App() {
     startDate: todayIso(),
     endDate: todayIso(),
     defaultCurrency: "EUR",
-    status: "Active"
+    status: "Active",
+    imageDataUrl: ""
   });
 
   // -------------------- Effects --------------------
@@ -1770,8 +1933,12 @@ function App() {
   }
 
   // -------------------- Auth & user profile --------------------
+  function canManageTrip(trip) {
+    return Boolean(user && trip && trip.ownerId === user.uid);
+  }
+
   function canManageSelectedTrip() {
-    return Boolean(user && selectedTrip && selectedTrip.ownerId === user.uid);
+    return canManageTrip(selectedTrip);
   }
 
   function isDemoMode() {
@@ -2143,6 +2310,10 @@ function App() {
       await setDoc(inviteRef, {
         tripId: selectedTrip.id,
         tripName: selectedTrip.name,
+        startDate: selectedTrip.startDate || "",
+        endDate: selectedTrip.endDate || "",
+        defaultCurrency: selectedTrip.defaultCurrency || "",
+        tripStatus: selectedTrip.status || "",
         ownerId: selectedTrip.ownerId,
         ownerEmail: selectedTrip.ownerEmail || user.email,
         ownerEmailLower:
@@ -2180,13 +2351,40 @@ function App() {
     if (link) setIsInviteShareModalOpen(true);
   }
 
-  function inviteShareMessage() {
-    return `Join my trip "${selectedTrip?.name || "Trip"}": ${inviteLink}`;
+  function inviteShareMessage({ includeLink = true } = {}) {
+    if (!selectedTrip || !inviteLink) {
+      return `Join my trip "${selectedTrip?.name || "Trip"}": ${inviteLink}`;
+    }
+
+    const summary = [
+      `Trip: ${selectedTrip.name || "Trip"}`,
+      selectedTrip.startDate && selectedTrip.endDate
+        ? `Dates: ${selectedTrip.startDate} to ${selectedTrip.endDate}`
+        : "",
+      selectedTrip.defaultCurrency ? `Currency: ${selectedTrip.defaultCurrency}` : "",
+      selectedTrip.status ? `Status: ${selectedTrip.status}` : ""
+    ].filter(Boolean);
+
+    if (summary.length <= 1) {
+      return `Join my trip "${selectedTrip.name || "Trip"}": ${inviteLink}`;
+    }
+
+    const lines = [
+      "Join my TripHisaab trip",
+      "",
+      ...summary,
+    ];
+
+    if (includeLink) {
+      lines.push("", `Invite link: ${inviteLink}`);
+    }
+
+    return lines.join("\n");
   }
 
   async function shareInviteNative() {
     if (!inviteLink) return;
-    const text = inviteShareMessage();
+    const text = inviteShareMessage({ includeLink: false });
     if (navigator.share) {
       try {
         await navigator.share({
@@ -2377,15 +2575,15 @@ function App() {
     }
   }
 
-  async function handleDeleteTrip() {
-    if (!selectedTrip || !user) return;
-    if (!canManageSelectedTrip()) {
+  async function handleDeleteTrip(targetTrip = selectedTrip) {
+    if (!targetTrip || !user) return;
+    if (!canManageTrip(targetTrip)) {
       alert("Only the trip owner can delete this trip.");
       return;
     }
 
     const confirmed = window.confirm(
-      `Delete "${selectedTrip.name}" permanently?\n\nThis removes the trip, members, expenses, settlements, plan budget, categories, and invite links for everyone.`
+      `Delete "${targetTrip.name}" permanently?\n\nThis removes the trip, members, expenses, settlements, plan budget, categories, and invite links for everyone.`
     );
     if (!confirmed) return;
 
@@ -2401,7 +2599,7 @@ function App() {
       ];
       const snaps = await Promise.all(
         subcollections.map(name =>
-          getDocs(collection(db, "trips", selectedTrip.id, name))
+          getDocs(collection(db, "trips", targetTrip.id, name))
         )
       );
       const memberDocs = snaps[0].docs.map(d => ({ id: d.id, ...d.data() }));
@@ -2409,12 +2607,12 @@ function App() {
       const accessRefs = memberDocs
         .map(m => getEmailLower(m.email))
         .filter(Boolean)
-        .map(emailLower => doc(db, "emailAccess", emailLower, "trips", selectedTrip.id));
+        .map(emailLower => doc(db, "emailAccess", emailLower, "trips", targetTrip.id));
 
       const ownerEmailLower =
-        selectedTrip.ownerEmailLower || getEmailLower(selectedTrip.ownerEmail || user.email);
+        targetTrip.ownerEmailLower || getEmailLower(targetTrip.ownerEmail || user.email);
       if (ownerEmailLower) {
-        accessRefs.push(doc(db, "emailAccess", ownerEmailLower, "trips", selectedTrip.id));
+        accessRefs.push(doc(db, "emailAccess", ownerEmailLower, "trips", targetTrip.id));
       }
 
       const refsToDelete = [...subcollectionRefs, ...accessRefs];
@@ -2423,8 +2621,9 @@ function App() {
       );
 
       await deleteRefsInBatches(uniqueRefsToDelete);
-      await deleteDoc(doc(db, "trips", selectedTrip.id));
-      closeTrip();
+      await deleteDoc(doc(db, "trips", targetTrip.id));
+      if (selectedTrip?.id === targetTrip.id) closeTrip();
+      if (editingTripId === targetTrip.id) cancelEditingTrip();
       await loadTrips(user.uid, user.email);
     } catch (error) {
       console.error("Could not delete trip:", error);
@@ -2441,8 +2640,11 @@ function App() {
       startDate: trip.startDate || todayIso(),
       endDate: trip.endDate || todayIso(),
       defaultCurrency: trip.defaultCurrency || "EUR",
-      status: trip.status || "Active"
+      status: trip.status || "Active",
+      imageDataUrl: trip.imageDataUrl || ""
     });
+    setIsEmojiPickerOpen(false);
+    setActiveTab("categories");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -2453,7 +2655,8 @@ function App() {
       startDate: todayIso(),
       endDate: todayIso(),
       defaultCurrency: "EUR",
-      status: "Active"
+      status: "Active",
+      imageDataUrl: ""
     });
   }
 
@@ -2475,9 +2678,21 @@ function App() {
         startDate: editForm.startDate,
         endDate: editForm.endDate,
         defaultCurrency: editForm.defaultCurrency,
+        imageDataUrl: editForm.imageDataUrl || "",
         status: editForm.status,
         updatedAt: serverTimestamp()
       });
+      if (selectedTrip?.id === editingTripId) {
+        setSelectedTrip(t => ({
+          ...t,
+          name: editForm.name.trim(),
+          startDate: editForm.startDate,
+          endDate: editForm.endDate,
+          defaultCurrency: editForm.defaultCurrency,
+          imageDataUrl: editForm.imageDataUrl || "",
+          status: editForm.status
+        }));
+      }
       cancelEditingTrip();
       await loadTrips(user.uid, user.email);
     } catch (error) {
@@ -2597,6 +2812,19 @@ function App() {
     }
   }
 
+  async function handleEditTripImageChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const imageDataUrl = await readTripImage(file);
+      setEditForm(current => ({ ...current, imageDataUrl }));
+    } catch (error) {
+      alert(error.message || "Could not upload image.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
   async function openTrip(trip) {
     setSelectedTrip(trip);
     const storedTab = (() => {
@@ -2664,6 +2892,19 @@ function App() {
     setMemberForm({ displayName: "", email: "" });
     resetSettlementForm();
     setInviteLink("");
+  }
+
+  function openLandingPage() {
+    closeTrip();
+    cancelEditingTrip();
+    setIsCreateModalOpen(false);
+    setShowLanding(true);
+    setIsSidebarOpen(false);
+    try {
+      localStorage.setItem(APP_VIEW_STORAGE_KEY, "landing");
+    } catch {
+      /* localStorage unavailable */
+    }
   }
 
   async function loadTripData(tripId, tripContext = selectedTrip) {
@@ -5031,7 +5272,7 @@ function App() {
       return (
         <div className="settle-fallback-section">
           <div className="settle-fallback-banner">
-            <span aria-hidden="true">⚠</span>
+            <span aria-hidden="true">!</span>
             <div>
               <strong>Familiar payments only could not settle all balances.</strong>
               <p className="small muted">The following suggestions use non-familiar pairings as a fallback.</p>
@@ -5524,10 +5765,10 @@ function App() {
 
         <aside className={`sidebar${isSidebarOpen ? " sidebar-open" : ""}`}>
           <div className="sidebar-logo">
-            <div className="brand-copy">
+            <button className="sidebar-logo-button" type="button" onClick={openLandingPage}>
               <img className="app-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
               <div className="brand-tagline">Every trip. Every spend. Sorted.</div>
-            </div>
+            </button>
             {/* Close button — visible only on mobile */}
             <button
               className="sidebar-close-btn"
@@ -5541,6 +5782,20 @@ function App() {
           <button className="sidebar-back-btn" type="button" onClick={closeTrip}>
             ← Back to trips
           </button>
+          {canManageSelectedTrip() && !demoMode ? (
+            <button
+              className="sidebar-invite-btn"
+              type="button"
+              disabled={creatingInvite}
+              onClick={() => {
+                setIsSidebarOpen(false);
+                openInviteShareModal();
+              }}
+            >
+              <span className="sidebar-nav-icon">🔗</span>
+              {creatingInvite ? "Creating invite..." : "Share invite"}
+            </button>
+          ) : null}
           <nav className="sidebar-nav" data-tour="sidebar-tour">
             {navItems.map(({ key, label, icon }) => (
               <button
@@ -5601,7 +5856,6 @@ function App() {
             </button>
             <span className="mobile-topbar-title">
               <img className="mobile-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
-              <span className="mobile-topbar-tagline">Every trip. Every spend. Sorted.</span>
             </span>
             {!demoMode ? renderNotificationBell() : null}
             {!demoMode ? (
@@ -6549,166 +6803,272 @@ function App() {
 
         {activeTab === "settlements" ? renderSettlementsTab() : null}
 
-        {activeTab === "categories" ? (
-          <section>
-            {!demoMode ? (
-            <section className="card">
-              <h2>{editingCategoryId ? "Edit category" : "Create category"}</h2>
-              <p className="small muted">
-                Active categories appear in Plan Budget and Expenses forms.
-              </p>
+        {activeTab === "categories" ? (() => {
+          const budgetCategoryIds = new Set(predictions.map(entry => entry.categoryId).filter(Boolean));
+          const expenseCategoryCounts = expenses.reduce((map, expense) => {
+            if (!expense.categoryId) return map;
+            map.set(expense.categoryId, (map.get(expense.categoryId) || 0) + 1);
+            return map;
+          }, new Map());
+          const categoriesInExpenses = categories.filter(category => expenseCategoryCounts.has(category.id)).length;
+          const categoriesInBudget = categories.filter(category => budgetCategoryIds.has(category.id)).length;
+          const categoryStats = [
+            { label: "Active categories", value: categories.filter(category => category.isActive).length, icon: "A", tone: "mint" },
+            { label: "Inactive categories", value: categories.filter(category => !category.isActive).length, icon: "I", tone: "peach" },
+            { label: "Used in budget", value: categoriesInBudget, icon: "B", tone: "blue" },
+            { label: "Used in expenses", value: categoriesInExpenses, icon: "E", tone: "violet" }
+          ];
+          const filteredCategories = categories.filter(category => {
+            const search = categorySearch.trim().toLowerCase();
+            const matchesSearch = !search
+              || [category.name, category.type].some(value =>
+                String(value || "").toLowerCase().includes(search)
+              );
+            const matchesStatus =
+              categoryStatusFilter === "all"
+              || (categoryStatusFilter === "active" && category.isActive)
+              || (categoryStatusFilter === "inactive" && !category.isActive);
+            return matchesSearch && matchesStatus;
+          });
+          const categoryTotalPages = Math.max(1, Math.ceil(filteredCategories.length / 5));
+          const safeCategoryPage = Math.min(categoryPage, categoryTotalPages);
+          const categoryPageStart = filteredCategories.length === 0 ? 0 : (safeCategoryPage - 1) * 5 + 1;
+          const categoryPageEnd = Math.min(filteredCategories.length, safeCategoryPage * 5);
+          const visibleCategories = filteredCategories.slice(categoryPageStart - 1, categoryPageEnd);
+          const categoryColorOptions = ["#0F766E", "#3B82F6", "#8B5CF6", "#F43F5E", "#F97316", "#EAB308", "#65A30D", "#6B7280"];
 
-              <form onSubmit={handleSaveCategory}>
-                <label>
-                  Category name
-                  <input
-                    type="text"
-                    value={categoryForm.name}
-                    placeholder="e.g. Coffee"
-                    onChange={e =>
-                      setCategoryForm({ ...categoryForm, name: e.target.value })
-                    }
-                    required
-                  />
-                </label>
-
-                <div className="grid-2">
-                  <label>
-                    Type
-                    <select
-                      value={categoryForm.type}
-                      onChange={e =>
-                        setCategoryForm({ ...categoryForm, type: e.target.value })
-                      }
-                    >
-                      {CATEGORY_TYPES.map(t => (
-                        <option value={t} key={t}>{t}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Icon
+          return (
+            <section className="categories-page">
+              <div className="categories-head">
+                <div>
+                  <h2>Categories</h2>
+                  <p className="muted">Create and manage categories used in budgets and expenses.</p>
+                </div>
+                <div className="categories-toolbar">
+                  <label className="category-search">
+                    <span aria-hidden="true">?</span>
                     <input
-                      type="text"
-                      value={categoryForm.icon}
-                      maxLength="4"
-                      onChange={e =>
-                        setCategoryForm({ ...categoryForm, icon: e.target.value })
-                      }
+                      type="search"
+                      value={categorySearch}
+                      placeholder="Search categories"
+                      onChange={e => {
+                        setCategorySearch(e.target.value);
+                        setCategoryPage(1);
+                      }}
                     />
                   </label>
+                  <label className="category-status-select">
+                    <span>Status:</span>
+                    <select
+                      value={categoryStatusFilter}
+                      onChange={e => {
+                        setCategoryStatusFilter(e.target.value);
+                        setCategoryPage(1);
+                      }}
+                    >
+                      <option value="all">All</option>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </label>
+                  {!demoMode ? (
+                    <button
+                      className="primary-button category-new-mobile-button"
+                      type="button"
+                      onClick={() => {
+                        cancelCategoryForm();
+                        window.requestAnimationFrame(() => {
+                          document
+                            .getElementById("category-editor-panel")
+                            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        });
+                      }}
+                    >
+                      + New category
+                    </button>
+                  ) : null}
                 </div>
+              </div>
 
-                <label>
-                  Color
-                  <input
-                    className="color-input"
-                    type="color"
-                    value={categoryForm.color}
-                    onChange={e =>
-                      setCategoryForm({ ...categoryForm, color: e.target.value })
-                    }
-                  />
-                </label>
-
-                <div className="category-preview">
-                  <span
-                    className="category-dot"
-                    style={{
-                      backgroundColor: `${categoryForm.color}22`,
-                      color: categoryForm.color
-                    }}
-                  >
-                    {categoryForm.icon || "📌"}
-                  </span>
-                  <div>
-                    <strong>{categoryForm.name || "Category preview"}</strong>
-                    <p className="small muted">{categoryForm.type}</p>
-                  </div>
-                </div>
-
-                <button
-                  className="primary-button"
-                  type="submit"
-                  disabled={savingCategory}
-                >
-                  {savingCategory
-                    ? "Saving..."
-                    : editingCategoryId
-                    ? "Save category"
-                    : "Create category"}
-                </button>
-
-                {editingCategoryId ? (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={cancelCategoryForm}
-                  >
-                    Cancel editing
-                  </button>
-                ) : null}
-              </form>
-            </section>
-            ) : null}
-
-            <section className="card">
-              <h2>Categories</h2>
-              {categories.length === 0 ? (
-                <p className="muted">No categories yet.</p>
-              ) : (
-                <div className="category-list">
-                  {categories.map(c => (
-                    <div className="category-row" key={c.id}>
-                      <span
-                        className="category-dot"
-                        style={{
-                          backgroundColor: `${c.color || "#0F766E"}22`,
-                          color: c.color || "#0F766E"
-                        }}
-                      >
-                        {c.icon || "📌"}
-                      </span>
-                      <div className="category-row-body">
-                        <strong>{c.name}</strong>
-                        <p className="small muted">{c.type}</p>
-                        <span className={c.isActive ? "pill" : "pill muted-pill"}>
-                          {c.isActive ? "Active" : "Inactive"}
-                        </span>
-                      </div>
-                      {!demoMode ? (
-                      <div className="category-actions">
-                        <button
-                          className="secondary-button small-button"
-                          type="button"
-                          onClick={() => startEditingCategory(c)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="secondary-button small-button"
-                          type="button"
-                          onClick={() => handleToggleCategory(c)}
-                        >
-                          {c.isActive ? "Deactivate" : "Activate"}
-                        </button>
-                        <button
-                          className="danger-button small-button"
-                          type="button"
-                          onClick={() => handleDeleteCategory(c)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                      ) : null}
+              <div className="category-stat-grid">
+                {categoryStats.map(stat => (
+                  <article className="category-stat-card" key={stat.label}>
+                    <div className={`category-stat-icon ${stat.tone}`}>{stat.icon}</div>
+                    <div>
+                      <strong>{stat.value}</strong>
+                      <span>{stat.label}</span>
+                      <p>This trip</p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </section>
-        ) : null}
+                  </article>
+                ))}
+              </div>
 
+              <div className="categories-workspace">
+                <section className="categories-list-panel">
+                  <div className="categories-panel-head">
+                    <h3>All categories</h3>
+                    <div className="category-filter-pills">
+                      {["all", "active", "inactive"].map(filter => (
+                        <button
+                          key={filter}
+                          className={categoryStatusFilter === filter ? "active" : ""}
+                          type="button"
+                          onClick={() => {
+                            setCategoryStatusFilter(filter);
+                            setCategoryPage(1);
+                          }}
+                        >
+                          {filter[0].toUpperCase() + filter.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {visibleCategories.length === 0 ? (
+                    <div className="category-empty-state">
+                      <h4>{categories.length === 0 ? "No categories yet" : "No categories found"}</h4>
+                      <p className="muted">Create a category or adjust your filters.</p>
+                    </div>
+                  ) : (
+                    <div className="category-table-list">
+                      {visibleCategories.map(category => {
+                        const expenseCount = expenseCategoryCounts.get(category.id) || 0;
+                        const usedInBudget = budgetCategoryIds.has(category.id);
+                        const usageLabel = usedInBudget && expenseCount > 0
+                          ? "Used in Plan Budget & Expenses"
+                          : usedInBudget
+                          ? "Used in Plan Budget"
+                          : expenseCount > 0
+                          ? `Used in Expenses (${expenseCount})`
+                          : "Not used yet";
+                        return (
+                          <article className="category-table-row" key={category.id}>
+                            <span
+                              className="category-dot category-dot-large"
+                              style={{
+                                backgroundColor: `${category.color || "#0F766E"}22`,
+                                color: category.color || "#0F766E"
+                              }}
+                            >
+                              {category.icon || "??"}
+                            </span>
+                            <div className="category-table-main">
+                              <strong>{category.name}</strong>
+                              <span>{category.type}</span>
+                            </div>
+                            <span className={category.isActive ? "pill" : "pill muted-pill"}>
+                              {category.isActive ? "Active" : "Inactive"}
+                            </span>
+                            <span className="category-usage">? {usageLabel}</span>
+                            {!demoMode ? (
+                              <div className="category-menu-actions">
+                                <button className="secondary-button small-button" type="button" onClick={() => startEditingCategory(category)}>Edit</button>
+                                <button className="secondary-button small-button" type="button" onClick={() => handleToggleCategory(category)}>
+                                  {category.isActive ? "Deactivate" : "Activate"}
+                                </button>
+                                <button className="danger-button small-button" type="button" onClick={() => handleDeleteCategory(category)}>Delete</button>
+                              </div>
+                            ) : null}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <footer className="category-list-footer">
+                    <span>Showing {categoryPageStart}-{categoryPageEnd} of {filteredCategories.length} categories</span>
+                    <div className="category-pagination">
+                      <button type="button" disabled={safeCategoryPage <= 1} onClick={() => setCategoryPage(page => Math.max(1, page - 1))}>‹</button>
+                      {Array.from({ length: categoryTotalPages }, (_, index) => index + 1).slice(0, 5).map(page => (
+                        <button
+                          key={page}
+                          type="button"
+                          className={safeCategoryPage === page ? "active" : ""}
+                          onClick={() => setCategoryPage(page)}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                      <button type="button" disabled={safeCategoryPage >= categoryTotalPages} onClick={() => setCategoryPage(page => Math.min(categoryTotalPages, page + 1))}>›</button>
+                    </div>
+                  </footer>
+                </section>
+
+                {!demoMode ? (
+                  <section className="category-editor-panel" id="category-editor-panel">
+                    <h3>{editingCategoryId ? "Edit category" : "Create category"}</h3>
+                    <p className="muted">Active categories appear in Plan Budget and Expenses.</p>
+                    <form onSubmit={handleSaveCategory}>
+                      <label>
+                        Category name
+                        <input
+                          type="text"
+                          value={categoryForm.name}
+                          placeholder="e.g. Coffee"
+                          onChange={e => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                          required
+                        />
+                      </label>
+                      <div className="grid-2 category-editor-grid">
+                        <label>
+                          Type
+                          <select value={categoryForm.type} onChange={e => setCategoryForm({ ...categoryForm, type: e.target.value })}>
+                            {CATEGORY_TYPES.map(type => <option value={type} key={type}>{type}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Icon
+                          <select value={categoryForm.icon} onChange={e => setCategoryForm({ ...categoryForm, icon: e.target.value })}>
+                            {CATEGORY_EMOJI_OPTIONS.slice(0, 24).map(emoji => <option value={emoji} key={emoji}>{emoji}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                      <div>
+                        <div className="create-trip-img-label">Color</div>
+                        <div className="category-color-swatches">
+                          {categoryColorOptions.map(color => (
+                            <button
+                              key={color}
+                              type="button"
+                              className={categoryForm.color === color ? "selected" : ""}
+                              style={{ backgroundColor: color }}
+                              aria-label={`Use ${color}`}
+                              onClick={() => setCategoryForm({ ...categoryForm, color })}
+                            >
+                              {categoryForm.color === color ? "?" : ""}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="create-trip-img-label">Preview</div>
+                        <div className="category-editor-preview">
+                          <span
+                            className="category-dot category-dot-large"
+                            style={{ backgroundColor: `${categoryForm.color}22`, color: categoryForm.color }}
+                          >
+                            {categoryForm.icon || "??"}
+                          </span>
+                          <div>
+                            <strong>{categoryForm.name || "Category name"}</strong>
+                            <p className="small muted">{categoryForm.type || "Type"}</p>
+                          </div>
+                          <span className="pill">Active</span>
+                        </div>
+                      </div>
+                      <div className="category-editor-actions">
+                        <button className="secondary-button" type="button" onClick={cancelCategoryForm}>Cancel</button>
+                        <button className="primary-button" type="submit" disabled={savingCategory}>
+                          {savingCategory ? "Saving..." : editingCategoryId ? "Save category" : "Create category"}
+                        </button>
+                      </div>
+                    </form>
+                  </section>
+                ) : null}
+              </div>
+            </section>
+          );
+        })() : null}
         {activeTab === "members" ? (
           <section>
             {selectedTrip && canManageSelectedTrip() ? (
@@ -7122,7 +7482,7 @@ function App() {
                     className="danger-button"
                     type="button"
                     disabled={deletingTrip}
-                    onClick={handleDeleteTrip}
+                    onClick={() => handleDeleteTrip()}
                   >
                     {deletingTrip ? "Deleting trip..." : "Delete trip"}
                   </button>
@@ -7640,6 +8000,20 @@ function App() {
 
   // -------------------- Render: invite screen --------------------
   function renderInviteScreen() {
+    const inviteSummaryRows = inviteDetails
+      ? [
+          ["Trip", inviteDetails.tripName],
+          [
+            "Dates",
+            inviteDetails.startDate && inviteDetails.endDate
+              ? `${inviteDetails.startDate} to ${inviteDetails.endDate}`
+              : ""
+          ],
+          ["Currency", inviteDetails.defaultCurrency],
+          ["Status", inviteDetails.tripStatus]
+        ].filter(([, value]) => Boolean(value))
+      : [];
+
     return (
       <main className="page center-page">
         <div className="logo">🧳</div>
@@ -7654,11 +8028,23 @@ function App() {
           ) : inviteError ? (
             <p className="muted intro-text">{inviteError}</p>
           ) : inviteDetails ? (
-            <p className="muted intro-text">
-              You have been invited to join{" "}
-              <strong>{inviteDetails.tripName || "this trip"}</strong>
-              {inviteDetails.ownerEmail ? ` by ${inviteDetails.ownerEmail}` : ""}.
-            </p>
+            <>
+              <p className="muted intro-text">
+                You have been invited to join{" "}
+                <strong>{inviteDetails.tripName || "this trip"}</strong>
+                {inviteDetails.ownerEmail ? ` by ${inviteDetails.ownerEmail}` : ""}.
+              </p>
+              {inviteSummaryRows.length > 1 ? (
+                <div className="invite-summary-card">
+                  {inviteSummaryRows.map(([label, value]) => (
+                    <p key={label}>
+                      <span>{label}</span>
+                      <strong>{value}</strong>
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+            </>
           ) : (
             <p className="muted intro-text">Preparing invite...</p>
           )}
@@ -7721,6 +8107,7 @@ function App() {
     const today = todayIso();
     const activeTripCount = trips.filter(t => t.status === "Active").length;
     const upcomingCount = trips.filter(t => t.startDate > today).length;
+    const editingTrip = trips.find(t => t.id === editingTripId);
     const filteredTrips = tripSearch.trim()
       ? trips.filter(t => t.name.toLowerCase().includes(tripSearch.toLowerCase()))
       : trips;
@@ -7745,10 +8132,10 @@ function App() {
 
         <aside className={`sidebar${isSidebarOpen ? " sidebar-open" : ""}`}>
           <div className="sidebar-logo">
-            <div className="brand-copy">
+            <button className="sidebar-logo-button" type="button" onClick={openLandingPage}>
               <img className="app-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
               <div className="brand-tagline">Every trip. Every spend. Sorted.</div>
-            </div>
+            </button>
             <button className="sidebar-close-btn" type="button" aria-label="Close menu" onClick={() => setIsSidebarOpen(false)}>✕</button>
           </div>
           <nav className="sidebar-nav" data-tour="sidebar-tour">
@@ -7788,7 +8175,6 @@ function App() {
             </button>
             <span className="mobile-topbar-title">
               <img className="mobile-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
-              <span className="mobile-topbar-tagline">Every trip. Every spend. Sorted.</span>
             </span>
             {renderInstallButton({ compact: true })}
             <button className="primary-button small-button" type="button" onClick={() => setIsCreateModalOpen(true)}>+ New</button>
@@ -7941,36 +8327,14 @@ function App() {
                 required
               />
             </label>
-            <div className="grid-2">
-              <label>
-                Start date
-                <input
-                  type="date"
-                  value={form.startDate}
-                  onClick={openDatePicker}
-                  onChange={e => {
-                    const newStart = e.target.value;
-                    setForm(f => ({
-                      ...f,
-                      startDate: newStart,
-                      endDate: f.endDate < newStart ? newStart : f.endDate,
-                    }));
-                  }}
-                  required
-                />
-              </label>
-              <label>
-                End date
-                <input
-                  type="date"
-                  value={form.endDate}
-                  min={form.startDate}
-                  onClick={openDatePicker}
-                  onChange={e => setForm({ ...form, endDate: e.target.value })}
-                  required
-                />
-              </label>
-            </div>
+            <DateRangePicker
+              label="Trip dates"
+              startDate={form.startDate}
+              endDate={form.endDate}
+              onChange={(startDate, endDate) =>
+                setForm(f => ({ ...f, startDate, endDate }))
+              }
+            />
             <label>
               Default currency
               <select
@@ -8052,38 +8416,14 @@ function App() {
                 required
               />
             </label>
-            <div className="grid-2">
-              <label>
-                Start date
-                <input
-                  type="date"
-                  value={editForm.startDate}
-                  onClick={openDatePicker}
-                  onChange={e => {
-                    const newStart = e.target.value;
-                    setEditForm(f => ({
-                      ...f,
-                      startDate: newStart,
-                      endDate: f.endDate < newStart ? newStart : f.endDate,
-                    }));
-                  }}
-                  required
-                />
-              </label>
-              <label>
-                End date
-                <input
-                  type="date"
-                  value={editForm.endDate}
-                  min={editForm.startDate}
-                  onClick={openDatePicker}
-                  onChange={e =>
-                    setEditForm({ ...editForm, endDate: e.target.value })
-                  }
-                  required
-                />
-              </label>
-            </div>
+            <DateRangePicker
+              label="Trip dates"
+              startDate={editForm.startDate}
+              endDate={editForm.endDate}
+              onChange={(startDate, endDate) =>
+                setEditForm(f => ({ ...f, startDate, endDate }))
+              }
+            />
             <label>
               Default currency
               <select
@@ -8110,8 +8450,46 @@ function App() {
                 ))}
               </select>
             </label>
+            <div>
+              <div className="create-trip-img-label">Trip image <span className="muted" style={{fontWeight:500}}>(optional)</span></div>
+              <div className="create-trip-img-row">
+                <div
+                  className={`create-trip-img-preview${editForm.imageDataUrl ? " has-image" : ""}`}
+                  style={editForm.imageDataUrl ? { backgroundImage: `url(${editForm.imageDataUrl})` } : undefined}
+                >
+                  {!editForm.imageDataUrl && <span>🏔</span>}
+                </div>
+                <div className="trip-image-controls">
+                  <label className="trip-image-upload small-button">
+                    {editForm.imageDataUrl ? "Change image" : "Upload image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditTripImageChange}
+                    />
+                  </label>
+                  {editForm.imageDataUrl && (
+                    <button
+                      className="secondary-button small-button"
+                      type="button"
+                      onClick={() => setEditForm(f => ({ ...f, imageDataUrl: "" }))}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
           <footer className="modal-footer">
+            <button
+              className="danger-button"
+              type="button"
+              disabled={deletingTrip || savingEdit || !editingTrip}
+              onClick={() => editingTrip && handleDeleteTrip(editingTrip)}
+            >
+              {deletingTrip ? "Deleting..." : "Delete trip"}
+            </button>
             <button
               className="secondary-button"
               type="button"
