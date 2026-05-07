@@ -1417,6 +1417,14 @@ function App() {
   const [expenseSearch, setExpenseSearch] = useState("");
   const [expenseFilter, setExpenseFilter] = useState("all");
   const [expenseSort, setExpenseSort] = useState("newest");
+  const [showBetaWelcome, setShowBetaWelcome] = useState(() => {
+    try { return !localStorage.getItem('thBetaWelcomeSeen'); } catch { return false; }
+  });
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackWorking, setFeedbackWorking] = useState('');
+  const [feedbackBroken, setFeedbackBroken] = useState('');
+  const [feedbackSuggestion, setFeedbackSuggestion] = useState('');
   const [expensePage, setExpensePage] = useState(1);
   const [expenseForm, setExpenseForm] = useState({
     ...EMPTY_EXPENSE_FORM,
@@ -1499,6 +1507,36 @@ function App() {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
       window.removeEventListener("appinstalled", handleAppInstalled);
     };
+  }, []);
+
+  useEffect(() => {
+    const ua = navigator.userAgent || '';
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isMobile) {
+      const isAndroid = /Android/i.test(ua);
+      document.documentElement.classList.add(isAndroid ? 'os-android' : 'os-ios');
+    }
+  }, []);
+
+  useEffect(() => {
+    let lastY = 0;
+    const onScroll = (e) => {
+      const el = e.target;
+      if (!el?.classList?.contains('main-content')) return;
+      const y = el.scrollTop;
+      const atBottom = y + el.clientHeight >= el.scrollHeight - 40;
+      if (y <= 60 || atBottom) {
+        document.documentElement.classList.remove('fabs-hidden');
+      } else if (y > lastY) {
+        document.documentElement.classList.add('fabs-hidden');
+      } else {
+        document.documentElement.classList.remove('fabs-hidden');
+      }
+      lastY = y;
+    };
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => document.removeEventListener('scroll', onScroll, true);
   }, []);
 
   useEffect(() => {
@@ -4293,6 +4331,144 @@ function App() {
     cancelCategoryForm();
   }
 
+  // ── Beta welcome modal ──────────────────────────────────────────
+  function renderBetaWelcome() {
+    if (!showBetaWelcome || !user) return null;
+    function dismiss() {
+      try { localStorage.setItem('thBetaWelcomeSeen', '1'); } catch {}
+      setShowBetaWelcome(false);
+    }
+    const features = [
+      { icon: '💰', title: 'Plan Budget',       sub: 'Set category budgets before you travel' },
+      { icon: '💳', title: 'Track Expenses',    sub: 'Log every spend, split by person or group' },
+      { icon: '🤝', title: 'Smart Settle',      sub: 'See who owes whom and settle in one tap' },
+      { icon: '✅', title: 'Trip Tasks',         sub: 'Assign and track todos before and during the trip' },
+      { icon: '👥', title: 'Group & Members',   sub: 'Invite travel mates, manage access and roles' },
+      { icon: '📊', title: 'Spending Insights', sub: 'Visual breakdown by category' },
+    ];
+    return (
+      <div className="beta-welcome-overlay" role="dialog" aria-modal="true" aria-label="Welcome to TripHisaab Beta">
+        <div className="beta-welcome-card">
+          <div className="beta-welcome-header">
+            <span className="beta-welcome-badge">Beta</span>
+            <h2>Welcome to TripHisaab 🌍</h2>
+            <p>You're one of the first people to try this. Here's what to explore:</p>
+          </div>
+          <ul className="beta-feature-list">
+            {features.map(f => (
+              <li key={f.title} className="beta-feature-item">
+                <span className="beta-feature-icon">{f.icon}</span>
+                <div>
+                  <strong>{f.title}</strong>
+                  <span>{f.sub}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="beta-welcome-tip">
+            Found a bug or have ideas? Tap the <strong>💬</strong> button anytime to share feedback.
+          </p>
+          <button className="primary-button beta-welcome-cta" type="button" onClick={dismiss}>
+            Start exploring →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Feedback widget ──────────────────────────────────────────────
+  function renderFeedbackWidget(hasExpenseFab = false) {
+    if (!user) return null;
+    const screenLabel = selectedTrip
+      ? ({ dashboard: 'Trip Overview', prediction: 'Plan Budget', actual: 'Expenses', settlements: 'Settle', tasks: 'Tasks', categories: 'Categories', members: 'Members', settings: 'Settings' }[activeTab] || activeTab)
+      : 'Your Trips';
+    function buildMailto() {
+      const stars = '★'.repeat(feedbackRating) + '☆'.repeat(5 - feedbackRating);
+      const subject = `TripHisaab Feedback — ${screenLabel}${feedbackRating ? ` [${stars}]` : ''}`;
+      const body = [
+        `Screen: ${screenLabel}`,
+        feedbackRating ? `Rating: ${stars} (${feedbackRating}/5)` : 'Rating: not given',
+        '',
+        "What's working well:",
+        feedbackWorking.trim() || '(not filled)',
+        '',
+        'Bugs / what could be better:',
+        feedbackBroken.trim() || '(not filled)',
+        '',
+        'Suggestions:',
+        feedbackSuggestion.trim() || '(not filled)',
+        '',
+        '---',
+        'Sent from TripHisaab in-app feedback',
+      ].join('\n');
+      return `mailto:wayabove@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    }
+    function sendFeedback() {
+      window.location.href = buildMailto();
+      setFeedbackOpen(false);
+      setFeedbackRating(0);
+      setFeedbackWorking('');
+      setFeedbackBroken('');
+      setFeedbackSuggestion('');
+    }
+    return (
+      <div className={`feedback-widget${feedbackOpen ? ' feedback-widget--open' : ''}${hasExpenseFab ? ' feedback-widget--above-fab' : ''}`}>
+        {feedbackOpen && (
+          <div className="feedback-panel" role="dialog" aria-label="Share feedback">
+            <div className="feedback-panel-header">
+              <div className="feedback-panel-title">
+                <span>Share feedback</span>
+                <span className="feedback-screen-tag">{screenLabel}</span>
+              </div>
+              <button className="feedback-close-btn" type="button" aria-label="Close" onClick={() => setFeedbackOpen(false)}>✕</button>
+            </div>
+            <div className="feedback-rating-row">
+              <span className="feedback-field-label">Overall rating</span>
+              <div className="feedback-stars">
+                {[1,2,3,4,5].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`feedback-star${feedbackRating >= n ? ' feedback-star--on' : ''}`}
+                    aria-label={`${n} star`}
+                    onClick={() => setFeedbackRating(feedbackRating === n ? 0 : n)}
+                  >★</button>
+                ))}
+              </div>
+            </div>
+            <div className="feedback-fields">
+              <label className="feedback-field-label">
+                What's working well?
+                <textarea value={feedbackWorking} onChange={e => setFeedbackWorking(e.target.value)} placeholder="Anything you like so far…" rows={2} />
+              </label>
+              <label className="feedback-field-label">
+                Bugs / what could be better?
+                <textarea value={feedbackBroken} onChange={e => setFeedbackBroken(e.target.value)} placeholder="Something broken or confusing…" rows={2} />
+              </label>
+              <label className="feedback-field-label">
+                Suggestions
+                <textarea value={feedbackSuggestion} onChange={e => setFeedbackSuggestion(e.target.value)} placeholder="Feature ideas, improvements…" rows={2} />
+              </label>
+            </div>
+            <button className="primary-button feedback-send-btn" type="button" onClick={sendFeedback}>
+              Send via email ✉️
+            </button>
+          </div>
+        )}
+        <button
+          className="feedback-fab"
+          type="button"
+          aria-label="Give feedback"
+          aria-expanded={feedbackOpen}
+          onClick={() => setFeedbackOpen(v => !v)}
+        >
+          <span className="feedback-fab-icon">💬</span>
+          <span className="feedback-fab-label">Feedback</span>
+        </button>
+      </div>
+    );
+  }
+
   function renderTutorialModal() {
     return isTutorialOpen ? <TourOverlay onComplete={markTutorialSeen} /> : null;
   }
@@ -6057,7 +6233,7 @@ function App() {
     const budgetPct = totals.predicted > 0
       ? Math.min(100, Math.round((totals.actual / totals.predicted) * 100))
       : 0;
-    const r = 52;
+    const r = 68;
     const circ = 2 * Math.PI * r;
     const dashFill = (budgetPct / 100) * circ;
 
@@ -6361,15 +6537,15 @@ function App() {
               <div className="dash-row dash-row-budget">
                 <div className="dash-card budget-card">
                   <div className="budget-donut-wrap">
-                    <svg width="130" height="130" viewBox="0 0 130 130">
-                      <circle cx="65" cy="65" r={r} fill="none" stroke="#e5e7eb" strokeWidth="12" />
+                    <svg width="160" height="160" viewBox="0 0 160 160">
+                      <circle cx="80" cy="80" r={r} fill="none" stroke="#e5e7eb" strokeWidth="12" />
                       <circle
-                        cx="65" cy="65" r={r} fill="none"
+                        cx="80" cy="80" r={r} fill="none"
                         stroke={budgetPct >= 100 ? "var(--danger)" : budgetPct >= 80 ? "var(--warning)" : "var(--primary)"}
                         strokeWidth="12"
                         strokeDasharray={`${dashFill} ${circ}`}
                         strokeLinecap="round"
-                        transform="rotate(-90, 65, 65)"
+                        transform="rotate(-90, 80, 80)"
                       />
                     </svg>
                     <div className="budget-donut-label">
@@ -6378,39 +6554,29 @@ function App() {
                     </div>
                   </div>
                   <div className="budget-stats">
-                    <div className="budget-progress-track">
-                      <div
-                        className="budget-progress-fill"
-                        style={{
-                          width: `${Math.min(100, budgetPct)}%`,
-                          background: budgetPct >= 100 ? "var(--danger)" : budgetPct >= 80 ? "var(--warning)" : "var(--primary)"
-                        }}
-                      />
-                    </div>
-                    <div className="budget-legend">
-                      <div className="budget-legend-item">
-                        <span className="budget-legend-dot" style={{ background: budgetPct >= 100 ? "var(--danger)" : "var(--primary)" }} />
-                        <span>Budget used</span>
-                        <strong>{budgetPct}%</strong>
+                    <div className="budget-stat-row">
+                      <div className="budget-stat">
+                        <span className="budget-stat-label">Budget used</span>
+                        <span className="budget-stat-value" style={{ color: budgetPct >= 100 ? "var(--danger)" : budgetPct >= 80 ? "var(--warning)" : "inherit" }}>
+                          {budgetPct}%
+                        </span>
                       </div>
-                      <div className="budget-legend-item">
-                        <span className="budget-legend-dot" style={{ background: "var(--info)" }} />
-                        <span>Spent</span>
-                        <strong>{formatMoney(totals.actual)}</strong>
+                      <div className="budget-stat">
+                        <span className="budget-stat-label">Spent</span>
+                        <span className="budget-stat-value">{formatMoney(totals.actual)}</span>
                       </div>
-                      <div className="budget-legend-item">
-                        <span className="budget-legend-dot" style={{ background: "#34d399" }} />
-                        <span>Remaining</span>
-                        <strong className={remaining >= 0 ? "positive" : "negative"}>
+                      <div className="budget-stat">
+                        <span className="budget-stat-label">Remaining</span>
+                        <span className={`budget-stat-value${remaining < 0 ? " negative" : ""}`}>
                           {remaining >= 0 ? formatMoney(remaining) : "–" + formatMoney(Math.abs(remaining))}
-                        </strong>
+                        </span>
                       </div>
                     </div>
                     <div className="budget-message">{budgetMsg}</div>
                   </div>
                 </div>
 
-                <div className="dash-card">
+                <div className="dash-card quick-actions-card">
                   <h3>Quick actions</h3>
                   <p className="dash-card-sub">Jump to what you need</p>
                   <div className="dash-quick-actions">
@@ -8120,23 +8286,12 @@ function App() {
 
         {/* Bottom navigation — visible on mobile only */}
         <nav className="bottom-nav" data-tour="bottom-nav-tour">
-          <button
-            className="bottom-nav-item"
-            type="button"
-            onClick={closeTrip}
-          >
-            <span className="bottom-nav-icon">←</span>
-            <span className="bottom-nav-label">Trips</span>
-          </button>
           {[
-            { key: "dashboard", label: "Trip Overview", icon: "⊞" },
-            { key: "prediction", label: "Plan Budget", icon: "📊" },
-            { key: "actual", label: "Expenses", icon: "💳" },
-            { key: "settlements", label: "Settle", icon: "🤝" },
-            { key: "tasks", label: "Tasks", icon: "✓" },
-            { key: "categories", label: "Categories", icon: "🏷" },
-            { key: "members", label: "Members", icon: "👥" },
-            { key: "settings", label: "Settings", icon: "⚙" },
+            { key: "dashboard",   label: "Overview", icon: "⊞" },
+            { key: "actual",      label: "Expenses", icon: "💳" },
+            { key: "settlements", label: "Settle",   icon: "🤝" },
+            { key: "prediction",  label: "Budget",   icon: "📊" },
+            { key: "tasks",       label: "Tasks",    icon: "✓"  },
           ].map(({ key, label, icon }) => (
             <button
               key={key}
@@ -8677,6 +8832,8 @@ function App() {
         </Modal>
         {renderNotificationsModal()}
         {renderTutorialModal()}
+        {renderBetaWelcome()}
+        {renderFeedbackWidget(true)}
       </div>
     );
   }
@@ -8686,51 +8843,68 @@ function App() {
     return (
       <main className="landing-page">
         <div className="landing-bg" aria-hidden="true">
-          <img className="landing-bg-art" src="/landingDesktopBG.svg" alt="" />
+          <img className="landing-bg-gradient" src="/LandingPage/BG gradient.svg" alt="" />
+          <img className="landing-bg-left"     src="/LandingPage/landing-left.svg"  alt="" />
+          <img className="landing-bg-right"    src="/LandingPage/landing-right.svg" alt="" />
+          {/* Animated SVG layer: dashed trail + plane following it + cover clouds above */}
+          <svg className="landing-bg-anim" viewBox="0 0 1024 238" xmlns="http://www.w3.org/2000/svg" overflow="visible">
+            {/* Dashed trail — also used as the motion path via id */}
+            <path id="lp-trail"
+              d="M2 179.072C8.56862 72.4023 233.263 30.2698 324.003 114.285C485.76 264.053 657.131 269.17 802.213 164.85C897.651 96.2256 907.287 23.845 1024 2.00037"
+              fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeDasharray="10 20" opacity="0.85"/>
+            {/* Plane group — animateMotion drives position+rotation along trail */}
+            <g>
+              <animateMotion dur="24s" repeatCount="indefinite" rotate="auto">
+                <mpath href="#lp-trail"/>
+              </animateMotion>
+              <g className="lp-plane-shape">
+                <path d="M15.9823 40.9868C15.2238 40.7476 15.2039 40.1703 15.8739 38.1382C16.3395 36.7412 16.8791 35.4918 17.0793 35.365C17.6987 34.9727 16.6789 33.8682 15.5591 33.7282C14.0059 32.5132 14.5888 32.0002 16.2052 31.1537C17.6302 30.6012 17.6404 30.504 16.5059 28.0135C15.0941 24.9207 15.3373 24.2027 17.6522 24.6425C18.8598 24.8695 19.9689 25.6516 21.2086 27.1548L23.0106 29.3393L28.6438 28.8572C32.8862 28.4975 34.2793 28.1727 34.2895 27.5504C34.3099 26.1306 32.0015 17.998 30.6198 14.6334C29.8907 12.865 29.4581 11.3173 29.6537 11.1935C29.8493 11.0696 30.8146 11.0481 31.8042 11.1474C33.0862 11.2755 34.0821 11.8894 35.2965 13.3114C36.2416 14.4114 37.7472 15.4999 38.6807 15.7578L40.3645 16.2214L39.7594 17.5836C38.8879 19.5553 40.1004 21.1082 42.4579 21.0283C44.939 20.9478 45.8525 22.554 44.1229 23.9542C43.103 24.7752 43.0651 25.1169 43.873 26.3815C44.719 27.7063 45.2619 27.8421 49.4802 27.7636C56.4351 27.6372 58.4875 27.8996 60.7124 29.2068C64.4721 31.4219 64.463 32.5816 60.6583 34.9914C58.3811 36.4337 56.9814 36.6655 49.9493 36.7629C45.2994 36.8296 44.1762 37.2817 43.1469 39.509C42.862 40.1303 43.0363 40.4672 43.8878 40.9457C44.7649 41.4339 44.9453 41.8318 44.7377 42.7607C44.3858 44.3061 44.0934 44.4524 41.872 44.2321C40.1606 44.0649 39.9673 44.1614 39.3748 45.4508C38.9085 46.4657 38.9888 47.1279 39.6602 47.8372C40.8602 49.1128 39.8837 50.5481 38.0342 50.235C36.8062 50.0274 36.581 50.1765 34.9179 52.2996C33.2356 54.4542 33.0336 54.5886 31.4359 54.5698C29.2904 54.5413 29.0505 54.1422 29.8558 51.9012C31.5403 47.2169 34.3609 37.1063 34.0527 36.8672C33.858 36.7247 31.271 36.36 28.2928 36.0681L22.8879 35.5304L20.9317 37.7677C19.4074 39.7471 18.3853 40.3994 15.9823 40.9868Z" fill="#EF917E"/>
+              </g>
+            </g>
+            {/* START cover cloud — drawn above plane; hides plane at loop reset (offset 0%) */}
+            <image href="/LandingPage/cloud_4.svg" x="-88" y="148" width="180" height="84">
+              <animateTransform attributeName="transform" type="translate" values="0 0; 6 -4; 0 0" dur="8s" repeatCount="indefinite"/>
+            </image>
+            {/* END cover cloud — drawn above plane; hides plane as it finishes path (offset 100%) */}
+            <image href="/LandingPage/cloud_4.svg" x="932" y="-44" width="190" height="88">
+              <animateTransform attributeName="transform" type="translate" values="0 0; -5 4; 0 0" dur="10s" repeatCount="indefinite"/>
+            </image>
+          </svg>
+          {/* Background drifting clouds — drift right→left (opposite to plane direction) */}
+          <img className="landing-bg-cloud landing-bg-cloud--1" src="/LandingPage/cloud_4.svg" alt="" />
+          <img className="landing-bg-cloud landing-bg-cloud--2" src="/LandingPage/cloud_4.svg" alt="" />
+          <img className="landing-bg-cloud landing-bg-cloud--3" src="/LandingPage/cloud_4.svg" alt="" />
+          <img className="landing-bg-cloud landing-bg-cloud--4" src="/LandingPage/cloud_4.svg" alt="" />
         </div>
         <section className="landing-shell">
           <img className="landing-logo" src="/landingPage-logo.svg" alt="TripHisaab" />
           <p className="landing-tagline">Every trip. Every spend. Sorted.</p>
 
           <div className="landing-copy">
-            <h1>Plan, split, and track your trip expenses in one simple place.</h1>
+            <h1>Plan, split, and track your trip expenses — all in one place.</h1>
             <p>
-              TripHisaab helps you create a trip budget before you travel, log
-              real expenses on the go, split shared costs with family or friends,
-              and see who owes whom, all backed by Easy CSV export.
+              Budget before you travel, log expenses on the go, split costs with your group,
+              and settle up in seconds. Simple, free, and yours forever.
             </p>
           </div>
 
           <div className="landing-actions">
             {user ? (
-              <>
-                <button
-                  className="primary-button landing-google"
-                  type="button"
-                  onClick={() => {
-                    setShowLanding(false);
-                    try {
-                      localStorage.setItem(APP_VIEW_STORAGE_KEY, "app");
-                    } catch {
-                      /* localStorage unavailable */
-                    }
-                  }}
-                >
-                  {user.photoURL ? <img src={user.photoURL} alt="" /> : null}
-                  Continue as {displayName}
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={async () => {
-                    await signOut(auth);
-                    setShowLanding(false);
-                    await signInWithPopup(auth, googleProvider);
-                  }}
-                >
-                  Switch account
-                </button>
-              </>
+              <button
+                className="primary-button landing-google"
+                type="button"
+                onClick={() => {
+                  setShowLanding(false);
+                  try {
+                    localStorage.setItem(APP_VIEW_STORAGE_KEY, "app");
+                  } catch {
+                    /* localStorage unavailable */
+                  }
+                }}
+              >
+                {user.photoURL ? <img src={user.photoURL} alt="" /> : null}
+                Continue as {displayName.split(' ')[0]}
+              </button>
             ) : (
               <button className="primary-button landing-google" type="button" onClick={handleGoogleLogin}>
                 Sign in with Google
@@ -8739,11 +8913,95 @@ function App() {
             <button className="secondary-button" type="button" onClick={openDemoTrip}>
               Try Demo Trip
             </button>
+            <button
+              className="landing-privacy-btn"
+              type="button"
+              onClick={() => document.getElementById('privacy-section')?.scrollIntoView({ behavior: 'smooth' })}
+            >
+              🔒 Privacy Promise
+            </button>
           </div>
 
+          {user && (
+            <button
+              className="landing-switch-link"
+              type="button"
+              onClick={async () => {
+                await signOut(auth);
+                setShowLanding(false);
+                await signInWithPopup(auth, googleProvider);
+              }}
+            >
+              Not you? Switch account
+            </button>
+          )}
+
           <p className="landing-secondary">
-            Each trip gets its own Easy CSV export, so your expenses stay editable,
-            exportable, and under your control.
+            Each trip exports as a CSV file, so your data stays editable and always with you.
+          </p>
+        </section>
+
+        <section className="landing-privacy" id="privacy-section">
+          <div className="landing-privacy-header">
+            <span className="landing-privacy-badge">Privacy</span>
+            <h2>Your data, plainly spoken</h2>
+            <p>No legal jargon. Just an honest explanation of what we collect, why, and what we never do.</p>
+          </div>
+
+          <div className="landing-privacy-grid">
+            <div className="landing-privacy-block">
+              <span className="landing-privacy-icon">📥</span>
+              <div>
+                <strong>What we collect</strong>
+                <p>When you sign in with Google, we receive your name, email address, and profile photo. That is it. Inside the app, we store only what you create: trips, expenses, budgets, members, tasks, and settlements. We never read anything from your Google account beyond these three basics.</p>
+              </div>
+            </div>
+
+            <div className="landing-privacy-block">
+              <span className="landing-privacy-icon">👁️</span>
+              <div>
+                <strong>Who can see your trips</strong>
+                <p>Only you and the people you personally invite can see a trip's data. Nobody outside your group can browse your expenses. Trip owners control who has access and can remove any member at any time.</p>
+              </div>
+            </div>
+
+            <div className="landing-privacy-block">
+              <span className="landing-privacy-icon">🏦</span>
+              <div>
+                <strong>We never touch real money</strong>
+                <p>TripHisaab only records numbers you type in. We have no connection to your bank, your cards, or any payment system. We cannot see, move, or access any real funds — ever.</p>
+              </div>
+            </div>
+
+            <div className="landing-privacy-block">
+              <span className="landing-privacy-icon">🚫</span>
+              <div>
+                <strong>What we never do</strong>
+                <p>We do not sell your data. We do not share it with advertisers. We do not run ads inside the app. We do not profile you, track you across other websites, or use your data for anything beyond making the app work for you.</p>
+              </div>
+            </div>
+
+            <div className="landing-privacy-block">
+              <span className="landing-privacy-icon">☁️</span>
+              <div>
+                <strong>Where it lives</strong>
+                <p>All data is stored on Google Firebase — an encrypted, secure cloud service. We do not run our own servers. Your data benefits from the same security infrastructure that powers products used by billions of people.</p>
+              </div>
+            </div>
+
+            <div className="landing-privacy-block">
+              <span className="landing-privacy-icon">🎛️</span>
+              <div>
+                <strong>You stay in control</strong>
+                <p>Export any trip as a CSV file anytime. Delete a trip and all its data permanently whenever you want. Your data belongs to you — we are just holding it while you need it.</p>
+              </div>
+            </div>
+          </div>
+
+          <p className="landing-privacy-footer">
+            Questions or concerns about your data?{" "}
+            <a href="mailto:wayabove@gmail.com" className="landing-privacy-link">Reach us at wayabove@gmail.com.</a>
+            {" "}We reply to every message.
           </p>
         </section>
       </main>
@@ -9030,22 +9288,20 @@ function App() {
                         <span className="home-trip-emoji">{cardEmojis[i % cardEmojis.length]}</span>
                       ) : null}
                     </div>
+                    {trip.ownerId === user.uid ? (
+                      <button
+                        className="home-trip-edit-btn"
+                        type="button"
+                        aria-label="Edit trip"
+                        onClick={e => { e.stopPropagation(); startEditingTrip(trip); }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                        </svg>
+                      </button>
+                    ) : null}
                     <div className="home-trip-body">
-                      <div className="home-trip-header">
-                        <h3 className="home-trip-name">{trip.name}</h3>
-                        {trip.ownerId === user.uid ? (
-                          <button
-                            className="home-trip-edit-btn"
-                            type="button"
-                            aria-label="Edit trip"
-                            onClick={e => { e.stopPropagation(); startEditingTrip(trip); }}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-                            </svg>
-                          </button>
-                        ) : null}
-                      </div>
+                      <h3 className="home-trip-name">{trip.name}</h3>
                       <p className="home-trip-dates">{trip.startDate} → {trip.endDate}</p>
                       <div className="home-trip-pills">
                         <span className="home-pill">{trip.accessRole === "owner" ? "Owner" : "Member"}</span>
@@ -9260,6 +9516,8 @@ function App() {
         </form>
       </Modal>
       {renderTutorialModal()}
+      {renderBetaWelcome()}
+      {renderFeedbackWidget()}
     </div>
   );
   }
