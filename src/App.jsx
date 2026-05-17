@@ -5644,7 +5644,523 @@ function App() {
   }
 
   // -------------------- CSV export --------------------
-  function exportTripSummaryCsv() {
+  async function exportTripSummaryCsv() {
+    if (!selectedTrip) return;
+    const XLSX = (await import("xlsx-js-style")).default;
+    const cur = selectedTrip.defaultCurrency || "EUR";
+
+    // ── Colour palette (brand teal) ──────────────────────────────
+    const C = {
+      teal:       "0F766E",
+      tealMid:    "CCEBE8",
+      tealLight:  "E6F4F2",
+      white:      "FFFFFF",
+      text:       "0F172A",
+      muted:      "64748B",
+      green:      "16A34A",
+      greenLight: "F0FDF4",
+      red:        "DC2626",
+      redLight:   "FEF2F2",
+      amber:      "D97706",
+      amberLight: "FFFBEB",
+      grey:       "F8FAFC",
+      border:     "E2E8F0",
+    };
+
+    // ── Style presets ────────────────────────────────────────────
+    const border = side => ({ style: "thin", color: { rgb: C.border } });
+    const allBorders = { top: border(), bottom: border(), left: border(), right: border() };
+
+    const S = {
+      hdr: (right = false) => ({
+        font: { bold: true, color: { rgb: C.white }, sz: 11, name: "Calibri" },
+        fill: { fgColor: { rgb: C.teal } },
+        alignment: { horizontal: right ? "right" : "left", vertical: "center" },
+        border: allBorders,
+      }),
+      secHdr: () => ({
+        font: { bold: true, color: { rgb: C.teal }, sz: 12, name: "Calibri" },
+        fill: { fgColor: { rgb: C.tealLight } },
+        border: allBorders,
+      }),
+      unitHdr: () => ({
+        font: { bold: true, color: { rgb: C.teal }, name: "Calibri" },
+        fill: { fgColor: { rgb: C.tealMid } },
+        border: allBorders,
+      }),
+      confid: () => ({
+        font: { bold: true, color: { rgb: C.white }, name: "Calibri" },
+        fill: { fgColor: { rgb: C.red } },
+        alignment: { horizontal: "center" },
+      }),
+      label: (alt = false) => ({
+        font: { bold: true, color: { rgb: C.text }, name: "Calibri" },
+        fill: alt ? { fgColor: { rgb: C.grey } } : undefined,
+        border: allBorders,
+      }),
+      val: (alt = false) => ({
+        font: { color: { rgb: C.text }, name: "Calibri" },
+        fill: alt ? { fgColor: { rgb: C.grey } } : undefined,
+        border: allBorders,
+      }),
+      num: (alt = false) => ({
+        font: { color: { rgb: C.text }, name: "Calibri" },
+        fill: alt ? { fgColor: { rgb: C.grey } } : undefined,
+        numFmt: "#,##0.00",
+        alignment: { horizontal: "right" },
+        border: allBorders,
+      }),
+      numBold: () => ({
+        font: { bold: true, color: { rgb: C.text }, name: "Calibri" },
+        numFmt: "#,##0.00",
+        alignment: { horizontal: "right" },
+        border: allBorders,
+      }),
+      pos: (alt = false) => ({
+        font: { bold: true, color: { rgb: C.green }, name: "Calibri" },
+        fill: alt ? { fgColor: { rgb: C.grey } } : undefined,
+        numFmt: "#,##0.00",
+        alignment: { horizontal: "right" },
+        border: allBorders,
+      }),
+      neg: (alt = false) => ({
+        font: { bold: true, color: { rgb: C.red }, name: "Calibri" },
+        fill: alt ? { fgColor: { rgb: C.grey } } : undefined,
+        numFmt: "#,##0.00",
+        alignment: { horizontal: "right" },
+        border: allBorders,
+      }),
+      paidBg: () => ({
+        font: { color: { rgb: C.green }, name: "Calibri" },
+        fill: { fgColor: { rgb: C.greenLight } },
+        alignment: { horizontal: "center" },
+        border: allBorders,
+      }),
+      pendingBg: () => ({
+        font: { color: { rgb: C.amber }, name: "Calibri" },
+        fill: { fgColor: { rgb: C.amberLight } },
+        alignment: { horizontal: "center" },
+        border: allBorders,
+      }),
+      doneBg: () => ({
+        font: { color: { rgb: C.green }, name: "Calibri" },
+        fill: { fgColor: { rgb: C.greenLight } },
+        border: allBorders,
+      }),
+      pct: (alt = false) => ({
+        font: { color: { rgb: C.muted }, name: "Calibri" },
+        fill: alt ? { fgColor: { rgb: C.grey } } : undefined,
+        alignment: { horizontal: "right" },
+        border: allBorders,
+      }),
+    };
+
+    // ── Cell builder helpers ─────────────────────────────────────
+    const cs = (v, s) => ({ v: v ?? "", t: "s", s });
+    const cn = (v, s) => ({ v: Number(v) || 0, t: "n", s });
+    const empty = () => ({ v: "", t: "s", s: {} });
+
+    // ── Sheet builder ────────────────────────────────────────────
+    function makeSheet(rows, colWidths, freezeRow = 0, autoFilterRef = null, merges = []) {
+      const ws = {};
+      let maxCol = 0;
+      rows.forEach((row, r) => {
+        (row || []).forEach((cell, c) => {
+          if (c > maxCol) maxCol = c;
+          const addr = XLSX.utils.encode_cell({ r, c });
+          ws[addr] = (cell && typeof cell === "object" && "v" in cell)
+            ? cell
+            : { v: cell ?? "", t: "s" };
+        });
+      });
+      ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, rows.length - 1), c: maxCol } });
+      if (colWidths?.length) ws["!cols"] = colWidths.map(w => ({ wch: w }));
+      if (freezeRow > 0) ws["!freeze"] = { xSplit: 0, ySplit: freezeRow };
+      if (autoFilterRef) ws["!autofilter"] = { ref: autoFilterRef };
+      if (merges.length) ws["!merges"] = merges;
+      return ws;
+    }
+
+    // ── Dynamic flags ────────────────────────────────────────────
+    const hasBudget       = totals.predicted > 0;
+    const activeTasks     = tasks.filter(t => t.isActive !== false);
+    const hasTasks        = activeTasks.length > 0;
+    const hasMultiCurrency = expenses.some(e => e.originalCurrency && e.originalCurrency !== cur);
+    const activeGroups    = settlementGroups.filter(g => g.isActive !== false);
+    const hasFamilyGroups = activeGroups.length > 0;
+    const activeExpenses  = expenses.filter(e => e.isActive !== false);
+    const exportedAt      = new Date().toLocaleString();
+
+    // Trip duration helper
+    const tripStart = selectedTrip.startDate ? new Date(selectedTrip.startDate) : null;
+    const tripEnd   = selectedTrip.endDate   ? new Date(selectedTrip.endDate)   : null;
+    const today     = new Date(); today.setHours(0, 0, 0, 0);
+    let daysElapsed = 0;
+    if (tripStart) {
+      const endForCalc = tripEnd && tripEnd < today ? tripEnd : today;
+      daysElapsed = Math.max(1, Math.round((endForCalc - tripStart) / 86400000) + 1);
+    }
+    const tripDays = tripStart && tripEnd
+      ? Math.max(1, Math.round((tripEnd - tripStart) / 86400000) + 1)
+      : 0;
+
+    const wb = XLSX.utils.book_new();
+    const NUM_SUMMARY_COLS = 2; // for merge calculation
+
+    // ════════════════════════════════════════════════════════════
+    // SHEET 1: SUMMARY
+    // ════════════════════════════════════════════════════════════
+    {
+      const confText = `CONFIDENTIAL – ${selectedTrip.name} financial export – Handle with care – Do not share outside the trip group`;
+      const rows = [
+        [cs(confText, S.confid()), cs("", S.confid())],
+        [],
+        [cs("TRIP OVERVIEW", S.secHdr()), cs("", S.secHdr())],
+        [cs("Trip name",    S.label()),  cs(selectedTrip.name || "",           S.val())],
+        [cs("Description",  S.label(true)), cs(selectedTrip.description || "", S.val(true))],
+        [cs("Start date",   S.label()),  cs(selectedTrip.startDate || "",      S.val())],
+        [cs("End date",     S.label(true)), cs(selectedTrip.endDate || "",     S.val(true))],
+        [cs("Duration",     S.label()),  cs(tripDays ? `${tripDays} day${tripDays !== 1 ? "s" : ""}` : "", S.val())],
+        [cs("Currency",     S.label(true)), cs(cur, S.val(true))],
+        [cs("Members",      S.label()),  cs(activeMembers.map(m => m.name || m.email || m.id).join(", "), S.val())],
+        [cs("Total expenses", S.label(true)), cs(String(activeExpenses.length), S.val(true))],
+        [cs("Exported at",  S.label()),  cs(exportedAt, S.val())],
+        [],
+        [cs("FINANCIAL OVERVIEW", S.secHdr()), cs("", S.secHdr())],
+        [cs("Metric", S.hdr()), cs(`Amount (${cur})`, S.hdr(true))],
+        [cs("Trip total (shared + included personal)", S.label()), cn(totals.actual, S.numBold())],
+        [cs("Shared expenses",  S.label(true)), cn(totals.shared,                  S.num(true))],
+        [cs("Personal expenses (included)", S.label()), cn(totals.actual - totals.shared, S.num())],
+        ...(daysElapsed > 0 && totals.actual > 0
+          ? [[cs("Average spend per day", S.label(true)), cn(roundMoney(totals.actual / daysElapsed), S.num(true))]]
+          : []),
+        [cs("Already settled", S.label()), cn(totals.settled, S.num())],
+        ...(hasBudget ? [
+          [cs("Planned budget", S.label(true)), cn(totals.predicted, S.num(true))],
+          [cs(totals.predicted >= totals.actual ? "Under budget by" : "Over budget by", S.label()),
+           cn(Math.abs(totals.predicted - totals.actual),
+              totals.predicted >= totals.actual ? S.pos() : S.neg())],
+        ] : []),
+      ];
+      const ws = makeSheet(rows, [38, 22], 0, null,
+        [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }] // merge confidential row
+      );
+      XLSX.utils.book_append_sheet(wb, ws, "Summary");
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // SHEET 2: MEMBERS
+    // ════════════════════════════════════════════════════════════
+    {
+      const memberSpendingMap = new Map(
+        balances.map(b => {
+          const personalPaid = roundMoney(
+            activeExpenses
+              .filter(e => e.expenseType !== "shared" && e.paidByMemberId === b.memberId)
+              .reduce((s, e) => s + Number(e.amountEur || 0), 0)
+          );
+          return [b.memberId, { ...b, personalPaid, totalPaid: roundMoney(b.paid + personalPaid) }];
+        })
+      );
+
+      const hdrRow = [
+        cs("Member",                    S.hdr()),
+        cs(`Total paid (${cur})`,       S.hdr(true)),
+        cs(`Group paid (${cur})`,       S.hdr(true)),
+        cs(`Personal paid (${cur})`,    S.hdr(true)),
+        cs(`Net balance (${cur})`,      S.hdr(true)),
+        cs("Status",                    S.hdr()),
+      ];
+
+      const memberRow = (m, alt) => {
+        const netPos = m.net >= MONEY_EPSILON;
+        const netNeg = m.net <= -MONEY_EPSILON;
+        return [
+          cs(m.name, S.label(alt)),
+          cn(m.totalPaid, S.num(alt)),
+          cn(m.paid,      S.num(alt)),
+          cn(m.personalPaid, S.num(alt)),
+          cn(Math.abs(m.net), netPos ? S.pos(alt) : netNeg ? S.neg(alt) : S.num(alt)),
+          cs(netPos ? `Owed ${cur} ${m.net.toFixed(2)}` : netNeg ? `Owes ${cur} ${(-m.net).toFixed(2)}` : "Settled",
+             netPos ? S.paidBg() : netNeg ? S.pendingBg() : S.val(alt)),
+        ];
+      };
+
+      const rows = [[cs("Member spending — who paid what and what they owe / are owed", S.secHdr()),
+                     ...Array(5).fill(cs("", S.secHdr()))]];
+
+      if (hasFamilyGroups) {
+        activeGroups.forEach((group, gi) => {
+          rows.push([]);
+          rows.push([cs(`Unit: ${group.name || "Group"}`, S.unitHdr()), ...Array(5).fill(cs("", S.unitHdr()))]);
+          rows.push(hdrRow);
+          let ri = 0;
+          group.memberIds.forEach(id => {
+            const m = memberSpendingMap.get(id);
+            if (m) { rows.push(memberRow(m, ri % 2 === 1)); ri++; }
+          });
+          const unitMs = group.memberIds.map(id => memberSpendingMap.get(id)).filter(Boolean);
+          const unitTotal = roundMoney(unitMs.reduce((s, m) => s + m.totalPaid, 0));
+          const unitNet   = roundMoney(unitMs.reduce((s, m) => s + m.net, 0));
+          const unitPos = unitNet >= MONEY_EPSILON;
+          const unitNeg = unitNet <= -MONEY_EPSILON;
+          rows.push([
+            cs("Unit total", S.label()),
+            cn(unitTotal, S.numBold()),
+            cs("", S.val()), cs("", S.val()),
+            cn(Math.abs(unitNet), unitPos ? S.pos() : unitNeg ? S.neg() : S.numBold()),
+            cs(unitPos ? `Owed ${cur} ${unitNet.toFixed(2)}` : unitNeg ? `Owes ${cur} ${(-unitNet).toFixed(2)}` : "Settled",
+               unitPos ? S.paidBg() : unitNeg ? S.pendingBg() : S.val()),
+          ]);
+        });
+
+        const groupedIds = new Set(activeGroups.flatMap(g => g.memberIds));
+        const ungrouped = balances.filter(b => !groupedIds.has(b.memberId));
+        if (ungrouped.length > 0) {
+          rows.push([]);
+          rows.push([cs("Individual members", S.unitHdr()), ...Array(5).fill(cs("", S.unitHdr()))]);
+          rows.push(hdrRow);
+          ungrouped.forEach((b, i) => {
+            const m = memberSpendingMap.get(b.memberId) || { ...b, personalPaid: 0, totalPaid: b.paid };
+            rows.push(memberRow(m, i % 2 === 1));
+          });
+        }
+      } else {
+        rows.push([]);
+        rows.push(hdrRow);
+        balances.forEach((b, i) => {
+          const m = memberSpendingMap.get(b.memberId) || { ...b, personalPaid: 0, totalPaid: b.paid };
+          rows.push(memberRow(m, i % 2 === 1));
+        });
+      }
+
+      const ws = makeSheet(rows, [24, 16, 16, 16, 16, 24], 0, null,
+        [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }]
+      );
+      XLSX.utils.book_append_sheet(wb, ws, "Members");
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // SHEET 3: EXPENSES
+    // ════════════════════════════════════════════════════════════
+    {
+      const expHdrs = [
+        cs("Date",         S.hdr()),
+        cs("Description",  S.hdr()),
+        cs("Category",     S.hdr()),
+        cs("Type",         S.hdr()),
+        cs("Paid by",      S.hdr()),
+        cs(`Amount (${cur})`, S.hdr(true)),
+      ];
+      if (hasMultiCurrency) {
+        expHdrs.push(cs("Orig. amount", S.hdr(true)));
+        expHdrs.push(cs("Orig. currency", S.hdr()));
+      }
+      expHdrs.push(cs("Split among", S.hdr()), cs("Notes", S.hdr()));
+
+      const colW = [12, 30, 16, 10, 16, 13];
+      if (hasMultiCurrency) colW.push(13, 10);
+      colW.push(30, 25);
+
+      const dataRows = activeExpenses.map((e, i) => {
+        const alt = i % 2 === 1;
+        const isOwn = e.paidByMemberId === currentUserMemberId;
+        const isShared = e.expenseType === "shared";
+        // Privacy: redact other members' personal expense details
+        const desc = isShared || isOwn ? (e.description || "") : "Personal expense";
+        const notes = isShared || isOwn ? (e.notes || "") : "";
+
+        const splitAmong = isShared && e.splitType === "custom"
+          ? Object.entries(e.customSplitSharesEur || {})
+              .map(([id, amt]) => `${memberNameOf(id)}: ${Number(amt).toFixed(2)}`)
+              .join(", ")
+          : isShared
+          ? (e.splitMemberIds || []).map(memberNameOf).join(", ")
+          : memberNameOf(e.paidByMemberId);
+
+        const row = [
+          cs(e.date || "",                                         S.val(alt)),
+          cs(desc,                                                 S.val(alt)),
+          cs(e.categoryName || "",                                 S.val(alt)),
+          cs(isShared ? "Shared" : "Personal",                    S.val(alt)),
+          cs(memberNameOf(e.paidByMemberId),                      S.val(alt)),
+          cn(Number(e.amountEur || 0),                            S.num(alt)),
+        ];
+        if (hasMultiCurrency) {
+          const hasFx = e.originalCurrency && e.originalCurrency !== cur;
+          row.push(
+            hasFx ? cn(Number(e.originalAmount || e.amountEur || 0), S.num(alt)) : cs("", S.val(alt)),
+            hasFx ? cs(e.originalCurrency, S.val(alt)) : cs("", S.val(alt)),
+          );
+        }
+        row.push(cs(splitAmong, S.val(alt)), cs(notes, S.val(alt)));
+        return row;
+      });
+
+      const autoRef = `A1:${XLSX.utils.encode_col(expHdrs.length - 1)}1`;
+      const ws = makeSheet([expHdrs, ...dataRows], colW, 1, autoRef);
+      XLSX.utils.book_append_sheet(wb, ws, "Expenses");
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // SHEET 4: CATEGORIES
+    // ════════════════════════════════════════════════════════════
+    {
+      const catHdrs = [
+        cs("Category",        S.hdr()),
+        cs(`Spent (${cur})`,  S.hdr(true)),
+        cs("% of total",      S.hdr(true)),
+      ];
+      const colW = [22, 15, 10];
+      if (hasBudget) {
+        catHdrs.push(cs(`Budgeted (${cur})`, S.hdr(true)));
+        catHdrs.push(cs(`Difference (${cur})`, S.hdr(true)));
+        colW.push(15, 15);
+      }
+
+      const breakdown = categories
+        .map(c => ({ name: c.name, actual: actualByCategoryId.get(c.id) || 0, predicted: Number(groupBudgetByCategoryId.get(c.id) || 0) }))
+        .filter(c => c.actual > 0)
+        .sort((a, b) => b.actual - a.actual);
+
+      const dataRows = breakdown.map((c, i) => {
+        const alt = i % 2 === 1;
+        const pctVal = totals.actual > 0 ? `${Math.round((c.actual / totals.actual) * 100)}%` : "0%";
+        const row = [
+          cs(c.name, S.label(alt)),
+          cn(c.actual, S.num(alt)),
+          cs(pctVal, S.pct(alt)),
+        ];
+        if (hasBudget) {
+          const diff = c.predicted - c.actual;
+          row.push(cn(c.predicted, S.num(alt)));
+          row.push(cn(diff, diff >= 0 ? S.pos(alt) : S.neg(alt)));
+        }
+        return row;
+      });
+
+      // Totals row
+      const totRow = [cs("TOTAL", S.label()), cn(totals.actual, S.numBold()), cs("100%", S.pct())];
+      if (hasBudget) {
+        const totalDiff = totals.predicted - totals.actual;
+        totRow.push(cn(totals.predicted, S.numBold()));
+        totRow.push(cn(totalDiff, totalDiff >= 0 ? S.pos() : S.neg()));
+      }
+
+      const ws = makeSheet([catHdrs, ...dataRows, totRow], colW, 1);
+      XLSX.utils.book_append_sheet(wb, ws, "Categories");
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // SHEET 5: SETTLEMENTS
+    // ════════════════════════════════════════════════════════════
+    {
+      const rows = [];
+      const allGroupSugg   = smartSettleSummary.groupSettlement.suggestions || [];
+      const allPrivateSugg = smartSettleSummary.privateSettlements || [];
+      const allSettled = allGroupSugg.length === 0 && allPrivateSugg.every(g => g.suggestions.length === 0);
+
+      rows.push([cs("SETTLEMENT PLAN", S.secHdr()), ...Array(3).fill(cs("", S.secHdr()))]);
+      rows.push([]);
+
+      if (allSettled) {
+        rows.push([cs("All members are settled — no payments needed", S.paidBg()), cs("", S.paidBg()), cs("", S.paidBg()), cs("", S.paidBg())]);
+      } else {
+        const planHdr = [cs("From", S.hdr()), cs("To", S.hdr()), cs(`Amount (${cur})`, S.hdr(true)), cs("Status", S.hdr())];
+        if (allGroupSugg.length > 0) {
+          rows.push([cs("Group settlements", S.unitHdr()), ...Array(3).fill(cs("", S.unitHdr()))]);
+          rows.push(planHdr);
+          allGroupSugg.forEach((s, i) => {
+            rows.push([
+              cs(s.fromName, S.val(i % 2 === 1)),
+              cs(s.toName,   S.val(i % 2 === 1)),
+              cn(s.amount,   S.num(i % 2 === 1)),
+              cs(s.status || "pending", s.status === "paid" ? S.paidBg() : S.pendingBg()),
+            ]);
+          });
+          rows.push([]);
+        }
+        allPrivateSugg.forEach(group => {
+          if (!group.suggestions.length) return;
+          rows.push([cs(`Private: ${group.memberNames.join(" & ")}`, S.unitHdr()), ...Array(3).fill(cs("", S.unitHdr()))]);
+          rows.push(planHdr);
+          group.suggestions.forEach((s, i) => {
+            rows.push([
+              cs(s.fromName, S.val(i % 2 === 1)),
+              cs(s.toName,   S.val(i % 2 === 1)),
+              cn(s.amount,   S.num(i % 2 === 1)),
+              cs(s.status || "pending", s.status === "paid" ? S.paidBg() : S.pendingBg()),
+            ]);
+          });
+          rows.push([]);
+        });
+      }
+
+      if (settlements.length > 0) {
+        rows.push([]);
+        rows.push([cs("PAYMENT HISTORY", S.secHdr()), ...Array(5).fill(cs("", S.secHdr()))]);
+        rows.push([]);
+        const histHdr = [
+          cs("Date",   S.hdr()), cs("From", S.hdr()), cs("To", S.hdr()),
+          cs(`Amount (${cur})`, S.hdr(true)), cs("Status", S.hdr()), cs("Notes", S.hdr()),
+        ];
+        rows.push(histHdr);
+        settlements.forEach((s, i) => {
+          const alt = i % 2 === 1;
+          const isPaid = (s.status || "paid") === "paid";
+          rows.push([
+            cs(s.date || s.paidAt?.toDate?.()?.toLocaleDateString?.() || "", S.val(alt)),
+            cs(s.fromMemberName || memberNameOf(s.fromMemberId), S.val(alt)),
+            cs(s.toMemberName   || memberNameOf(s.toMemberId),   S.val(alt)),
+            cn(Number(s.amountEur || 0), S.num(alt)),
+            cs(s.status || "paid", isPaid ? S.paidBg() : S.pendingBg()),
+            cs(s.notes || "", S.val(alt)),
+          ]);
+        });
+      }
+
+      const ws = makeSheet(rows, [22, 22, 15, 14, 14, 30], 0, null,
+        [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+        ]
+      );
+      XLSX.utils.book_append_sheet(wb, ws, "Settlements");
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // SHEET 6: TASKS (conditional)
+    // ════════════════════════════════════════════════════════════
+    if (hasTasks) {
+      const hdrRow = [
+        cs("Title",       S.hdr()),
+        cs("Type",        S.hdr()),
+        cs("Assigned to", S.hdr()),
+        cs("Status",      S.hdr()),
+        cs("Due date",    S.hdr()),
+        cs("Notes",       S.hdr()),
+      ];
+      const dataRows = activeTasks.map((task, i) => {
+        const alt  = i % 2 === 1;
+        const done = task.status === "done";
+        return [
+          cs(task.title || "",                                    done ? S.doneBg() : S.val(alt)),
+          cs(taskTypeLabel(task.type),                            done ? S.doneBg() : S.val(alt)),
+          cs((task.assignedTo || []).map(memberNameOf).join(", "), done ? S.doneBg() : S.val(alt)),
+          cs(done ? "Done" : "To do",                            done ? S.paidBg() : S.pendingBg()),
+          cs(task.dueDate || "",                                  done ? S.doneBg() : S.val(alt)),
+          cs(task.notes || "",                                    done ? S.doneBg() : S.val(alt)),
+        ];
+      });
+      const autoRef = `A1:F1`;
+      const ws = makeSheet([hdrRow, ...dataRows], [36, 14, 24, 10, 12, 30], 1, autoRef);
+      XLSX.utils.book_append_sheet(wb, ws, "Tasks");
+    }
+
+    XLSX.writeFile(wb, `${slugify(selectedTrip.name) || "trip"}-export.xlsx`);
+  }
+
+  // ── Legacy stub kept so old references don't break (not exposed in UI) ──
+  function _exportTripSummaryCsvLegacy() {
     if (!selectedTrip) return;
     const cur = selectedTrip.defaultCurrency || "EUR";
     const rows = [];
@@ -9546,15 +10062,17 @@ function App() {
             <section style={{ marginTop: "20px" }}>
               <h2>Export</h2>
               <p className="small muted">
-                Download a full CSV summary with trip details, totals, categories,
-                    expenses, tasks, balances, suggested settlements, and settlement history.
+                Downloads a formatted Excel workbook (.xlsx) with 6 sheets: Summary, Members, Expenses, Categories, Settlements, and Tasks. Opens directly in Excel or Google Sheets with colour-coded formatting.
+              </p>
+              <p className="small muted" style={{ marginTop: "6px" }}>
+                Other members' personal expense details are redacted for privacy. The file is marked confidential.
               </p>
               <button
                 className="primary-button"
                 type="button"
                 onClick={exportTripSummaryCsv}
               >
-                Export trip summary CSV
+                Export trip workbook (.xlsx)
               </button>
             </section>
 
