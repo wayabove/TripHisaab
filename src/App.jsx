@@ -262,6 +262,14 @@ function isActiveSharedExpense(expense) {
     && Number(expense?.amountEur || 0) > 0;
 }
 
+function getMemberUnitMap(settlementGroups) {
+  const map = {};
+  settlementGroups.filter(g => g.isActive !== false).forEach(g => {
+    g.memberIds.forEach(id => { map[id] = g.id; });
+  });
+  return map;
+}
+
 function getGroupSettlementExpenses(expenses) {
   return expenses.filter(expense => {
     if (!isActiveSharedExpense(expense)) return false;
@@ -737,16 +745,25 @@ function getSmartSettleSummaryByMode(
     };
   });
 
+  // In family_couple mode, exclude intra-unit private settlements from consolidated
+  // (they cancel at the unit level). Cross-unit private visibilty is expanded when
+  // settlement groups are saved, so all unit members see the same consolidated total.
+  let consolidatedPrivates = privateSettlements;
+  if (mode === "family_couple") {
+    const unitMap = getMemberUnitMap(settlementGroups);
+    consolidatedPrivates = privateSettlements.filter(group => {
+      const unitIds = new Set(group.memberIds.map(id => unitMap[id]).filter(Boolean));
+      return unitIds.size >= 2;
+    });
+  }
   const combinedMemberBalances = getCombinedMemberBalances(
     { balances: groupBalances },
-    privateSettlements
+    consolidatedPrivates
   );
   let consolidatedSuggestions;
   if (mode === "family_couple") {
-    // Use group-only balances so all unit members see the same Final Settlement amount.
-    // Private cross-unit expenses are not uniformly visible, causing per-user inconsistency.
     const units = getSettlementUnits(activeMembers, settlementGroups);
-    consolidatedSuggestions = generateFamilyCoupleSettlements(groupBalances, units, currency);
+    consolidatedSuggestions = generateFamilyCoupleSettlements(combinedMemberBalances, units, currency);
   } else {
     consolidatedSuggestions = generateSettlementSuggestions(combinedMemberBalances, currency);
   }
@@ -953,7 +970,7 @@ function mergeMemberDirectory(current, incoming) {
 }
 
 // -------------------- Reusable Modal shell --------------------
-function Modal({ isOpen, onClose, title, children }) {
+function Modal({ isOpen, onClose, title, children, className }) {
   useEffect(() => {
     if (!isOpen) return;
     const handleKey = e => {
@@ -973,7 +990,7 @@ function Modal({ isOpen, onClose, title, children }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal"
+        className={`modal${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -6250,6 +6267,63 @@ function App() {
     setExpandedSmartSettleId("");
   }
 
+  async function expandCrossUnitVisibility(allGroups) {
+    if (!selectedTrip || isDemoMode()) return 0;
+    const activeGroups = allGroups.filter(g => g.isActive !== false);
+    if (activeGroups.length < 2) return 0;
+
+    const unitMap = {};
+    const unitMemberSets = {};
+    activeGroups.forEach(g => {
+      unitMemberSets[g.id] = new Set(g.memberIds);
+      g.memberIds.forEach(id => { unitMap[id] = g.id; });
+    });
+
+    const updates = [];
+    expenses.forEach(expense => {
+      if (!isActiveSharedExpense(expense)) return;
+      const isPrivate = normalizeExpenseScope(expense) === "selected_members"
+        || Array.isArray(expense.visibleTo);
+      if (!isPrivate || expense.visibleTo === "all") return;
+
+      const visibleIds = expenseVisibleIds(expense).filter(Boolean);
+      if (visibleIds.length < 2) return;
+      if (!visibleIds.every(id => unitMap[id])) return;
+
+      const involvedUnitIds = new Set(visibleIds.map(id => unitMap[id]));
+      if (involvedUnitIds.size < 2) return;
+
+      const expanded = new Set(visibleIds);
+      involvedUnitIds.forEach(gid => unitMemberSets[gid]?.forEach(mid => expanded.add(mid)));
+
+      const newVisibleTo = [...expanded].sort();
+      const current = Array.isArray(expense.visibleTo)
+        ? [...expense.visibleTo].sort()
+        : [...visibleIds].sort();
+
+      const unchanged = newVisibleTo.length === current.length
+        && newVisibleTo.every((id, i) => id === current[i]);
+      if (unchanged) return;
+
+      updates.push({ id: expense.id, visibleTo: newVisibleTo });
+    });
+
+    if (updates.length === 0) return 0;
+
+    await Promise.all(
+      updates.map(({ id, visibleTo }) =>
+        updateDoc(doc(db, "trips", selectedTrip.id, "expenses", id), { visibleTo })
+      )
+    );
+    setExpenses(prev =>
+      prev.map(e => {
+        const u = updates.find(x => x.id === e.id);
+        return u ? { ...e, visibleTo: u.visibleTo } : e;
+      })
+    );
+    return updates.length;
+  }
+
   async function handleSaveSettlementGroup(e) {
     e.preventDefault();
     if (!selectedTrip || isDemoMode()) return;
@@ -6291,13 +6365,15 @@ function App() {
       return alert(`${memberDisplayName(m) || conflict} is already in another settlement group.`);
     }
 
+    let updatedGroups;
     try {
       if (editingSettlementGroupId) {
         const updated = { name: name.trim(), memberIds, type, updatedAt: new Date().toISOString() };
         await updateDoc(doc(db, "trips", selectedTrip.id, "settlementGroups", editingSettlementGroupId), updated);
-        setSettlementGroups(settlementGroups.map(g =>
+        updatedGroups = settlementGroups.map(g =>
           g.id === editingSettlementGroupId ? { ...g, ...updated } : g
-        ));
+        );
+        setSettlementGroups(updatedGroups);
       } else {
         const newGroupRef = doc(collection(db, "trips", selectedTrip.id, "settlementGroups"));
         const newGroup = {
@@ -6310,8 +6386,10 @@ function App() {
           updatedAt: new Date().toISOString()
         };
         await setDoc(newGroupRef, newGroup);
-        setSettlementGroups([...settlementGroups, newGroup]);
+        updatedGroups = [...settlementGroups, newGroup];
+        setSettlementGroups(updatedGroups);
       }
+      await expandCrossUnitVisibility(updatedGroups);
     } catch (err) {
       console.error("Failed to save settlement group:", err);
       alert("Failed to save settlement group. Please try again.");
@@ -6897,7 +6975,7 @@ function App() {
                 <h3>Final Settlement</h3>
                 <p className="small muted">
                   {isFamilyCoupleMode
-                    ? "Minimum payments between units based on shared group expenses."
+                    ? "Minimum payments between units, combining group and cross-unit private expenses."
                     : "Minimum payments combining all group and private expenses."}
                 </p>
               </div>
@@ -6920,7 +6998,7 @@ function App() {
             <p className="consolidated-note small muted">
               This is your final answer. Use "Show breakdown" below to mark individual payments as paid.
               {isFamilyCoupleMode
-                ? " · Private expenses are excluded from this view — settle them separately in the breakdown."
+                ? " · Within-unit private expenses are settled internally and shown in the breakdown."
                 : (!isAdmin && " · Private expenses you are not part of are excluded from this view.")}
             </p>
           </section>
@@ -9486,6 +9564,7 @@ function App() {
           isOpen={isAddExpenseModalOpen}
           onClose={() => setIsAddExpenseModalOpen(false)}
           title="Add expense"
+          className="expense-modal"
         >
           {renderExpenseForm({
             mode: "add",
@@ -9549,6 +9628,7 @@ function App() {
           isOpen={Boolean(editingExpenseId)}
           onClose={cancelEditingExpense}
           title="Edit expense"
+          className="expense-modal"
         >
           {renderExpenseForm({
             mode: "edit",

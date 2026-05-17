@@ -3396,6 +3396,8 @@ p {
   gap: 14px;
   padding: 22px;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-footer {
@@ -3418,6 +3420,9 @@ p {
   min-width: 120px;
   margin-right: auto;
 }
+
+/* ── Expense modal — mobile-first full-height bottom sheet ── */
+/* Applied via className="expense-modal" on add + edit expense modals */
 
 .date-range-picker {
   position: relative;
@@ -4147,6 +4152,31 @@ p {
 
   .modal-footer .danger-button {
     margin-right: 0;
+  }
+
+  /* Expense modal — full-height, no fake drag affordance */
+  .expense-modal {
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Expense modal body fills all available space and scrolls internally */
+  .expense-modal .modal-body,
+  .expense-modal .exp-tab-body {
+    flex: 1 1 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px 16px;
+  }
+
+  /* Expense modal footer is always visible at the bottom */
+  .expense-modal .modal-footer {
+    flex-shrink: 0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   }
 
   .date-range-popover {
@@ -7474,6 +7504,14 @@ p {
     border-radius: 3px;
   }
 
+  /* Expense modal: full-screen, no misleading drag handle */
+  html.os-ios .expense-modal {
+    border-radius: 0;
+  }
+  html.os-ios .expense-modal::before {
+    display: none;
+  }
+
   /* Buttons — iOS standard corner radius */
   html.os-ios .primary-button,
   html.os-ios .secondary-button {
@@ -7594,6 +7632,14 @@ p {
     margin: 10px auto -2px;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 2px;
+  }
+
+  /* Expense modal: full-screen, no misleading drag handle */
+  html.os-android .expense-modal {
+    border-radius: 0;
+  }
+  html.os-android .expense-modal::before {
+    display: none;
   }
 
   /* Buttons — Material 3 filled button uses full pill shape */
@@ -8261,5 +8307,30 @@ p {
   .expense-muted-cell,
   .expense-table-row > [data-label="Type"] {
     grid-template-columns: 74px minmax(0, 1fr);
+  }
+
+  /* Expense form: force single column on iPhone 13 mini width */
+  .expense-modal .grid-2,
+  .expense-modal .expense-form-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Compact tab bar so all tabs fit at 375px */
+  .expense-modal .exp-tab-nav {
+    gap: 0;
+  }
+  .expense-modal .exp-tab-btn {
+    min-width: 0;
+    flex: 1 1 0;
+    padding: 9px 4px 8px;
+  }
+  .expense-modal .exp-tab-label {
+    font-size: 8px;
+    letter-spacing: 0;
+  }
+
+  /* Amount input headline size */
+  .expense-modal .expense-amount-input {
+    font-size: 20px;
   }
 }
