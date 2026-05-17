@@ -302,6 +302,11 @@ service cloud.firestore {
           && (isOwner(tripId) || resource.data.createdBy in requestMemberKeys());
       }
 
+      match /settlementGroups/{groupId} {
+        allow get, list: if canReadTrip(tripId);
+        allow create, update, delete: if canReadTrip(tripId);
+      }
+
       match /notifications/{notificationId} {
         allow get, list: if canReadTrip(tripId);
         allow create, update, delete: if canReadTrip(tripId);
@@ -311,6 +316,10 @@ service cloud.firestore {
         allow get: if true;
         allow list: if canReadTrip(tripId);
         allow create, update, delete: if isOwner(tripId);
+      }
+
+      match /personalBudgets/{userId} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
       }
     }
   }
