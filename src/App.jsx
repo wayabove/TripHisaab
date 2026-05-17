@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 const APP_VERSION = "2.1.0";
+const TRIP_SNAPSHOT_PREFIX = "triphisaab-trip-snapshot";
 import {
   signInWithPopup,
   signOut,
@@ -292,6 +293,17 @@ function getTripTotalsSummary(expenses) {
     sharedExpenseCount: sharedExpenses.length,
     personalExpenseCount: includedPersonalExpenses.length
   };
+}
+
+function getWriteVersion(data) {
+  const value = data?.updatedAt || data?.createdAt || "";
+  if (value?.seconds) return `${value.seconds}:${value.nanoseconds || 0}`;
+  if (value instanceof Date) return value.toISOString();
+  return String(value || "");
+}
+
+function getTripSnapshotKey(userId, tripId) {
+  return `${TRIP_SNAPSHOT_PREFIX}-${userId || "anon"}-${tripId}`;
 }
 
 function getPrivateSettlementGroups(expenses, currentUserId, isAdmin = false) {
@@ -1143,7 +1155,11 @@ function Preloader() {
         >
           <div className="flight-trail" />
           <div className="flight-progress" />
-          <span className="flight-plane" aria-hidden="true">✈</span>
+          <span className="flight-plane" aria-hidden="true">
+            <span className="flight-plane-icon" />
+            <span className="flight-speed-lines flight-speed-lines--top" />
+            <span className="flight-speed-lines flight-speed-lines--bottom" />
+          </span>
         </div>
         <div className="preloader-percent">{progress}%</div>
       </div>
@@ -1436,13 +1452,40 @@ function FormActions({
   );
 }
 
-function Icon({ name, size = 20, strokeWidth = 2, className = "app-icon", title }) {
+function Icon({ name, size = 20, strokeWidth = 1.9, className = "app-icon", title }) {
+  const fills = {
+    plus: "#34d399",
+    receipt: "#99f6e4",
+    card: "#93c5fd",
+    chart: "#86efac",
+    handshake: "#fde68a",
+    check: "#bbf7d0",
+    tag: "#ddd6fe",
+    users: "#c4b5fd",
+    link: "#a7f3d0",
+    invite: "#a7f3d0",
+    calendar: "#fed7aa",
+    message: "#67e8f9",
+    list: "#bfdbfe",
+    note: "#fecaca",
+    euro: "#6ee7b7",
+    cash: "#bef264",
+    bank: "#bae6fd",
+    refresh: "#e5e7eb",
+    plane: "#bfdbfe",
+    briefcase: "#c7d2fe",
+    suitcase: "#fdba74",
+    eye: "#f9a8d4",
+    cloud: "#bae6fd",
+    settings: "#d8b4fe"
+  };
+  const fill = fills[name] || fills.receipt;
   const common = {
     width: size,
     height: size,
     viewBox: "0 0 24 24",
     fill: "none",
-    stroke: "currentColor",
+    stroke: "#111827",
     strokeWidth,
     strokeLinecap: "round",
     strokeLinejoin: "round",
@@ -1451,31 +1494,37 @@ function Icon({ name, size = 20, strokeWidth = 2, className = "app-icon", title 
     role: title ? "img" : undefined
   };
   const paths = {
-    plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
-    receipt: <><path d="M4 3v18l3-2 3 2 3-2 3 2 3-2 1 1V3H4z" /><path d="M8 8h8" /><path d="M8 12h8" /><path d="M8 16h5" /></>,
-    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /><path d="M7 15h3" /></>,
-    chart: <><path d="M4 19V5" /><path d="M4 19h16" /><rect x="7" y="11" width="3" height="5" rx="1" /><rect x="12" y="7" width="3" height="9" rx="1" /><rect x="17" y="9" width="3" height="7" rx="1" /></>,
-    handshake: <><path d="M7 11l3-3 4 4 3-3" /><path d="M3 12l4-4 5 5" /><path d="M21 12l-4-4-6 6" /><path d="M8 15l2 2" /><path d="M12 15l2 2" /></>,
-    check: <path d="M20 6 9 17l-5-5" />,
-    tag: <><path d="M20 13 11 22l-8-8 9-9h7v8z" /><path d="M16 8h.01" /></>,
-    users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
-    link: <><path d="M10 13a5 5 0 0 0 7.54.54l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15" /><path d="M14 11a5 5 0 0 0-7.54-.54l-2 2a5 5 0 0 0 7.07 7.07l1.15-1.15" /></>,
-    calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4" /><path d="M8 2v4" /><path d="M3 10h18" /></>,
-    message: <><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" /><path d="M8 10h.01" /><path d="M12 10h.01" /><path d="M16 10h.01" /></>,
-    list: <><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" /></>,
-    note: <><path d="M4 4h12l4 4v12H4z" /><path d="M16 4v4h4" /><path d="M8 13h8" /><path d="M8 17h5" /></>,
-    euro: <><path d="M4 10h10" /><path d="M4 14h9" /><path d="M18 6.5A7 7 0 1 0 18 17.5" /></>,
-    cash: <><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="3" /><path d="M6 9v.01" /><path d="M18 15v.01" /></>,
-    bank: <><path d="M3 10h18" /><path d="M5 10v8" /><path d="M9 10v8" /><path d="M15 10v8" /><path d="M19 10v8" /><path d="M3 18h18" /><path d="M12 3 4 8h16z" /></>,
-    refresh: <><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /></>,
-    plane: <><path d="M22 2 11 13" /><path d="m22 2-7 20-4-9-9-4 20-7z" /></>,
-    briefcase: <><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M3 12h18" /></>,
-    suitcase: <><rect x="5" y="6" width="14" height="15" rx="2" /><path d="M9 6V4h6v2" /><path d="M9 11h.01" /><path d="M15 11h.01" /></>,
-    eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></>,
-    cloud: <><path d="M17.5 19H7a5 5 0 1 1 1-9.9A7 7 0 0 1 21 12.5 3.5 3.5 0 0 1 17.5 19z" /></>,
-    settings: <><path d="M4 7h16" /><path d="M4 17h16" /><circle cx="9" cy="7" r="2" /><circle cx="15" cy="17" r="2" /></>
+    plus: <><rect x="4" y="4" width="16" height="16" rx="5" fill={fill} /><path d="M12 8v8" /><path d="M8 12h8" /></>,
+    receipt: <><path d="M6 3.5h12v17l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2z" fill={fill} /><path d="M9 8h6" /><path d="M9 12h6" /><path d="M9 16h4" /></>,
+    card: <><rect x="3.5" y="5.5" width="17" height="13" rx="3" fill={fill} /><path d="M4 10h16" /><path d="M7.5 15h4" /></>,
+    chart: <><rect x="4.5" y="12" width="4.2" height="7" rx="1.5" fill="#93c5fd" /><rect x="10" y="7" width="4.2" height="12" rx="1.5" fill="#86efac" /><rect x="15.5" y="10" width="4.2" height="9" rx="1.5" fill="#fcd34d" /><path d="M3.5 20h17" /></>,
+    handshake: <><path d="M3.5 14.2 8.2 9.5l4.1 4.1-4.7 4.7a2.6 2.6 0 0 1-3.7 0 2.8 2.8 0 0 1-.4-4.1z" fill="#fde68a" /><path d="M20.5 14.2 15.8 9.5l-4.1 4.1 4.7 4.7a2.6 2.6 0 0 0 3.7 0 2.8 2.8 0 0 0 .4-4.1z" fill="#99f6e4" /><path d="M9.2 14.8h5.6" /></>,
+    check: <><path d="M12 3.5 20 7v5.5c0 4.2-3.3 7-8 8-4.7-1-8-3.8-8-8V7z" fill={fill} /><path d="m8 12 2.5 2.5L16 9" /></>,
+    tag: <><path d="M20 13 11 22l-8-8 9-9h7z" fill={fill} /><circle cx="15.5" cy="8.5" r="1.2" fill="#111827" stroke="none" /></>,
+    users: <><circle cx="8.5" cy="8" r="3.6" fill="#c4b5fd" /><circle cx="15.7" cy="8.8" r="3.1" fill="#93c5fd" /><path d="M3.5 20c.8-4.2 2.9-6.2 5.8-6.2s5 2 5.7 6.2z" fill="#c4b5fd" /><path d="M12.8 20c.6-3.6 2.2-5.3 4.4-5.3s3.7 1.8 4.3 5.3z" fill="#93c5fd" /></>,
+    link: <><path d="M9.8 14.2 8.4 15.6a3.6 3.6 0 1 1-5.1-5.1l2.4-2.4a3.6 3.6 0 0 1 5.4.3" fill="#a7f3d0" /><path d="M14.2 9.8 15.6 8.4a3.6 3.6 0 1 1 5.1 5.1l-2.4 2.4a3.6 3.6 0 0 1-5.4-.3" fill="#93c5fd" /><path d="M9 15 15 9" /></>,
+    invite: <><rect x="3.5" y="6" width="17" height="12" rx="3" fill={fill} /><path d="m4.5 8 7.5 5 7.5-5" /><circle cx="18" cy="6.5" r="3.2" fill="#fde68a" /><path d="M18 4.8v3.4" /><path d="M16.3 6.5h3.4" /></>,
+    calendar: <><rect x="4" y="5" width="16" height="16" rx="3" fill={fill} /><path d="M4 10h16" /><path d="M8 3.5v3" /><path d="M16 3.5v3" /><path d="M8 14h2" /><path d="M14 14h2" /><path d="M8 18h2" /></>,
+    message: <><path d="M20.5 14.5a4 4 0 0 1-4 4H9l-5.5 3V7.5a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4z" fill={fill} /><circle cx="8.5" cy="11" r="1" fill="#111827" stroke="none" /><circle cx="12" cy="11" r="1" fill="#111827" stroke="none" /><circle cx="15.5" cy="11" r="1" fill="#111827" stroke="none" /></>,
+    list: <><rect x="4" y="4" width="16" height="16" rx="3" fill={fill} /><path d="M9 8h7" /><path d="M9 12h7" /><path d="M9 16h7" /><circle cx="6.8" cy="8" r=".8" fill="#111827" stroke="none" /><circle cx="6.8" cy="12" r=".8" fill="#111827" stroke="none" /><circle cx="6.8" cy="16" r=".8" fill="#111827" stroke="none" /></>,
+    note: <><path d="M5 4h11l4 4v12H5z" fill={fill} /><path d="M16 4v4h4" fill="#fff7ed" /><path d="M8.5 13h7" /><path d="M8.5 17h4.5" /></>,
+    euro: <><circle cx="12" cy="12" r="8.5" fill={fill} /><path d="M7 10h8" /><path d="M7 14h7" /><path d="M17 7.2A6 6 0 1 0 17 16.8" /></>,
+    cash: <><rect x="3.5" y="6.5" width="17" height="11" rx="2.5" fill={fill} /><circle cx="12" cy="12" r="3" fill="#fef3c7" /><path d="M6.5 9.5v.01" /><path d="M17.5 14.5v.01" /></>,
+    bank: <><path d="M12 3.5 4 8.5h16z" fill="#bfdbfe" /><path d="M5 9h14v9H5z" fill={fill} /><path d="M7 9v9" /><path d="M12 9v9" /><path d="M17 9v9" /><path d="M4 20h16" /></>,
+    refresh: <><path d="M19.5 10a7.5 7.5 0 0 0-13-3.2L4 9" /><path d="M4 4v5h5" fill={fill} /><path d="M4.5 14a7.5 7.5 0 0 0 13 3.2L20 15" /><path d="M20 20v-5h-5" fill={fill} /></>,
+    plane: <><path d="m21 3-6.5 18-3.3-7.8L3 9.8z" fill={fill} /><path d="M21 3 11.2 13.2" /><path d="m8.5 16.5 2.7-3.3" /></>,
+    briefcase: <><rect x="3.5" y="7" width="17" height="13" rx="3" fill={fill} /><path d="M8.5 7V5.5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2V7" /><path d="M4 12h16" /><path d="M10 12v2h4v-2" fill="#fff7ed" /></>,
+    suitcase: <><rect x="5" y="6" width="14" height="15" rx="3" fill={fill} /><path d="M9 6V4h6v2" /><path d="M9 11h.01" /><path d="M15 11h.01" /><path d="M8 21v-1" /><path d="M16 21v-1" /></>,
+    eye: <><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" fill={fill} /><circle cx="12" cy="12" r="3.2" fill="#fff7ed" /><circle cx="12" cy="12" r="1.2" fill="#111827" stroke="none" /></>,
+    cloud: <><path d="M17.5 19H7a5 5 0 1 1 1-9.8A6.5 6.5 0 0 1 20.7 12 3.8 3.8 0 0 1 17.5 19z" fill={fill} /><path d="M8.5 9.2a6.4 6.4 0 0 1 5.2-3" /></>,
+    settings: <><rect x="4" y="5" width="16" height="14" rx="4" fill={fill} /><path d="M7 9h10" /><path d="M7 15h10" /><circle cx="10" cy="9" r="2" fill="#fff7ed" /><circle cx="14" cy="15" r="2" fill="#fff7ed" /></>
   };
-  return <svg {...common}>{title ? <title>{title}</title> : null}{paths[name] || paths.receipt}</svg>;
+  return (
+    <svg {...common}>
+      {title ? <title>{title}</title> : null}
+      <g className="app-icon-mark">{paths[name] || paths.receipt}</g>
+    </svg>
+  );
 }
 
 function EmptyState({ icon, title, description, className = "empty-state", iconClass = "empty-icon", headingLevel = "h3" }) {
@@ -1485,6 +1534,42 @@ function EmptyState({ icon, title, description, className = "empty-state", iconC
       {icon !== undefined && <div className={iconClass}>{icon}</div>}
       {title && <H>{title}</H>}
       {description && <p className="muted">{description}</p>}
+    </div>
+  );
+}
+
+function SyncStatusBanner({ isOnline, syncStatus, hasPendingWrites, lastRefreshAt, onRefresh }) {
+  const show = !isOnline || syncStatus === "syncing" || syncStatus === "pending" || hasPendingWrites || syncStatus === "error";
+  if (!show) return null;
+  const label =
+    !isOnline
+      ? "Offline"
+      : syncStatus === "syncing"
+      ? "Syncing"
+      : syncStatus === "error"
+      ? "Sync issue"
+      : "Pending sync";
+  const detail =
+    !isOnline
+      ? "You can keep editing. Changes sync when you're back online."
+      : syncStatus === "syncing"
+      ? "Refreshing the latest trip data..."
+      : syncStatus === "error"
+      ? "Some changes may need attention when the network is stable."
+      : "Changes saved on this device and waiting for confirmation.";
+  return (
+    <div className={`sync-banner sync-banner--${!isOnline ? "offline" : syncStatus}`} role="status" aria-live="polite">
+      <div className="sync-banner-dot" />
+      <div className="sync-banner-copy">
+        <strong>{label}</strong>
+        <span>{detail}</span>
+        {lastRefreshAt && isOnline ? <small>Last checked {lastRefreshAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small> : null}
+      </div>
+      {isOnline ? (
+        <button className="sync-banner-refresh" type="button" onClick={onRefresh}>
+          Refresh
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1547,6 +1632,15 @@ function App() {
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [tripSearch, setTripSearch] = useState("");
+  const [homeTripFilter, setHomeTripFilter] = useState("all");
+  const [tripListInsights, setTripListInsights] = useState({});
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
+  const [syncStatus, setSyncStatus] = useState("synced");
+  const [hasPendingWrites, setHasPendingWrites] = useState(false);
+  const [lastRefreshAt, setLastRefreshAt] = useState(null);
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState(() =>
+    typeof Notification === "undefined" ? "unsupported" : Notification.permission
+  );
   const [showLanding, setShowLanding] = useState(() => {
     try {
       return localStorage.getItem(APP_VIEW_STORAGE_KEY) !== "app";
@@ -1676,6 +1770,8 @@ function App() {
   const [expenseFormTab, setExpenseFormTab] = useState("basic");
   const expenseTouchStartXRef = useRef(null);
   const crossUnitExpandedTripsRef = useRef(new Set());
+  const pullRefreshRef = useRef({ startY: 0, pulling: false, eligible: false });
+  const deliveredBrowserNotificationIdsRef = useRef(new Set());
 
   const [categoryForm, setCategoryForm] = useState({
     name: "",
@@ -1753,6 +1849,75 @@ function App() {
       document.documentElement.classList.add(isAndroid ? 'os-android' : 'os-ios');
     }
   }, []);
+
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOnline(true);
+      setSyncStatus("syncing");
+      refreshCurrentView({ silent: true }).finally(() => {
+        setLastRefreshAt(new Date());
+        setSyncStatus("synced");
+        showToast("Back online. Data refreshed.", "success");
+      });
+    };
+    const goOffline = () => {
+      setIsOnline(false);
+      setSyncStatus("offline");
+    };
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, [selectedTrip?.id, user?.uid, user?.email]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible" || navigator.onLine === false) return;
+      refreshCurrentView({ silent: true }).then(() => setLastRefreshAt(new Date()));
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [selectedTrip?.id, user?.uid, user?.email]);
+
+  useEffect(() => {
+    const onTouchStart = event => {
+      const touch = event.touches?.[0];
+      const main = event.target?.closest?.(".main-content");
+      if (!touch || !main || main.scrollTop > 4) {
+        pullRefreshRef.current = { startY: 0, pulling: false, eligible: false };
+        return;
+      }
+      pullRefreshRef.current = { startY: touch.clientY, pulling: false, eligible: true };
+    };
+    const onTouchMove = event => {
+      const touch = event.touches?.[0];
+      const state = pullRefreshRef.current;
+      if (!touch || !state.eligible) return;
+      if (touch.clientY - state.startY > 72) {
+        pullRefreshRef.current = { ...state, pulling: true };
+      }
+    };
+    const onTouchEnd = () => {
+      const state = pullRefreshRef.current;
+      pullRefreshRef.current = { startY: 0, pulling: false, eligible: false };
+      if (!state.pulling) return;
+      setSyncStatus(navigator.onLine === false ? "offline" : "syncing");
+      refreshCurrentView().finally(() => {
+        setLastRefreshAt(new Date());
+        if (navigator.onLine !== false) setSyncStatus(hasPendingWrites ? "pending" : "synced");
+      });
+    };
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [selectedTrip?.id, user?.uid, user?.email, hasPendingWrites]);
 
   useEffect(() => {
     let lastY = 0;
@@ -1881,6 +2046,28 @@ function App() {
   useEffect(() => {
     if (user && pendingInvite) loadInviteDetails(pendingInvite);
   }, [user, pendingInvite]);
+
+  useEffect(() => {
+    if (!user || trips.length === 0) {
+      setTripListInsights({});
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all(trips.map(trip => loadTripListInsight(trip))).then(results => {
+      if (cancelled) return;
+      setTripListInsights(
+        results.reduce((map, insight) => {
+          map[insight.tripId] = insight;
+          return map;
+        }, {})
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trips, user?.uid, user?.email]);
 
   useEffect(() => {
     if (selectedTrip) {
@@ -2067,7 +2254,8 @@ function App() {
 
     const mergedMap = new Map();
     const unsubscribers = queries.map(q =>
-      onSnapshot(q, snap => {
+      onSnapshot(q, { includeMetadataChanges: true }, snap => {
+        updateSnapshotSyncState(snap);
         snap.docs.forEach(d => mergedMap.set(d.id, { id: d.id, ...d.data() }));
         setSettlements(Array.from(mergedMap.values()));
       }, () => { })
@@ -2080,7 +2268,9 @@ function App() {
     const contributionsCol = collection(db, "trips", selectedTrip.id, "personalContributions");
     return onSnapshot(
       contributionsCol,
+      { includeMetadataChanges: true },
       snap => {
+        updateSnapshotSyncState(snap);
         setPersonalContributions(
           snap.docs.map(d => ({ userId: d.id, ...d.data() }))
         );
@@ -2094,7 +2284,9 @@ function App() {
     const summaryRef = doc(db, "trips", selectedTrip.id, "tripTotals", "summary");
     return onSnapshot(
       summaryRef,
+      { includeMetadataChanges: true },
       snap => {
+        updateSnapshotSyncState(snap);
         setTripTotalsSummary(snap.exists() ? snap.data() : null);
       },
       () => {}
@@ -2251,6 +2443,33 @@ function App() {
       ).length,
     [visibleNotifications]
   );
+
+  useEffect(() => {
+    if (browserNotificationPermission !== "granted" || !selectedTrip) return;
+    const notification = visibleNotifications.find(n =>
+      (n.status === "pending" || n.status === "unread")
+      && !deliveredBrowserNotificationIdsRef.current.has(n.id)
+    );
+    if (!notification) return;
+    deliveredBrowserNotificationIdsRef.current.add(notification.id);
+    const title = notification.tripName || selectedTrip.name || "TripHisaab";
+    const body = notification.message || `${notification.actorName || "Someone"} ${notification.action || "updated the trip"}.`;
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.ready
+        .then(registration =>
+          registration.showNotification(title, {
+            body,
+            icon: "/appIcon-192.png",
+            badge: "/appIcon-192.png",
+            tag: notification.id,
+            data: { tripId: selectedTrip.id, notificationId: notification.id }
+          })
+        )
+        .catch(() => new Notification(title, { body, icon: "/appIcon-192.png" }));
+    } else {
+      new Notification(title, { body, icon: "/appIcon-192.png" });
+    }
+  }, [browserNotificationPermission, selectedTrip, visibleNotifications]);
 
   const memberSuggestions = useMemo(() => {
     const currentTripEmails = new Set(members.map(m => getEmailLower(m.email)));
@@ -2836,6 +3055,10 @@ function App() {
 
   async function createInviteLink() {
     if (!selectedTrip || !user) return;
+    if (navigator.onLine === false) {
+      showToast("Invite links need a connection. Try again when you're online.", "info");
+      return "";
+    }
     if (!canManageSelectedTrip()) {
       showToast("Only the trip owner can create invite links.", "error");
       return "";
@@ -3019,6 +3242,195 @@ function App() {
     } finally {
       setTripLoading(false);
     }
+  }
+
+  async function loadTripListInsight(trip) {
+    try {
+      const tripId = trip.id;
+      const [membersSnap, settlementGroupsSnap, summarySnap] = await Promise.all([
+        getDocs(collection(db, "trips", tripId, "members")),
+        getDocs(collection(db, "trips", tripId, "settlementGroups")).catch(() => ({ docs: [] })),
+        getDoc(doc(db, "trips", tripId, "tripTotals", "summary")).catch(() => null)
+      ]);
+      const loadedMembers = membersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const loadedCurrentUserMemberId = getCurrentUserMemberIdFromList(loadedMembers);
+      const activeMembers = loadedMembers.filter(member => member.status !== "inactive");
+
+      const settlementCollection = collection(db, "trips", tripId, "settlements");
+      const canLoadAllSettlements = trip.ownerId === user?.uid;
+      const settlementSnaps = canLoadAllSettlements
+        ? [await getDocs(settlementCollection)]
+        : await Promise.all([
+            getDocs(query(settlementCollection, where("settlementLayer", "==", "group"))).catch(() => ({ docs: [] })),
+            getDocs(query(settlementCollection, where("settlementLayer", "==", null))).catch(() => ({ docs: [] })),
+            loadedCurrentUserMemberId
+              ? getDocs(query(settlementCollection, where("settlementMemberIds", "array-contains", loadedCurrentUserMemberId))).catch(() => ({ docs: [] }))
+              : Promise.resolve({ docs: [] })
+          ]);
+      const loadedSettlements = Array.from(
+        settlementSnaps
+          .flatMap(snap => snap.docs)
+          .reduce((map, d) => map.set(d.id, { id: d.id, ...d.data() }), new Map())
+          .values()
+      );
+
+      const expenseCollection = collection(db, "trips", tripId, "expenses");
+      const canLoadAllExpenses = trip.ownerId === user?.uid;
+      const expenseSnaps = canLoadAllExpenses
+        ? [await getDocs(expenseCollection)]
+        : await Promise.all([
+            getDocs(query(expenseCollection, where("scope", "==", "group"))).catch(() => ({ docs: [] })),
+            getDocs(query(expenseCollection, where("scope", "==", null))).catch(() => ({ docs: [] })),
+            getDocs(query(expenseCollection, where("visibleTo", "==", "all"))).catch(() => ({ docs: [] })),
+            getDocs(query(expenseCollection, where("countsTowardGroupSettlement", "==", true))).catch(() => ({ docs: [] })),
+            loadedCurrentUserMemberId
+              ? getDocs(query(expenseCollection, where("visibleTo", "array-contains", loadedCurrentUserMemberId))).catch(() => ({ docs: [] }))
+              : Promise.resolve({ docs: [] })
+          ]);
+      const loadedExpenses = Array.from(
+        expenseSnaps
+          .flatMap(snap => snap.docs)
+          .reduce((map, d) => map.set(d.id, { id: d.id, ...d.data() }), new Map())
+          .values()
+      );
+      const loadedSettlementGroups = settlementGroupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const smartSummary = getSmartSettleSummaryByMode(
+        loadedExpenses,
+        activeMembers,
+        loadedCurrentUserMemberId,
+        loadedSettlements,
+        trip.ownerId === user?.uid,
+        trip.defaultCurrency || "EUR",
+        "fewest_payments",
+        loadedSettlementGroups
+      );
+      const suggestions = smartSummary.consolidatedSuggestions || [];
+      const pendingAmountEur = roundMoney(
+        suggestions.reduce((sum, suggestion) => sum + Number(suggestion.amount || 0), 0)
+      );
+      const summary = summarySnap?.exists?.() ? summarySnap.data() : getTripTotalsSummary(loadedExpenses);
+      return {
+        tripId,
+        memberCount: activeMembers.length,
+        expenseCount: Number(summary.expenseCount || loadedExpenses.length || 0),
+        totalSpentEur: roundMoney(summary.totalSpentEur || 0),
+        pendingSettlementCount: suggestions.length,
+        pendingSettlementEur: pendingAmountEur
+      };
+    } catch (error) {
+      console.warn("Could not load trip list insight", trip?.id, error);
+      return { tripId: trip.id, unavailable: true };
+    }
+  }
+
+  function updateSnapshotSyncState(snapshot) {
+    if (!snapshot?.metadata) return;
+    if (snapshot.metadata.hasPendingWrites) {
+      setHasPendingWrites(true);
+      setSyncStatus(navigator.onLine === false ? "offline" : "pending");
+      return;
+    }
+    if (snapshot.metadata.fromCache && navigator.onLine === false) {
+      setSyncStatus("offline");
+      return;
+    }
+    setHasPendingWrites(false);
+    setSyncStatus("synced");
+  }
+
+  async function refreshCurrentView({ silent = false } = {}) {
+    if (!user) return;
+    if (navigator.onLine === false) {
+      setIsOnline(false);
+      setSyncStatus("offline");
+      if (!silent) showToast("Offline. Showing saved data; changes will sync later.", "info");
+      return;
+    }
+    setIsOnline(true);
+    if (!silent) setSyncStatus("syncing");
+    try {
+      if (selectedTrip?.id) {
+        await loadTripData(selectedTrip.id, selectedTrip);
+      } else {
+        await loadTrips(user.uid, user.email);
+      }
+      setLastRefreshAt(new Date());
+      if (!silent) showToast("Data refreshed.", "success");
+      if (!hasPendingWrites) setSyncStatus("synced");
+    } catch (error) {
+      console.warn("Refresh failed", error);
+      if (!silent) showToast("Could not refresh. Using saved data if available.", "error");
+    }
+  }
+
+  function offlineSaveMessage(action = "Change") {
+    if (navigator.onLine === false) {
+      setHasPendingWrites(true);
+      setSyncStatus("offline");
+      showToast(`${action} saved on this device. It will sync when you're back online.`, "info");
+      return true;
+    }
+    setSyncStatus("pending");
+    return false;
+  }
+
+  async function queueFirestoreWrite(writePromise, action = "Change") {
+    if (navigator.onLine === false) {
+      writePromise.catch(error => {
+        console.error(`${action} failed while syncing`, error);
+        setSyncStatus("error");
+      });
+      offlineSaveMessage(action);
+      return { queued: true };
+    }
+    await writePromise;
+    setLastRefreshAt(new Date());
+    return { queued: false };
+  }
+
+  function saveTripSnapshot(tripId, snapshot) {
+    if (!user?.uid || !tripId) return;
+    try {
+      localStorage.setItem(
+        getTripSnapshotKey(user.uid, tripId),
+        JSON.stringify({
+          appVersion: APP_VERSION,
+          savedAt: new Date().toISOString(),
+          tripId,
+          ...snapshot
+        })
+      );
+    } catch (error) {
+      console.warn("Could not save offline trip snapshot", error);
+    }
+  }
+
+  function readTripSnapshot(tripId) {
+    if (!user?.uid || !tripId) return null;
+    try {
+      const raw = localStorage.getItem(getTripSnapshotKey(user.uid, tripId));
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function applyTripSnapshot(snapshot) {
+    if (!snapshot) return false;
+    setMembers(snapshot.members || []);
+    setCategories(snapshot.categories || []);
+    setPredictions(snapshot.predictions || []);
+    setExpenses(snapshot.expenses || []);
+    setSettlements(snapshot.settlements || []);
+    setTasks(snapshot.tasks || []);
+    setNotifications(snapshot.notifications || []);
+    setSettlementGroups(snapshot.settlementGroups || []);
+    setPersonalBudget(snapshot.personalBudget || null);
+    setPersonalContributions(snapshot.personalContributions || []);
+    setTripTotalsSummary(snapshot.tripTotalsSummary || null);
+    setSyncStatus(navigator.onLine === false ? "offline" : "synced");
+    setLastRefreshAt(snapshot.savedAt ? new Date(snapshot.savedAt) : null);
+    return true;
   }
 
   async function handleCreateTrip(event) {
@@ -3705,16 +4117,18 @@ function App() {
       setNotifications(loadedNotifications);
       setSettlementGroups(loadedSettlementGroups);
 
+      let loadedPersonalBudget = null;
       if (user?.uid) {
         const pbSnap = await getDoc(doc(db, "trips", tripId, "personalBudgets", user.uid)).catch(() => null);
-        setPersonalBudget(pbSnap?.exists() ? { ...pbSnap.data() } : null);
+        loadedPersonalBudget = pbSnap?.exists() ? { ...pbSnap.data() } : null;
+        setPersonalBudget(loadedPersonalBudget);
       } else {
         setPersonalBudget(null);
       }
 
       // Load all members' personal contribution totals (aggregate only — no expense detail exposed).
       const contribSnap = await getDocs(collection(db, "trips", tripId, "personalContributions")).catch(() => ({ docs: [] }));
-      const loadedContributions = contribSnap.docs.map(d => ({ userId: d.id, ...d.data() }));
+      let loadedContributions = contribSnap.docs.map(d => ({ userId: d.id, ...d.data() }));
       setPersonalContributions(loadedContributions);
 
       if (tripContext?.ownerId === user?.uid) {
@@ -3761,6 +4175,9 @@ function App() {
             })
         );
 
+        loadedContributions = Array.from(
+          new Map([...loadedContributions, ...syncedContributions].map(c => [c.userId, c])).values()
+        );
         setPersonalContributions(prev => {
           const next = new Map(prev.map(c => [c.userId, c]));
           syncedContributions.forEach(c => next.set(c.userId, c));
@@ -3788,8 +4205,29 @@ function App() {
             const next = prev.filter(c => c.userId !== user.uid);
             return [...next, { userId: user.uid, memberId: loadedCurrentUserMemberId, ...myContribution }];
           });
+          loadedContributions = [
+            ...loadedContributions.filter(c => c.userId !== user.uid),
+            { userId: user.uid, memberId: loadedCurrentUserMemberId, ...myContribution }
+          ];
         }
       }
+
+      saveTripSnapshot(tripId, {
+        trip: tripContext,
+        members: loadedMembers,
+        categories: loadedCategories,
+        predictions: loadedPredictions,
+        expenses: loadedExpenses,
+        settlements: loadedSettlements,
+        tasks: loadedTasks,
+        notifications: loadedNotifications,
+        settlementGroups: loadedSettlementGroups,
+        personalBudget: loadedPersonalBudget,
+        personalContributions: loadedContributions,
+        tripTotalsSummary: tripContext?.ownerId === user?.uid
+          ? getTripTotalsSummary(loadedExpenses)
+          : tripTotalsSummary
+      });
 
       setBudgetForm(current => ({
         ...current,
@@ -3823,7 +4261,12 @@ function App() {
       }));
     } catch (error) {
       console.error("Could not load trip data:", error);
-      showToast("Could not load trip data. Check your Firestore rules.", "error");
+      const restored = applyTripSnapshot(readTripSnapshot(tripId));
+      if (restored) {
+        showToast("Offline data restored from this device. Changes will sync when online.", "info");
+      } else {
+        showToast("Could not load trip data. Check your Firestore rules.", "error");
+      }
     } finally {
       setTripDataLoading(false);
     }
@@ -4131,21 +4574,30 @@ function App() {
         updatedAt: serverTimestamp()
       };
       if (editingBudgetId) {
-        await setDoc(
-          doc(db, "trips", selectedTrip.id, "predictions", editingBudgetId),
-          payload,
-          { merge: true }
+        const { queued } = await queueFirestoreWrite(
+          setDoc(doc(db, "trips", selectedTrip.id, "predictions", editingBudgetId), payload, { merge: true }),
+          "Budget update"
         );
+        if (queued) {
+          setPredictions(current => current.map(entry =>
+            entry.id === editingBudgetId ? { ...entry, ...payload, updatedAt: new Date() } : entry
+          ));
+        }
       } else {
-        await addDoc(collection(db, "trips", selectedTrip.id, "predictions"), {
+        const budgetRef = doc(collection(db, "trips", selectedTrip.id, "predictions"));
+        const budgetPayload = {
           ...payload,
           createdBy: user.uid,
           createdAt: serverTimestamp()
-        });
+        };
+        const { queued } = await queueFirestoreWrite(setDoc(budgetRef, budgetPayload), "Budget");
+        if (queued) {
+          setPredictions(current => [{ id: budgetRef.id, ...budgetPayload, createdAt: new Date(), updatedAt: new Date() }, ...current]);
+        }
       }
-      await loadTripData(selectedTrip.id);
+      if (navigator.onLine !== false) await loadTripData(selectedTrip.id);
       resetBudgetForm({ categoryId: budgetForm.categoryId });
-      showToast("Plan budget saved.", "success");
+      if (navigator.onLine !== false) showToast("Plan budget saved.", "success");
     } catch (error) {
       console.error("Could not save plan budget:", error);
       showToast("Could not save plan budget.", "error");
@@ -4199,7 +4651,10 @@ function App() {
       const currency = personalBudgetForm.currency || selectedTrip.defaultCurrency || "EUR";
       const amountEur = convertAmount(amount, currency);
       const data = { originalAmount: amount, originalCurrency: currency, amountEur, updatedAt: new Date().toISOString() };
-      await setDoc(doc(db, "trips", selectedTrip.id, "personalBudgets", user.uid), data);
+      await queueFirestoreWrite(
+        setDoc(doc(db, "trips", selectedTrip.id, "personalBudgets", user.uid), data),
+        "Personal budget"
+      );
       setPersonalBudget(data);
       setShowPersonalBudgetForm(false);
     } catch (err) {
@@ -4429,7 +4884,8 @@ function App() {
           : expenseScope === "personal"
           ? [normalizedExpenseForm.paidByMemberId]
           : Array.from(new Set([...splitMemberIds, normalizedExpenseForm.paidByMemberId].filter(Boolean)));
-      const expenseRef = await addDoc(collection(db, "trips", selectedTrip.id, "expenses"), {
+      const expenseRef = doc(collection(db, "trips", selectedTrip.id, "expenses"));
+      const expensePayload = {
         date: normalizedExpenseForm.date,
         time: normalizedExpenseForm.time,
         categoryId: normalizedExpenseForm.categoryId,
@@ -4470,9 +4926,14 @@ function App() {
           : true,
         isActive: true,
         createdBy: user.uid,
+        updatedBy: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
-      });
+      };
+      const { queued } = await queueFirestoreWrite(
+        setDoc(expenseRef, expensePayload),
+        "Expense"
+      );
 
       setExpenseForm(buildFastExpenseForm({
         originalAmount: "",
@@ -4480,10 +4941,27 @@ function App() {
         categoryId: normalizedExpenseForm.categoryId
       }));
       setIsAddExpenseModalOpen(false);
-      await loadTripData(selectedTrip.id);
+      if (queued) {
+        setExpenses(current => [{ id: expenseRef.id, ...expensePayload, createdAt: new Date(), updatedAt: new Date() }, ...current]);
+      } else {
+        await loadTripData(selectedTrip.id);
+      }
+      if (expenseScope !== "personal") {
+        await createActivityNotifications({
+          type: "expense_added",
+          actorMemberId: normalizedExpenseForm.paidByMemberId,
+          recipientMemberIds: visibleTo === "all" ? activeMembers.map(member => member.id) : visibleTo,
+          action: "added an expense",
+          message: `${memberNameOf(normalizedExpenseForm.paidByMemberId)} added ${formatCurrency(originalAmount, originalCurrency)} for ${category?.name || "an expense"}.`,
+          amountEur,
+          entityId: expenseRef.id
+        });
+      }
       setExpenseFeedback({
         expenseId: expenseRef.id,
-        message: `${formatCurrency(originalAmount, originalCurrency)} added to ${category?.name || "expense"}. Trip Overview updated.`
+        message: queued
+          ? `${formatCurrency(originalAmount, originalCurrency)} saved offline. It will sync later.`
+          : `${formatCurrency(originalAmount, originalCurrency)} added to ${category?.name || "expense"}. Trip Overview updated.`
       });
     } catch (error) {
       console.error("Could not save expense:", error);
@@ -4549,7 +5027,8 @@ function App() {
       splitMemberIds: defaultSplitMemberIds,
       customSplitShares:
         expense.customSplitSharesOriginal || expense.customSplitShares || {},
-      includeInGroupTotal: expense.includeInGroupTotal !== false
+      includeInGroupTotal: expense.includeInGroupTotal !== false,
+      sourceVersion: getWriteVersion(expense)
     });
   }
 
@@ -4595,55 +5074,76 @@ function App() {
           : expenseScope === "personal"
           ? [expenseEditForm.paidByMemberId]
           : Array.from(new Set([...splitMemberIds, expenseEditForm.paidByMemberId].filter(Boolean)));
-      await updateDoc(
-        doc(db, "trips", selectedTrip.id, "expenses", editingExpenseId),
-        {
-          date: expenseEditForm.date,
-          time: expenseEditForm.time,
-          categoryId: expenseEditForm.categoryId,
-          categoryName: category?.name || "",
-          description: expenseEditForm.description.trim(),
-          amountEur: convertToEur(originalAmount, originalCurrency),
-          originalAmount,
-          originalCurrency,
-          exchangeRateFromEur: getCurrencyRate(originalCurrency),
-          ratesSource: ratesMeta.source,
-          ratesStatus: ratesMeta.status,
-          ratesUpdatedAt: ratesMeta.updatedAt,
-          paymentMethod: expenseEditForm.paymentMethod,
-          notes: expenseEditForm.notes.trim(),
-          expenseType: expenseEditForm.expenseType,
-          splitType:
-            expenseEditForm.expenseType === "shared"
-              ? expenseEditForm.splitType
-              : "none",
-          customSplitSharesOriginal:
-            expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "custom"
-              ? expenseEditForm.customSplitShares
-              : expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "percent"
-              ? buildPercentSplitSharesOriginal(expenseEditForm)
-              : {},
-          customSplitSharesEur:
-            expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "custom"
-              ? buildCustomSplitSharesEur(expenseEditForm)
-              : expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "percent"
-              ? buildPercentSplitSharesEur(expenseEditForm)
-              : {},
-          paidByMemberId: expenseEditForm.paidByMemberId,
-          paidByMemberName: memberNameOf(expenseEditForm.paidByMemberId),
-          splitMemberIds,
-          scope: expenseScope,
-          visibleTo,
-          countsTowardGroupSettlement: expenseScope === "group",
-          includeInGroupTotal: expenseScope === "personal"
-            ? expenseEditForm.includeInGroupTotal !== false
-            : true,
-          isActive: true,
-          updatedAt: serverTimestamp()
+      const expenseDocRef = doc(db, "trips", selectedTrip.id, "expenses", editingExpenseId);
+      if (navigator.onLine !== false) {
+        const latestSnap = await getDoc(expenseDocRef).catch(() => null);
+        if (
+          latestSnap?.exists?.()
+          && expenseEditForm.sourceVersion
+          && getWriteVersion(latestSnap.data()) !== expenseEditForm.sourceVersion
+          && !window.confirm("This expense changed since you opened it. Save your version anyway?")
+        ) {
+          setSavingExpenseEdit(false);
+          return;
         }
+      }
+      const expenseUpdate = {
+        date: expenseEditForm.date,
+        time: expenseEditForm.time,
+        categoryId: expenseEditForm.categoryId,
+        categoryName: category?.name || "",
+        description: expenseEditForm.description.trim(),
+        amountEur: convertToEur(originalAmount, originalCurrency),
+        originalAmount,
+        originalCurrency,
+        exchangeRateFromEur: getCurrencyRate(originalCurrency),
+        ratesSource: ratesMeta.source,
+        ratesStatus: ratesMeta.status,
+        ratesUpdatedAt: ratesMeta.updatedAt,
+        paymentMethod: expenseEditForm.paymentMethod,
+        notes: expenseEditForm.notes.trim(),
+        expenseType: expenseEditForm.expenseType,
+        splitType:
+          expenseEditForm.expenseType === "shared"
+            ? expenseEditForm.splitType
+            : "none",
+        customSplitSharesOriginal:
+          expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "custom"
+            ? expenseEditForm.customSplitShares
+            : expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "percent"
+            ? buildPercentSplitSharesOriginal(expenseEditForm)
+            : {},
+        customSplitSharesEur:
+          expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "custom"
+            ? buildCustomSplitSharesEur(expenseEditForm)
+            : expenseEditForm.expenseType === "shared" && expenseEditForm.splitType === "percent"
+            ? buildPercentSplitSharesEur(expenseEditForm)
+            : {},
+        paidByMemberId: expenseEditForm.paidByMemberId,
+        paidByMemberName: memberNameOf(expenseEditForm.paidByMemberId),
+        splitMemberIds,
+        scope: expenseScope,
+        visibleTo,
+        countsTowardGroupSettlement: expenseScope === "group",
+        includeInGroupTotal: expenseScope === "personal"
+          ? expenseEditForm.includeInGroupTotal !== false
+          : true,
+        isActive: true,
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp()
+      };
+      const { queued } = await queueFirestoreWrite(
+        updateDoc(expenseDocRef, expenseUpdate),
+        "Expense update"
       );
       cancelEditingExpense();
-      await loadTripData(selectedTrip.id);
+      if (queued) {
+        setExpenses(current => current.map(expense =>
+          expense.id === editingExpenseId ? { ...expense, ...expenseUpdate, updatedAt: new Date() } : expense
+        ));
+      } else {
+        await loadTripData(selectedTrip.id);
+      }
     } catch (error) {
       console.error("Could not update expense:", error);
       showToast("Could not update expense.", "error");
@@ -4882,24 +5382,50 @@ function App() {
           showToast("Only the task creator can edit this task.", "error");
           return;
         }
-        await updateDoc(doc(db, "trips", selectedTrip.id, "tasks", editingTaskId), {
+        const taskUpdate = {
           ...normalized,
+          updatedBy: user.uid,
           updatedAt: serverTimestamp()
-        });
+        };
+        const { queued } = await queueFirestoreWrite(
+          updateDoc(doc(db, "trips", selectedTrip.id, "tasks", editingTaskId), taskUpdate),
+          "Task update"
+        );
+        if (queued) {
+          setTasks(current => current.map(task =>
+            task.id === editingTaskId ? { ...task, ...taskUpdate, updatedAt: new Date() } : task
+          ));
+        }
       } else {
-        await addDoc(collection(db, "trips", selectedTrip.id, "tasks"), {
+        const taskRef = doc(collection(db, "trips", selectedTrip.id, "tasks"));
+        const taskPayload = {
           tripId: selectedTrip.id,
           ...normalized,
           status: "todo",
           completedBy: null,
           completedAt: null,
           isActive: true,
+          updatedBy: user.uid,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
-        });
+        };
+        const { queued } = await queueFirestoreWrite(setDoc(taskRef, taskPayload), "Task");
+        if (queued) {
+          setTasks(current => [{ id: taskRef.id, ...taskPayload, createdAt: new Date(), updatedAt: new Date() }, ...current]);
+        }
+        if (normalized.scope !== "personal") {
+          await createActivityNotifications({
+            type: "task_assigned",
+            actorMemberId: normalized.createdBy,
+            recipientMemberIds: normalized.visibleTo === "all" ? activeMembers.map(member => member.id) : normalized.visibleTo,
+            action: "created a task",
+            message: `${memberNameOf(normalized.createdBy)} created "${normalized.title}".`,
+            entityId: taskRef.id
+          });
+        }
       }
       closeTaskModal();
-      await loadTripData(selectedTrip.id);
+      if (navigator.onLine !== false) await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not save task:", error);
       showToast("Could not save task. Check your Firestore rules.", "error");
@@ -4916,13 +5442,24 @@ function App() {
       return;
     }
     try {
-      await updateDoc(doc(db, "trips", selectedTrip.id, "tasks", task.id), {
+      const taskUpdate = {
         status: "done",
         completedBy: currentUserMemberId,
         completedAt: serverTimestamp(),
+        updatedBy: user.uid,
         updatedAt: serverTimestamp()
-      });
-      await loadTripData(selectedTrip.id);
+      };
+      const { queued } = await queueFirestoreWrite(
+        updateDoc(doc(db, "trips", selectedTrip.id, "tasks", task.id), taskUpdate),
+        "Task"
+      );
+      if (queued) {
+        setTasks(current => current.map(item =>
+          item.id === task.id ? { ...item, ...taskUpdate, completedAt: new Date(), updatedAt: new Date() } : item
+        ));
+      } else {
+        await loadTripData(selectedTrip.id);
+      }
     } catch (error) {
       console.error("Could not complete task:", error);
       showToast("Could not mark task done.", "error");
@@ -4937,13 +5474,24 @@ function App() {
       return;
     }
     try {
-      await updateDoc(doc(db, "trips", selectedTrip.id, "tasks", task.id), {
+      const taskUpdate = {
         status: "todo",
         completedBy: null,
         completedAt: null,
+        updatedBy: user.uid,
         updatedAt: serverTimestamp()
-      });
-      await loadTripData(selectedTrip.id);
+      };
+      const { queued } = await queueFirestoreWrite(
+        updateDoc(doc(db, "trips", selectedTrip.id, "tasks", task.id), taskUpdate),
+        "Task"
+      );
+      if (queued) {
+        setTasks(current => current.map(item =>
+          item.id === task.id ? { ...item, ...taskUpdate, updatedAt: new Date() } : item
+        ));
+      } else {
+        await loadTripData(selectedTrip.id);
+      }
     } catch (error) {
       console.error("Could not reopen task:", error);
       showToast("Could not reopen task.", "error");
@@ -5467,6 +6015,60 @@ function App() {
     }
   }
 
+  async function createActivityNotifications({ type, actorMemberId, recipientMemberIds, action, message, amountEur = null, entityId = "" }) {
+    if (!selectedTrip || !actorMemberId || !Array.isArray(recipientMemberIds)) return;
+    const recipients = Array.from(new Set(recipientMemberIds.filter(id => id && id !== actorMemberId)));
+    if (recipients.length === 0) return;
+    await Promise.all(
+      recipients.map(recipientMemberId => {
+        const notificationRef = doc(collection(db, "trips", selectedTrip.id, "notifications"));
+        return queueFirestoreWrite(
+          setDoc(notificationRef, {
+            type,
+            status: "unread",
+            tripId: selectedTrip.id,
+            tripName: selectedTrip.name,
+            actorMemberId,
+            actorName: memberNameOf(actorMemberId),
+            recipientMemberId,
+            recipientName: memberNameOf(recipientMemberId),
+            action,
+            message,
+            amountEur,
+            entityId,
+            createdBy: user.uid,
+            createdAt: serverTimestamp(),
+            createdAtIso: new Date().toISOString(),
+            updatedAt: serverTimestamp()
+          }),
+          "Notification"
+        );
+      })
+    ).catch(error => {
+      console.warn("Could not create activity notifications", error);
+    });
+  }
+
+  async function requestBrowserNotifications() {
+    if (typeof Notification === "undefined") {
+      showToast("This browser does not support notifications.", "info");
+      setBrowserNotificationPermission("unsupported");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setBrowserNotificationPermission(permission);
+      if (permission === "granted") {
+        showToast("Device notifications enabled for this app.", "success");
+      } else {
+        showToast("Notifications were not enabled.", "info");
+      }
+    } catch (error) {
+      console.warn("Could not request notification permission", error);
+      showToast("Could not enable notifications on this device.", "error");
+    }
+  }
+
   async function approveSettlementNotification(notification) {
     if (!selectedTrip || !user || !notification) return;
     setApprovingNotificationId(notification.id);
@@ -5623,6 +6225,15 @@ function App() {
     }
   }
 
+  function renderNotificationPermissionAction() {
+    if (browserNotificationPermission === "unsupported" || browserNotificationPermission === "granted") return null;
+    return (
+      <button className="secondary-button small-button" type="button" onClick={requestBrowserNotifications}>
+        Enable device alerts
+      </button>
+    );
+  }
+
   function renderNotificationBell() {
     if (!selectedTrip) return null;
     return (
@@ -5649,6 +6260,7 @@ function App() {
           title="Notifications"
         >
           <div className="modal-body notification-panel">
+            {renderNotificationPermissionAction()}
             {visibleNotifications.length === 0 ? (
               <p className="muted">No notifications yet.</p>
             ) : (
@@ -8043,7 +8655,7 @@ function App() {
                 openInviteShareModal();
               }}
             >
-              <span className="sidebar-nav-icon"><Icon name="link" /></span>
+              <span className="sidebar-nav-icon"><Icon name="invite" /></span>
               {creatingInvite ? "Creating invite..." : "Share invite"}
             </button>
           ) : null}
@@ -8119,6 +8731,13 @@ function App() {
             </button>
             ) : null}
           </div>
+          <SyncStatusBanner
+            isOnline={isOnline}
+            syncStatus={syncStatus}
+            hasPendingWrites={hasPendingWrites}
+            lastRefreshAt={lastRefreshAt}
+            onRefresh={() => refreshCurrentView()}
+          />
           {tripDataLoading ? (
             <p className="muted padded-message">Loading trip data...</p>
           ) : null}
@@ -8142,7 +8761,7 @@ function App() {
                     disabled={creatingInvite}
                     onClick={openInviteShareModal}
                   >
-                    <Icon name="link" /> {creatingInvite ? "Creating link..." : "Share invite"}
+                    <Icon name="invite" /> {creatingInvite ? "Creating link..." : "Share invite"}
                 </button>
               </div>
               ) : null}
@@ -11159,12 +11778,45 @@ function App() {
 
   {
     const today = todayIso();
-    const activeTripCount = trips.filter(t => t.status === "Active").length;
-    const upcomingCount = trips.filter(t => t.startDate > today).length;
+    const isCompletedTrip = trip => ["Completed", "Archived"].includes(trip.status);
+    const isUpcomingTrip = trip => !isCompletedTrip(trip) && trip.startDate > today;
+    const isActiveTrip = trip => !isCompletedTrip(trip) && trip.startDate <= today && (!trip.endDate || trip.endDate >= today);
+    const hasUnsettledTrip = trip => Number(tripListInsights[trip.id]?.pendingSettlementEur || 0) > MONEY_EPSILON;
+    const activeTripCount = trips.filter(isActiveTrip).length;
+    const upcomingCount = trips.filter(isUpcomingTrip).length;
+    const completedCount = trips.filter(isCompletedTrip).length;
+    const unsettledCount = trips.filter(hasUnsettledTrip).length;
     const editingTrip = trips.find(t => t.id === editingTripId);
-    const filteredTrips = tripSearch.trim()
+    const searchedTrips = tripSearch.trim()
       ? trips.filter(t => t.name.toLowerCase().includes(tripSearch.toLowerCase()))
       : trips;
+    const filteredTrips = searchedTrips
+      .filter(trip => {
+        if (homeTripFilter === "active") return isActiveTrip(trip);
+        if (homeTripFilter === "upcoming") return isUpcomingTrip(trip);
+        if (homeTripFilter === "completed") return isCompletedTrip(trip);
+        if (homeTripFilter === "unsettled") return hasUnsettledTrip(trip);
+        return true;
+      })
+      .sort((a, b) => {
+        const priority = trip => {
+          if (hasUnsettledTrip(trip)) return 0;
+          if (isActiveTrip(trip)) return 1;
+          if (isUpcomingTrip(trip)) return 2;
+          if (isCompletedTrip(trip)) return 3;
+          return 4;
+        };
+        const p = priority(a) - priority(b);
+        if (p !== 0) return p;
+        return String(b.startDate || "").localeCompare(String(a.startDate || ""));
+      });
+    const homeFilters = [
+      { key: "all", label: "All", count: trips.length },
+      { key: "active", label: "Active", count: activeTripCount },
+      { key: "unsettled", label: "Needs settlement", count: unsettledCount },
+      { key: "upcoming", label: "Upcoming", count: upcomingCount },
+      { key: "completed", label: "Completed", count: completedCount }
+    ];
     const cardGradients = [
       "linear-gradient(135deg,#89CFF0,#B0E2F5)",
       "linear-gradient(135deg,#F4A96A,#FFD97D)",
@@ -11233,17 +11885,28 @@ function App() {
             {renderInstallButton({ compact: true })}
             <button className="primary-button small-button" type="button" onClick={() => setIsCreateModalOpen(true)}>+ New</button>
           </div>
+          <SyncStatusBanner
+            isOnline={isOnline}
+            syncStatus={syncStatus}
+            hasPendingWrites={hasPendingWrites}
+            lastRefreshAt={lastRefreshAt}
+            onRefresh={() => refreshCurrentView()}
+          />
 
           {/* Hero banner */}
           <div className="home-hero">
             <div className="home-hero-text">
               <h1 className="home-hero-title">Your trips</h1>
-              <p className="home-hero-sub">All your adventures, neatly packed ✈️</p>
+              <p className="home-hero-sub">
+                {unsettledCount > 0
+                  ? `${unsettledCount} trip${unsettledCount !== 1 ? "s" : ""} need settlement`
+                  : `${activeTripCount} active · ${trips.length} total`}
+              </p>
             </div>
             <div className="home-hero-right">
               {renderInstallButton()}
               <button className="home-create-btn" type="button" onClick={() => setIsCreateModalOpen(true)} data-tour="create-trip">
-                + Create new trip
+                + New trip
               </button>
             </div>
           </div>
@@ -11266,36 +11929,19 @@ function App() {
               </button>
             </div>
 
-            {/* Stats row */}
-            <div className="home-stats-row" data-tour="home-stats">
-              <div className="home-stat-card">
-                <div className="home-stat-icon home-stat-icon--work"><Icon name="briefcase" /></div>
-                <div>
-                  <div className="home-stat-label">Total trips</div>
-                  <div className="home-stat-num">{trips.length}</div>
-                  <div className="home-stat-sub">All time</div>
-                </div>
-              </div>
-              <div className="home-stat-card">
-                <div className="home-stat-icon home-stat-icon--travel"><Icon name="plane" /></div>
-                <div>
-                  <div className="home-stat-label">Active trips</div>
-                  <div className="home-stat-num">{activeTripCount}</div>
-                  <div className="home-stat-sub">Currently active</div>
-                </div>
-              </div>
-              <div className="home-stat-card">
-                <div className="home-stat-icon home-stat-icon--calendar"><Icon name="calendar" /></div>
-                <div>
-                  <div className="home-stat-label">Upcoming trips</div>
-                  <div className="home-stat-num">{upcomingCount}</div>
-                  <div className="home-stat-sub">Starting soon</div>
-                </div>
-              </div>
-              <div className="home-stat-promo">
-                <div className="home-stat-promo-title">Passport to organized spending</div>
-                <div className="home-stat-promo-sub">Track. Control. Enjoy the journey. 🌍</div>
-              </div>
+            {/* Trip filters */}
+            <div className="home-filter-chips" data-tour="home-stats" aria-label="Filter trips">
+              {homeFilters.map(filter => (
+                <button
+                  key={filter.key}
+                  className={`home-filter-chip${homeTripFilter === filter.key ? " active" : ""}${filter.key === "unsettled" && filter.count > 0 ? " attention" : ""}`}
+                  type="button"
+                  onClick={() => setHomeTripFilter(filter.key)}
+                >
+                  <span>{filter.label}</span>
+                  <strong>{filter.count}</strong>
+                </button>
+              ))}
             </div>
 
             {/* Trip grid */}
@@ -11311,50 +11957,71 @@ function App() {
               </div>
             ) : (
               <div className="home-trip-grid">
-                {filteredTrips.map((trip, i) => (
-                  <div
-                    className="home-trip-card"
-                    key={trip.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openTrip(trip)}
-                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") openTrip(trip); }}
-                  >
+                {filteredTrips.map((trip, i) => {
+                  const insight = tripListInsights[trip.id] || {};
+                  const completed = isCompletedTrip(trip);
+                  const upcoming = isUpcomingTrip(trip);
+                  const unsettledAmount = Number(insight.pendingSettlementEur || 0);
+                  const unsettled = unsettledAmount > MONEY_EPSILON;
+                  return (
                     <div
-                      className={`home-trip-img${trip.imageDataUrl ? " has-trip-image" : ""}`}
-                      style={
-                        trip.imageDataUrl
-                          ? { backgroundImage: `url(${trip.imageDataUrl})` }
-                          : { background: cardGradients[i % cardGradients.length] }
-                      }
+                      className={`home-trip-card${completed ? " is-completed" : ""}${unsettled ? " is-unsettled" : ""}`}
+                      key={trip.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openTrip(trip)}
+                      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") openTrip(trip); }}
                     >
-                      {!trip.imageDataUrl ? (
-                        <span className="home-trip-emoji">{cardEmojis[i % cardEmojis.length]}</span>
-                      ) : null}
-                    </div>
-                    {trip.ownerId === user.uid ? (
-                      <button
-                        className="home-trip-edit-btn"
-                        type="button"
-                        aria-label="Edit trip"
-                        onClick={e => { e.stopPropagation(); startEditingTrip(trip); }}
+                      <div
+                        className={`home-trip-img${trip.imageDataUrl ? " has-trip-image" : ""}`}
+                        style={
+                          trip.imageDataUrl
+                            ? { backgroundImage: `url(${trip.imageDataUrl})` }
+                            : { background: cardGradients[i % cardGradients.length] }
+                        }
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-                        </svg>
-                      </button>
-                    ) : null}
-                    <div className="home-trip-body">
-                      <h3 className="home-trip-name">{trip.name}</h3>
-                      <p className="home-trip-dates">{trip.startDate} → {trip.endDate}</p>
-                      <div className="home-trip-pills">
-                        <span className="home-pill">{trip.accessRole === "owner" ? "Owner" : "Member"}</span>
-                        <span className="home-pill">{trip.defaultCurrency}</span>
-                        <span className="home-pill home-pill-active">● {trip.status}</span>
+                        {!trip.imageDataUrl ? (
+                          <span className="home-trip-emoji">{cardEmojis[i % cardEmojis.length]}</span>
+                        ) : null}
+                      </div>
+                      {trip.ownerId === user.uid ? (
+                        <button
+                          className="home-trip-edit-btn"
+                          type="button"
+                          aria-label="Edit trip"
+                          onClick={e => { e.stopPropagation(); startEditingTrip(trip); }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                          </svg>
+                        </button>
+                      ) : null}
+                      <div className="home-trip-body">
+                        <div className="home-trip-title-row">
+                          <h3 className="home-trip-name">{trip.name}</h3>
+                          {unsettled ? <span className="home-status-badge home-status-badge--unsettled">Unsettled</span> : null}
+                          {!unsettled && completed ? <span className="home-status-badge home-status-badge--completed">Completed</span> : null}
+                        </div>
+                        <p className="home-trip-dates">{trip.startDate} → {trip.endDate}</p>
+                        <div className="home-trip-meta">
+                          <span>{insight.memberCount ? `${insight.memberCount} member${insight.memberCount !== 1 ? "s" : ""}` : trip.accessRole === "owner" ? "Owner" : "Member"}</span>
+                          {insight.totalSpentEur ? <span>{formatMoney(insight.totalSpentEur)} spent</span> : null}
+                          {upcoming ? <span>Upcoming</span> : null}
+                        </div>
+                        {unsettled ? (
+                          <div className="home-trip-alert">
+                            {formatMoney(unsettledAmount)} pending · {insight.pendingSettlementCount || 1} payment{(insight.pendingSettlementCount || 1) !== 1 ? "s" : ""}
+                          </div>
+                        ) : null}
+                        <div className="home-trip-pills">
+                          <span className="home-pill">{trip.accessRole === "owner" ? "Owner" : "Member"}</span>
+                          <span className="home-pill">{trip.defaultCurrency}</span>
+                          {!completed && !upcoming ? <span className="home-pill home-pill-active">Active</span> : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
