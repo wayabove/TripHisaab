@@ -8812,82 +8812,8 @@ function App() {
                 </button>
               </div>
 
-              {/* ── Row 1: Budget overview + Stat panel ── */}
-              <div className="dash-row dash-row-budget dash-section-priority">
-                <div className="dash-card budget-card">
-                  <div className="budget-card-top">
-                    <div>
-                      <h3>{totals.predicted > 0 ? "Budget Overview" : "Spending"}</h3>
-                      <p className="dash-card-sub mb-0">
-                        {totals.predicted > 0 ? `${budgetPct}% of budget used` : "No budget set yet"}
-                      </p>
-                    </div>
-                    <button className="link-button" type="button" style={{ whiteSpace: "nowrap" }} onClick={() => setActiveTab("prediction")}>
-                      {totals.predicted > 0 ? "Edit →" : "Set budget →"}
-                    </button>
-                  </div>
-
-                  {totals.predicted > 0 ? (
-                    <>
-                      <div className="budget-donut-wrap">
-                        <svg width="100%" height="100%" viewBox="0 0 160 160">
-                          <circle cx="80" cy="80" r={r} fill="none" stroke="#e5e7eb" strokeWidth="12" />
-                          <circle
-                            cx="80" cy="80" r={r} fill="none"
-                            stroke={budgetPct >= 100 ? "var(--danger)" : budgetPct >= 80 ? "var(--warning)" : "var(--primary)"}
-                            strokeWidth="12"
-                            strokeDasharray={`${dashFill} ${circ}`}
-                            strokeLinecap="round"
-                            transform="rotate(-90, 80, 80)"
-                          />
-                        </svg>
-                        <div className="budget-donut-label">
-                          <span className="budget-donut-pct">{budgetPct}%</span>
-                          <span className="budget-donut-sub">used</span>
-                        </div>
-                      </div>
-                      <div className="budget-inline-stats">
-                        <div className="budget-inline-stat">
-                          <span className="budget-inline-label">Budget</span>
-                          <strong className="budget-inline-value">{formatMoney(totals.predicted)}</strong>
-                        </div>
-                        <div className="budget-inline-stat">
-                          <span className="budget-inline-label">Spent</span>
-                          <strong className="budget-inline-value">{formatMoney(totals.actual)}</strong>
-                        </div>
-                        <div className="budget-inline-stat">
-                          <span className="budget-inline-label">Left</span>
-                          <strong className={`budget-inline-value${remaining < 0 ? " negative" : ""}`}>
-                            {remaining >= 0 ? formatMoney(remaining) : "–" + formatMoney(Math.abs(remaining))}
-                          </strong>
-                        </div>
-                      </div>
-                      <div className="budget-message">{budgetMsg}</div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="budget-no-budget-total">
-                        <span className="budget-donut-pct">{formatMoney(totals.actual)}</span>
-                        <span className="budget-donut-sub">trip total</span>
-                      </div>
-                      <div className="budget-inline-stats">
-                        <div className="budget-inline-stat">
-                          <span className="budget-inline-label">Expenses</span>
-                          <strong className="budget-inline-value">{groupExpenseCount}</strong>
-                        </div>
-                        <div className="budget-inline-stat">
-                          <span className="budget-inline-label">Shared</span>
-                          <strong className="budget-inline-value">{formatMoney(totals.shared)}</strong>
-                        </div>
-                        <div className="budget-inline-stat">
-                          <span className="budget-inline-label">My personal</span>
-                          <strong className="budget-inline-value">{formatMoney(expenseStats.personal)}</strong>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
+              {/* ── Row 1: Stat panel (budget donut removed — hero strip covers spend/budget/balance) ── */}
+              <div className="dash-row dash-section-priority">
                 <div className="dash-card dash-stat-panel dash-stat-panel--6">
                   <div className="dash-stat-panel-item">
                     <span className="dash-stat-panel-label">Trip total</span>
