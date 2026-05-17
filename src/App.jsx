@@ -64,6 +64,8 @@ import {
   convertToEur as convertAmount,
   formatMoney,
   formatCurrency,
+  normalizeAmountInput,
+  parseAmount,
   readRatesCache,
   writeRatesCache,
   csvRow,
@@ -1644,6 +1646,7 @@ function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMoreSheetOpen, setIsMoreSheetOpen] = useState(false);
   const [tripSearch, setTripSearch] = useState("");
   const [homeTripFilter, setHomeTripFilter] = useState("all");
   const [tripListInsights, setTripListInsights] = useState({});
@@ -1725,8 +1728,6 @@ function App() {
   const [settlementGroupForm, setSettlementGroupForm] = useState({ name: "", memberIds: [], type: "couple" });
   const [editingSettlementGroupId, setEditingSettlementGroupId] = useState(null);
   const [showSettlementGroupForm, setShowSettlementGroupForm] = useState(false);
-  const [showSettlementBreakdown, setShowSettlementBreakdown] = useState(false);
-
   const [personalBudget, setPersonalBudget] = useState(null);
   const [showPersonalBudgetForm, setShowPersonalBudgetForm] = useState(false);
   const [showCategoryBreakdown, setShowCategoryBreakdown] = useState(false);
@@ -2082,8 +2083,20 @@ function App() {
     }
     setShowSettlementGroupForm(false);
     setEditingSettlementGroupId(null);
-    setShowSettlementBreakdown(false);
   }, [selectedTrip?.id]);
+
+  // Auto-switch to family_couple mode when travel units are defined.
+  useEffect(() => {
+    if (!selectedTrip) return;
+    const hasActiveUnits = settlementGroups.some(g => g.isActive !== false);
+    if (!hasActiveUnits) return;
+    setSettlementMode(prev => {
+      if (prev === "family_couple") return prev;
+      try { localStorage.setItem(`triphisaab-settle-mode-${selectedTrip.id}`, "family_couple"); } catch { /* ignore */ }
+      return "family_couple";
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrip?.id, settlementGroups]);
 
   useEffect(() => {
     try {
@@ -2815,12 +2828,13 @@ function App() {
   }
 
   function normalizeBudgetScope(entry) {
-    if (entry?.scope === "selected" || entry?.scope === "me") return entry.scope;
+    if (entry?.scope === "selected" || entry?.scope === "me" || entry?.scope === "unit") return entry.scope;
     return "group";
   }
 
   function budgetScopeLabel(entry) {
     const scope = normalizeBudgetScope(entry);
+    if (scope === "unit") return "Our unit";
     return BUDGET_SCOPE_OPTIONS.find(option => option.value === scope)?.label || "Whole group";
   }
 
@@ -2831,6 +2845,7 @@ function App() {
       ? entry.visibleMemberIds
       : entry.memberIds || [];
     if (scope === "me") return "Only me";
+    if (scope === "unit") return ids.map(memberNameOf).join(" · ") || "Our unit";
     return ids.map(memberNameOf).join(", ") || "Selected people";
   }
 
@@ -4718,13 +4733,13 @@ function App() {
     event.preventDefault();
     if (!selectedTrip) return;
     if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to edit trip budgets.", "info");
-    const amount = Number(budgetForm.estimatedEur);
+    const amount = parseAmount(budgetForm.estimatedEur);
     if (!budgetForm.categoryId) return showToast("Choose a category.", "error");
     if (!amount || amount <= 0) return showToast("Enter a budget amount above zero.", "error");
     if (!currentUserMemberId) return showToast("Could not find your trip member profile yet.", "error");
     const scope = budgetForm.scope || "group";
     const visibleMemberIds = buildBudgetVisibility(scope);
-    if (scope === "selected" && visibleMemberIds.length === 0) {
+    if ((scope === "selected" || scope === "unit") && visibleMemberIds.length === 0) {
       return showToast("Choose at least one person for this budget entry.", "error");
     }
     const category = categoriesById.get(budgetForm.categoryId);
@@ -4818,7 +4833,7 @@ function App() {
 
   async function handleSavePersonalBudget() {
     if (!selectedTrip || !user?.uid || isDemoMode()) return;
-    const amount = Number(personalBudgetForm.amount);
+    const amount = parseAmount(personalBudgetForm.amount);
     if (!amount || amount <= 0) return showToast("Enter a valid amount.", "error");
     setSavingPersonalBudget(true);
     try {
@@ -4858,21 +4873,21 @@ function App() {
   // -------------------- Expense form helpers --------------------
   function getCustomSplitTotal(formData) {
     return Object.values(formData.customSplitShares || {}).reduce(
-      (sum, v) => sum + Number(v || 0),
+      (sum, v) => sum + parseAmount(v),
       0
     );
   }
 
   function getCustomSplitMemberIds(formData) {
     return Object.keys(formData.customSplitShares || {}).filter(
-      id => Number(formData.customSplitShares[id] || 0) > 0
+      id => parseAmount(formData.customSplitShares[id]) > 0
     );
   }
 
   function validateCustomSplit(formData) {
     if (formData.expenseType !== "shared") return true;
     if (formData.splitType === "custom") {
-      const total = Number(formData.originalAmount || 0);
+      const total = parseAmount(formData.originalAmount);
       const customTotal = getCustomSplitTotal(formData);
       if (Math.abs(total - customTotal) > 0.02) {
         showToast(
@@ -4908,7 +4923,7 @@ function App() {
     const out = {};
     const currency = formData.originalCurrency || "EUR";
     Object.entries(formData.customSplitShares || {}).forEach(([id, v]) => {
-      const amount = Number(v || 0);
+      const amount = parseAmount(v);
       if (amount > 0) out[id] = convertToEur(amount, currency);
     });
     return out;
@@ -4939,14 +4954,14 @@ function App() {
   }
 
   function getPercentageSplitTotal(fd) {
-    return Object.values(fd.customSplitShares || {}).reduce((sum, v) => sum + Number(v || 0), 0);
+    return Object.values(fd.customSplitShares || {}).reduce((sum, v) => sum + parseAmount(v), 0);
   }
 
   function buildPercentSplitSharesOriginal(fd) {
     const out = {};
-    const total = Number(fd.originalAmount || 0);
+    const total = parseAmount(fd.originalAmount);
     Object.entries(fd.customSplitShares || {}).forEach(([id, pct]) => {
-      const amount = (Number(pct || 0) / 100) * total;
+      const amount = (parseAmount(pct) / 100) * total;
       if (amount > 0) out[id] = amount;
     });
     return out;
@@ -4955,9 +4970,9 @@ function App() {
   function buildPercentSplitSharesEur(fd) {
     const out = {};
     const currency = fd.originalCurrency || "EUR";
-    const total = Number(fd.originalAmount || 0);
+    const total = parseAmount(fd.originalAmount);
     Object.entries(fd.customSplitShares || {}).forEach(([id, pct]) => {
-      const amount = (Number(pct || 0) / 100) * total;
+      const amount = (parseAmount(pct) / 100) * total;
       if (amount > 0) out[id] = convertToEur(amount, currency);
     });
     return out;
@@ -5026,7 +5041,7 @@ function App() {
       splitType: expenseForm.splitType || "equal"
     };
 
-    const originalAmount = Number(normalizedExpenseForm.originalAmount);
+    const originalAmount = parseAmount(normalizedExpenseForm.originalAmount);
     const originalCurrency = normalizedExpenseForm.originalCurrency || "EUR";
 
     if (!normalizedExpenseForm.categoryId) return showToast("Choose a category.", "error");
@@ -5225,7 +5240,7 @@ function App() {
     if (!selectedTrip || !editingExpenseId) return;
     if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to edit expenses.", "info");
 
-    const originalAmount = Number(expenseEditForm.originalAmount);
+    const originalAmount = parseAmount(expenseEditForm.originalAmount);
     const originalCurrency = expenseEditForm.originalCurrency || "EUR";
 
     if (!expenseEditForm.categoryId) return showToast("Choose a category.", "error");
@@ -5400,6 +5415,9 @@ function App() {
       visibleTo = Array.from(
         new Set([...(taskForm.selectedMemberIds || []), creatorId].filter(Boolean))
       );
+    } else if (scope === "our_unit") {
+      visibleTo = Array.from(new Set([...(taskForm.selectedMemberIds || [])].filter(Boolean)));
+      scope = "selected_members";
     } else {
       scope = "group";
       visibleTo = "all";
@@ -6022,7 +6040,7 @@ function App() {
   async function handleMarkSmartSettlementPaid(suggested, settlementLayer = "group", settlementGroupId = null, customAmount = null, actualFromMemberId = null) {
     if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to record settlements.", "info");
     if (!selectedTrip || !user) return;
-    const amount = customAmount != null ? Number(customAmount) : Number(suggested.amount || 0);
+    const amount = customAmount != null ? parseAmount(customAmount) : Number(suggested.amount || 0);
     if (!amount || amount <= 0) return showToast("Enter a valid amount.", "error");
     const fromMemberId = actualFromMemberId || suggested.fromMemberId || suggested.fromUserId;
     setSavingSettlement(true);
@@ -6068,7 +6086,7 @@ function App() {
   async function saveSettlement(data) {
     if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to record settlements.", "info");
     if (!selectedTrip || !user) return;
-    const amount = Number(data.amountEur);
+    const amount = parseAmount(data.amountEur);
     if (!data.fromMemberId || !data.toMemberId) return showToast("Choose both people.", "error");
     if (data.fromMemberId === data.toMemberId) {
       return showToast("Payer and receiver cannot be the same person.", "error");
@@ -7349,7 +7367,7 @@ function App() {
   // -------------------- Render: expense form --------------------
   function renderExpenseForm({ mode, formData, setFormData, onSubmit, saving, onCancel }) {
     const isEdit = mode === "edit";
-    const totalAmount = Number(formData.originalAmount || 0);
+    const totalAmount = parseAmount(formData.originalAmount);
     const previewEur = convertToEur(totalAmount, formData.originalCurrency || "EUR");
     const customTotal = getCustomSplitTotal(formData);
     const percentTotal = getPercentageSplitTotal(formData);
@@ -7425,13 +7443,13 @@ function App() {
               Amount
               <input
                 className="expense-amount-input"
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={formData.originalAmount}
                 placeholder="0.00"
                 autoFocus
-                onChange={e => setFormData({ ...formData, originalAmount: e.target.value })}
+                onChange={e => setFormData({ ...formData, originalAmount: e.target.value.replace(/[^\d.,]/g, "") })}
+                onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setFormData(f => ({ ...f, originalAmount: n })); }}
                 required
               />
             </label>
@@ -7598,6 +7616,46 @@ function App() {
               {/* Equal split: tap-to-toggle member tiles */}
               {formData.splitType === "equal" && (
                 <>
+                  {(() => {
+                    const activeGroupsLocal = settlementGroups.filter(g => g.isActive !== false);
+                    if (activeGroupsLocal.length === 0) return null;
+                    const UNIT_COLORS = ["#0f766e","#2563eb","#d97706","#7c3aed","#be185d","#0891b2","#15803d","#dc2626"];
+                    return (
+                      <div className="unit-split-tiles">
+                        {activeGroupsLocal.map((group, i) => {
+                          const color = UNIT_COLORS[i % UNIT_COLORS.length];
+                          const unitMemberIds = group.memberIds.filter(id => activeMembers.some(m => m.id === id));
+                          const allSelected = unitMemberIds.length > 0 && unitMemberIds.every(id => (formData.splitMemberIds || []).includes(id));
+                          const someSelected = !allSelected && unitMemberIds.some(id => (formData.splitMemberIds || []).includes(id));
+                          return (
+                            <button
+                              key={group.id}
+                              type="button"
+                              className={`unit-split-tile${allSelected ? " selected" : someSelected ? " partial" : ""}`}
+                              style={allSelected || someSelected ? { borderColor: color, ...(allSelected ? { background: color + "14" } : {}) } : {}}
+                              onClick={() => {
+                                const current = formData.splitMemberIds || [];
+                                const newIds = allSelected
+                                  ? current.filter(id => !unitMemberIds.includes(id))
+                                  : [...new Set([...current, ...unitMemberIds])];
+                                setFormData({ ...formData, splitMemberIds: newIds });
+                              }}
+                            >
+                              <div className="unit-split-avatars">
+                                {unitMemberIds.slice(0, 3).map(id => (
+                                  <div key={id} className="unit-split-avatar" style={{ background: color }}>
+                                    {getMemberInitials(id)}
+                                  </div>
+                                ))}
+                              </div>
+                              <span className="unit-split-name" style={allSelected ? { color } : {}}>{group.name}</span>
+                              {allSelected && <span className="unit-split-check" style={{ color }}>✓</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                   <div className="member-tile-grid">
                     {activeMembers.map(m => {
                       const included = (formData.splitMemberIds || []).includes(m.id);
@@ -7638,7 +7696,7 @@ function App() {
                   <div className="member-tile-grid">
                     {activeMembers.map(m => {
                       const val = (formData.customSplitShares || {})[m.id] || "";
-                      const hasValue = Number(val) > 0;
+                      const hasValue = parseAmount(val) > 0;
                       return (
                         <div key={m.id} className={`member-tile has-input${hasValue ? " selected" : ""}`}>
                           <div className="member-tile-avatar" style={{ background: hasValue ? getMemberColor(m.id) : undefined }}>
@@ -7646,14 +7704,14 @@ function App() {
                           </div>
                           <span className="member-tile-name">{getMemberShortName(m.id)}</span>
                           <input
-                            type="number"
-                            min="0"
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
                             value={val}
                             placeholder="0.00"
                             className="member-tile-input"
                             onClick={e => e.stopPropagation()}
-                            onChange={e => updateCustomSplitShare(formData, setFormData, m.id, e.target.value)}
+                            onChange={e => updateCustomSplitShare(formData, setFormData, m.id, e.target.value.replace(/[^\d.,]/g, ""))}
+                            onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) updateCustomSplitShare(formData, setFormData, m.id, n); }}
                           />
                         </div>
                       );
@@ -7673,7 +7731,7 @@ function App() {
                   <div className="member-tile-grid">
                     {activeMembers.map(m => {
                       const val = (formData.customSplitShares || {})[m.id] || "";
-                      const hasValue = Number(val) > 0;
+                      const hasValue = parseAmount(val) > 0;
                       return (
                         <div key={m.id} className={`member-tile has-input${hasValue ? " selected" : ""}`}>
                           <div className="member-tile-avatar" style={{ background: hasValue ? getMemberColor(m.id) : undefined }}>
@@ -7682,15 +7740,14 @@ function App() {
                           <span className="member-tile-name">{getMemberShortName(m.id)}</span>
                           <div className="member-tile-pct-wrap">
                             <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.1"
+                              type="text"
+                              inputMode="decimal"
                               value={val}
                               placeholder="0"
                               className="member-tile-input"
                               onClick={e => e.stopPropagation()}
-                              onChange={e => updateCustomSplitShare(formData, setFormData, m.id, e.target.value)}
+                              onChange={e => updateCustomSplitShare(formData, setFormData, m.id, e.target.value.replace(/[^\d.,]/g, ""))}
+                              onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) updateCustomSplitShare(formData, setFormData, m.id, n); }}
                             />
                             <span className="member-tile-pct-suffix">%</span>
                           </div>
@@ -7924,72 +7981,18 @@ function App() {
   function renderSettlementsTab() {
     const groupSettlement = smartSettleSummary.groupSettlement;
     const privateSettlements = smartSettleSummary.privateSettlements;
-    const privateGroupsWithSuggestions = privateSettlements.filter(group => group.suggestions.length > 0);
     const consolidatedSuggestions = smartSettleSummary.consolidatedSuggestions || [];
     const consolidatedTotal = roundMoney(consolidatedSuggestions.reduce((s, sg) => s + Number(sg.amount || 0), 0));
     const combinedBalances = getCombinedMemberBalances(groupSettlement, privateSettlements);
-    const pendingSuggestions = [
-      ...groupSettlement.suggestions,
-      ...privateGroupsWithSuggestions.flatMap(group => group.suggestions)
-    ];
-    const pendingTotal = consolidatedTotal;
     const isFamilyCoupleMode = settlementMode === "family_couple";
-    const involvedSet = new Set();
-    pendingSuggestions.forEach(s => {
-      involvedSet.add(s.fromMemberId || s.fromUserId);
-      involvedSet.add(s.toMemberId || s.toUserId);
-    });
-    const receiverIds = new Set(groupSettlement.suggestions.map(s => s.toMemberId || s.toUserId));
-    const singleGroupReceiver =
-      groupSettlement.suggestions.length > 0 && receiverIds.size === 1
-        ? groupSettlement.suggestions[0]
-        : null;
-    const groupSettlementSentence = singleGroupReceiver
-      ? `${cleanDisplayName(singleGroupReceiver.toName)} should receive ${formatMoney(
-          groupSettlement.suggestions.reduce((sum, s) => sum + Number(s.amount || 0), 0)
-        )} total.`
-      : `${groupSettlement.suggestions.length} ${
-          groupSettlement.suggestions.length === 1 ? "payment" : "payments"
-        } needed to settle group expenses.`;
     const hasExpenses = expenses.some(expense => expense.isActive !== false);
 
     const modeOptions = [
-      { value: "fewest_payments", label: "Fewest payments", desc: "Minimizes the number of payments across the group." },
-      { value: "familiar_only", label: "Familiar payments only", desc: "Only suggests payments between people who shared at least one expense." },
-      { value: "family_couple", label: "Family / couple settle", desc: "Couples, families, or sub-groups can settle together as one unit." }
+      { value: "fewest_payments", label: "Fewest payments", desc: "Minimises the number of payments across the group." },
+      { value: "familiar_only", label: "Familiar only", desc: "Only suggests payments between people who shared at least one expense." },
+      { value: "family_couple", label: "Family / couple", desc: "Couples, families, or sub-groups settle together as one unit." }
     ];
     const currentModeDesc = modeOptions.find(o => o.value === settlementMode)?.desc || "";
-
-    const summaryCards = [
-      {
-        label: "Pending total",
-        value: formatMoney(pendingTotal),
-        detail: "Needs to be settled",
-        icon: <Icon name="euro" />,
-        tone: "mint"
-      },
-      {
-        label: "Payments needed",
-        value: consolidatedSuggestions.length,
-        detail: `${pendingSuggestions.length} total incl. private`,
-        icon: <Icon name="refresh" />,
-        tone: "blue"
-      },
-      {
-        label: isFamilyCoupleMode ? "Units involved" : "People involved",
-        value: involvedSet.size,
-        detail: "In this settlement",
-        icon: <Icon name="users" />,
-        tone: "purple"
-      },
-      {
-        label: "Private groups",
-        value: privateGroupsWithSuggestions.length,
-        detail: "With private settlements",
-        icon: <Icon name="users" />,
-        tone: "amber"
-      }
-    ];
 
     const activeMembers = members.filter(m => m.status !== "inactive");
     const activeGroups = settlementGroups.filter(g => g.isActive !== false);
@@ -8002,153 +8005,70 @@ function App() {
     const myNet = myBalance?.net ?? 0;
     const myPeopleOwingMe = consolidatedSuggestions.filter(s => s.toMemberId === myMemberId || s.toUnitId === myMemberId);
     const myOwedToOthers = consolidatedSuggestions.filter(s => s.fromMemberId === myMemberId || s.fromUnitId === myMemberId);
-    const alreadyPaidTotal = roundMoney((myBalance?.settledPaid ?? 0) + (myBalance?.settledReceived ?? 0));
-    const hasPrivateExpenses = privateSettlements.length > 0;
 
-    const renderConsolidatedCard = (suggestion) => {
-      const cardId = `consolidated-${suggestion.id}`;
+    const renderPaymentRow = (suggestion) => {
+      const cardId = `pay-${suggestion.id}`;
       const expanded = expandedSmartSettleId === cardId;
-      const fromBalance = combinedBalances.find(b => b.memberId === suggestion.fromMemberId);
-      const toBalance = combinedBalances.find(b => b.memberId === suggestion.toMemberId);
-      const fromInitial = cleanDisplayName(suggestion.fromName).slice(0, 1).toUpperCase();
-      return (
-        <div className="smart-settle-row" key={cardId}>
-          <div className="smart-settle-avatar" aria-hidden="true">{fromInitial}</div>
-          <div className="smart-settle-main">
-            <div className="smart-settle-route">
-              <strong>{cleanDisplayName(suggestion.fromName)}</strong>
-              <span aria-hidden="true">→</span>
-              <strong>{cleanDisplayName(suggestion.toName)}</strong>
-            </div>
-            <p className="small muted">All expenses combined</p>
-          </div>
-          <div className="smart-settle-side">
-            <strong className="smart-settle-amount">{formatMoney(suggestion.amount)}</strong>
-            <span className="pill pending-pill">Pending</span>
-          </div>
-          <div className="settlement-actions">
-            <button
-              className="secondary-button small-button"
-              type="button"
-              onClick={() => setExpandedSmartSettleId(expanded ? "" : cardId)}
-            >
-              ☷ Breakdown
-            </button>
-          </div>
-          {expanded ? (
-            <div className="smart-settle-breakdown">
-              {[fromBalance, toBalance].filter(Boolean).map(balance => (
-                <p className="small muted" key={balance.memberId}>
-                  <strong>{cleanDisplayName(balance.name)}</strong>: paid {formatMoney(balance.paid)}, share {formatMoney(balance.share)}, net {formatMoney(balance.net)}
-                </p>
-              ))}
-              {(() => {
-                const involvedIds = new Set([suggestion.fromMemberId, suggestion.toMemberId].filter(Boolean));
-                const related = expenses.filter(e =>
-                  e.isActive !== false && e.expenseType === "shared" &&
-                  (involvedIds.has(e.paidByMemberId) ||
-                    (e.splitMemberIds || []).some(id => involvedIds.has(id)))
-                ).slice(0, 6);
-                if (!related.length) return null;
-                return (
-                  <div className="drill-expenses">
-                    <p className="small muted drill-title">Contributing expenses ({related.length}{related.length === 6 ? "+" : ""}):</p>
-                    {related.map(e => (
-                      <div className="drill-expense-row" key={e.id}>
-                        <span className="small">{e.description || e.categoryName}</span>
-                        <span className="small muted">{formatMoney(e.amountEur)}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
-          ) : null}
-        </div>
-      );
-    };
-
-    const renderSuggestionCard = (suggestion, layer, settlementGroupId, balancesForLayer) => {
-      const cardId = `${layer}-${settlementGroupId || "group"}-${suggestion.id}`;
-      const fromBalance = balancesForLayer.find(b => b.memberId === (suggestion.fromMemberId || suggestion.fromUserId));
-      const toBalance = balancesForLayer.find(b => b.memberId === (suggestion.toMemberId || suggestion.toUserId));
-      const expanded = expandedSmartSettleId === cardId;
-      const fromInitial = cleanDisplayName(suggestion.fromName).slice(0, 1).toUpperCase();
+      const fromId = suggestion.fromMemberId || suggestion.fromUserId;
+      const toId = suggestion.toMemberId || suggestion.toUserId;
+      const involvedIds = new Set([fromId, toId].filter(Boolean));
+      const related = expenses.filter(e =>
+        e.isActive !== false && e.expenseType === "shared" &&
+        (involvedIds.has(e.paidByMemberId) || (e.splitMemberIds || []).some(id => involvedIds.has(id)))
+      ).slice(0, 8);
       const isUnitSuggestion = suggestion.fromType === "unit" || suggestion.toType === "unit";
       return (
-        <div className="smart-settle-row" key={cardId}>
-          <div className={`smart-settle-avatar${isUnitSuggestion ? " unit-avatar" : ""}`} aria-hidden="true">
-            {fromInitial}
+        <div className="settle-payment-row" key={cardId}>
+          <div
+            className={`settle-pay-avatar${isUnitSuggestion ? " unit-avatar" : ""}`}
+            aria-hidden="true"
+          >
+            {cleanDisplayName(suggestion.fromName).slice(0, 1).toUpperCase()}
           </div>
-          <div className="smart-settle-main">
-            <div className="smart-settle-route">
+          <div className="settle-pay-body">
+            <div className="settle-pay-names">
               <strong>{cleanDisplayName(suggestion.fromName)}</strong>
-              <span aria-hidden="true">→</span>
+              <span className="settle-pay-verb">pays</span>
               <strong>{cleanDisplayName(suggestion.toName)}</strong>
             </div>
-            <p className="small muted">
-              {layer === "private" ? "Private settlement" : "Group settlement"}
-              {isUnitSuggestion ? " · Unit" : ""}
-            </p>
-          </div>
-          <div className="smart-settle-side">
-            <strong className="smart-settle-amount">{formatMoney(suggestion.amount)}</strong>
-            <span className="pill pending-pill">Pending</span>
-          </div>
-          <div className="settlement-actions">
-            <button
-              className="secondary-button small-button"
-              type="button"
-              onClick={() => setExpandedSmartSettleId(expanded ? "" : cardId)}
-            >
-              ☷ Breakdown
-            </button>
-            {!isDemoMode() ? (
-            <button
-              className="primary-button small-button"
-              type="button"
-              disabled={savingSettlement}
-              onClick={() => {
-                setPendingSmartSettlement({ suggestion, layer, settlementGroupId });
-                setPendingSettleAmount(String(suggestion.amount || ""));
-                setPendingSettleActualPayer(suggestion.fromMemberId || suggestion.fromUserId || "");
-              }}
-            >
-              ✓ Mark paid
-            </button>
-            ) : null}
-          </div>
-          {expanded ? (
-            <div className="smart-settle-breakdown">
-              {[fromBalance, toBalance].filter(Boolean).map(balance => (
-                <p className="small muted" key={balance.memberId}>
-                  <strong>{cleanDisplayName(balance.name)}</strong>: paid {formatMoney(balance.paid)}, share {formatMoney(balance.share)}, net {formatMoney(balance.net)}
-                </p>
-              ))}
-              {(() => {
-                const fromId = suggestion.fromMemberId || suggestion.fromUserId;
-                const toId = suggestion.toMemberId || suggestion.toUserId;
-                const involvedIds = new Set([fromId, toId].filter(Boolean));
-                const related = expenses.filter(e =>
-                  e.isActive !== false && e.expenseType === "shared" &&
-                  (involvedIds.has(e.paidByMemberId) ||
-                    (e.splitMemberIds || []).some(id => involvedIds.has(id)))
-                ).slice(0, 6);
-                if (!related.length) return null;
-                return (
-                  <div className="drill-expenses">
-                    <p className="small muted drill-title">Contributing expenses ({related.length}{related.length === 6 ? "+" : ""}):</p>
-                    {related.map(e => (
-                      <div className="drill-expense-row" key={e.id}>
-                        <span className="small">{e.description || e.categoryName}</span>
-                        <span className="small muted">{formatMoney(e.amountEur)}</span>
-                      </div>
-                    ))}
+            {related.length > 0 && (
+              <button
+                type="button"
+                className="settle-expand-btn"
+                onClick={() => setExpandedSmartSettleId(expanded ? "" : cardId)}
+              >
+                {expanded ? "▲ Hide expenses" : `▼ ${related.length} expense${related.length !== 1 ? "s" : ""}`}
+              </button>
+            )}
+            {expanded && (
+              <div className="settle-expanded-expenses">
+                {related.map(e => (
+                  <div className="drill-expense-row" key={e.id}>
+                    <span className="small">{e.description || e.categoryName}</span>
+                    <span className="small muted">{formatMoney(e.amountEur)}</span>
                   </div>
-                );
-              })()}
-            </div>
-          ) : null}
+                ))}
+                {related.length === 8 && <p className="small muted" style={{ margin: 0 }}>+ more</p>}
+              </div>
+            )}
+          </div>
+          <div className="settle-pay-right">
+            <strong className="settle-pay-amount">{formatMoney(suggestion.amount)}</strong>
+            {!isDemoMode() && (
+              <button
+                type="button"
+                className="primary-button small-button"
+                disabled={savingSettlement}
+                onClick={() => {
+                  setPendingSmartSettlement({ suggestion, layer: "group", settlementGroupId: null });
+                  setPendingSettleAmount(String(suggestion.amount || ""));
+                  setPendingSettleActualPayer(suggestion.fromMemberId || suggestion.fromUserId || "");
+                }}
+              >
+                ✓ Mark paid
+              </button>
+            )}
+          </div>
         </div>
       );
     };
@@ -8174,21 +8094,20 @@ function App() {
             </div>
           </div>
           {fallbackSuggestions.map(s => (
-            <div className="smart-settle-row fallback-row" key={s.id}>
-              <div className="smart-settle-avatar fallback-avatar" aria-hidden="true">
+            <div className="settle-payment-row fallback-row" key={s.id}>
+              <div className="settle-pay-avatar fallback-avatar" aria-hidden="true">
                 {cleanDisplayName(s.fromName).slice(0, 1).toUpperCase()}
               </div>
-              <div className="smart-settle-main">
-                <div className="smart-settle-route">
+              <div className="settle-pay-body">
+                <div className="settle-pay-names">
                   <strong>{cleanDisplayName(s.fromName)}</strong>
-                  <span aria-hidden="true">→</span>
+                  <span className="settle-pay-verb">pays</span>
                   <strong>{cleanDisplayName(s.toName)}</strong>
+                  <span className="pill fallback-pill">Fallback</span>
                 </div>
-                <p className="small muted">Fallback suggestion</p>
               </div>
-              <div className="smart-settle-side">
-                <strong className="smart-settle-amount">{formatMoney(s.amount)}</strong>
-                <span className="pill fallback-pill">Fallback</span>
+              <div className="settle-pay-right">
+                <strong className="settle-pay-amount">{formatMoney(s.amount)}</strong>
               </div>
             </div>
           ))}
@@ -8337,19 +8256,21 @@ function App() {
     const tripEndDate = selectedTrip?.endDate ? new Date(selectedTrip.endDate) : null;
     const today = new Date(todayIso());
     const tripHasEnded = tripEndDate && today > tripEndDate;
-    const daysAfterEnd = tripHasEnded
-      ? Math.round((today - tripEndDate) / 86400000)
-      : 0;
+    const daysAfterEnd = tripHasEnded ? Math.round((today - tripEndDate) / 86400000) : 0;
     const allSettled = consolidatedSuggestions.length === 0 && hasExpenses;
 
     return (
       <section className="smart-settle-page">
+
+        {/* Trip-end banners */}
         {tripHasEnded && !allSettled && (
           <div className="trip-end-settle-banner">
             <span className="trip-end-icon" aria-hidden="true">🏁</span>
             <div>
               <strong>Trip ended {daysAfterEnd === 1 ? "yesterday" : `${daysAfterEnd} days ago`}</strong>
-              <p className="small muted">Time to settle up! {consolidatedSuggestions.length} payment{consolidatedSuggestions.length !== 1 ? "s" : ""} remaining totalling {formatMoney(consolidatedTotal)}.</p>
+              <p className="small muted">
+                {consolidatedSuggestions.length} payment{consolidatedSuggestions.length !== 1 ? "s" : ""} remaining · {formatMoney(consolidatedTotal)} to settle
+              </p>
             </div>
           </div>
         )}
@@ -8358,257 +8279,145 @@ function App() {
             <span className="trip-end-icon" aria-hidden="true">✓</span>
             <div>
               <strong>All settled up!</strong>
-              <p className="small muted">This trip is over and everyone is settled.</p>
+              <p className="small muted">Trip is over and everyone is even.</p>
             </div>
           </div>
         )}
-        <div className="smart-settle-hero">
+
+        {/* Header */}
+        <div className="settle-header">
           <div>
-            <h2>Smart Settle</h2>
-            <p className="muted">See who pays whom and settle trip expenses.</p>
+            <h2>Settle Up</h2>
+            {hasExpenses && !allSettled && (
+              <p className="muted">
+                {consolidatedSuggestions.length} payment{consolidatedSuggestions.length !== 1 ? "s" : ""} · {formatMoney(consolidatedTotal)} to settle
+              </p>
+            )}
           </div>
-          <div className="smart-settle-toolbar">
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={copySmartSettleSummary}
-            >
-              ⧉ Copy summary
-            </button>
-            <button
-              className="primary-button"
-              type="button"
-              disabled={tripDataLoading}
-              onClick={() => selectedTrip ? loadTripData(selectedTrip.id) : null}
-            >
-              ↻ Recalculate
-            </button>
-          </div>
+          <button className="secondary-button" type="button" onClick={copySmartSettleSummary}>
+            ⧉ Copy summary
+          </button>
         </div>
 
-        <div className="settle-mode-bar card">
-          <p className="settle-mode-label">Settlement mode</p>
-          <div className="settle-mode-options">
-            {modeOptions.map(opt => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`settle-mode-btn${settlementMode === opt.value ? " active" : ""}`}
-                onClick={() => handleSettlementModeChange(opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <p className="small muted settle-mode-desc">{currentModeDesc}</p>
-        </div>
-
+        {/* Personal balance */}
         {myMemberId && hasExpenses && (
           <div className={`your-balance-card card ${myNet < -MONEY_EPSILON ? "balance-owe" : myNet > MONEY_EPSILON ? "balance-receive" : "balance-clear"}`}>
-            <div className="your-balance-main">
-              <span className="your-balance-label">Your balance</span>
-              {myNet < -MONEY_EPSILON ? (
-                <strong className="your-balance-amount owe">You owe {formatMoney(Math.abs(myNet))} total</strong>
-              ) : myNet > MONEY_EPSILON ? (
-                <strong className="your-balance-amount receive">You are owed {formatMoney(myNet)} total</strong>
-              ) : (
-                <strong className="your-balance-amount clear">You are settled up</strong>
-              )}
-              <p className="small muted">
-                {myOwedToOthers.length > 0 && `Pay ${myOwedToOthers.length} ${myOwedToOthers.length === 1 ? "person" : "people"} · `}
-                {myPeopleOwingMe.length > 0 && `Receive from ${myPeopleOwingMe.length} ${myPeopleOwingMe.length === 1 ? "person" : "people"} · `}
-                {alreadyPaidTotal > 0 && `${formatMoney(alreadyPaidTotal)} already settled`}
-              </p>
-            </div>
-            {!isAdmin && hasPrivateExpenses && (
-              <p className="your-balance-note small muted">
-                Private expenses you are not part of are not shown here.
-              </p>
-            )}
-            {!isAdmin && !hasPrivateExpenses && (
-              <p className="your-balance-note small muted">
-                Only group expenses visible to you are included.
-              </p>
+            <span className="your-balance-label">Your balance</span>
+            {myNet < -MONEY_EPSILON ? (
+              <strong className="your-balance-amount owe">
+                You owe {formatMoney(Math.abs(myNet))}
+                {myOwedToOthers.length > 0 && ` · pay ${myOwedToOthers.length} ${myOwedToOthers.length === 1 ? "person" : "people"}`}
+              </strong>
+            ) : myNet > MONEY_EPSILON ? (
+              <strong className="your-balance-amount receive">
+                You're owed {formatMoney(myNet)}
+                {myPeopleOwingMe.length > 0 && ` · from ${myPeopleOwingMe.length} ${myPeopleOwingMe.length === 1 ? "person" : "people"}`}
+              </strong>
+            ) : (
+              <strong className="your-balance-amount clear">You're settled up ✓</strong>
             )}
           </div>
         )}
 
-        <div className="smart-settle-summary-grid">
-          {summaryCards.map(card => (
-            <div className="smart-summary-card" key={card.label}>
-              <div className={`smart-summary-icon ${card.tone}`}>{card.icon}</div>
-              <div>
-                <span>{card.label}</span>
-                <strong>{card.value}</strong>
-                <p>{card.detail}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {isFamilyCoupleMode ? renderSettlementGroupsManager() : null}
-
-        {hasExpenses ? (
-          <section className="card smart-settle-panel consolidated-panel">
-            <div className="consolidated-panel-header">
-              <div>
-                <h3>Final Settlement</h3>
-                <p className="small muted">
-                  {isFamilyCoupleMode
-                    ? "Minimum payments between units, combining group and cross-unit private expenses."
-                    : "Minimum payments combining all group and private expenses."}
-                </p>
-              </div>
-              {consolidatedSuggestions.length > 0 ? (
-                <p className="smart-settle-summary-sentence">
-                  <span aria-hidden="true">✓</span>
-                  {consolidatedSuggestions.length === 1
-                    ? `1 payment settles ${formatMoney(consolidatedTotal)}.`
-                    : `${consolidatedSuggestions.length} payments settle ${formatMoney(consolidatedTotal)}.`}
-                </p>
-              ) : null}
-            </div>
-            {consolidatedSuggestions.length === 0 ? (
-              <p className="muted">All settled up — no payments needed.</p>
-            ) : (
-              <div className="settlement-list">
-                {consolidatedSuggestions.map(s => renderConsolidatedCard(s))}
-              </div>
-            )}
-            <p className="consolidated-note small muted">
-              This is your final answer. Use "Show breakdown" below to mark individual payments as paid.
-              {isFamilyCoupleMode
-                ? " · Within-unit private expenses are settled internally and shown in the breakdown."
-                : (!isAdmin && " · Private expenses you are not part of are excluded from this view.")}
-            </p>
-          </section>
-        ) : null}
-
-        {!hasExpenses ? (
-          <section className="card smart-empty-card">
+        {/* No expenses yet */}
+        {!hasExpenses && (
+          <div className="card smart-empty-card">
             <p className="muted">No expenses added yet.</p>
-          </section>
-        ) : (
-          <>
-            <button
-              className="breakdown-toggle-btn"
-              onClick={() => setShowSettlementBreakdown(v => !v)}
-            >
-              {showSettlementBreakdown ? "Hide breakdown ▲" : "Show breakdown ▼"}
-              <span className="breakdown-toggle-hint"> — mark individual payments as paid</span>
-            </button>
-            {showSettlementBreakdown && (
-              <div className="smart-settle-grid breakdown-grid">
-                <section className="card smart-settle-panel group-panel">
-                  <div>
-                    <h3>Group Settlement</h3>
-                    <p className="small muted">Shared expenses visible to everyone.</p>
-                  </div>
-                  {groupSettlement.suggestions.length > 0 ? (
-                    <p className="smart-settle-summary-sentence">
-                      <span aria-hidden="true">✓</span>
-                      {groupSettlementSentence}
-                    </p>
-                  ) : null}
-                  {groupSettlement.suggestions.length === 0 && !groupSettlement.fallbackRequired ? (
-                    <p className="muted">Everyone is settled for group expenses.</p>
-                  ) : (
-                    <div className="settlement-list">
-                      {groupSettlement.suggestions.map(suggestion =>
-                        renderSuggestionCard(suggestion, "group", null, groupSettlement.balances)
-                      )}
-                    </div>
-                  )}
-                  {groupSettlement.fallbackRequired
-                    ? renderFamiliarFallback(groupSettlement.unresolvedDebtors, groupSettlement.unresolvedCreditors)
-                    : null}
-                  {isFamilyCoupleMode && activeGroups.length === 0 && groupSettlement.suggestions.length === 0 ? (
-                    <p className="muted">No settlement groups created. Members settle individually by default.</p>
-                  ) : null}
-                </section>
-
-                <section className="card smart-settle-panel private-panel">
-                  <div>
-                    <h3>Private Settlements</h3>
-                    <p className="small muted">Settlements only visible to selected members.</p>
-                  </div>
-                  {privateGroupsWithSuggestions.length === 0 ? (
-                    <EmptyState
-                      className="private-empty-state"
-                      iconClass="private-empty-icon"
-                      icon={<><span>👥</span><small>🔒</small></>}
-                      headingLevel="h4"
-                      title="No private settlements yet."
-                      description="Private settlements appear here for expenses shared only with selected members, like couples, families, or sub-groups."
-                    />
-                  ) : (
-                    <div className="private-settlement-list">
-                      {privateGroupsWithSuggestions.map(group => (
-                        <div className="private-settlement-group" key={group.settlementGroupId}>
-                          <h4>{group.memberNames.map(cleanDisplayName).join(" + ")}</h4>
-                          <p className="small muted">Total shared privately: {formatMoney(group.totalSpent)}</p>
-                          <div className="settlement-list">
-                            {group.suggestions.map(suggestion =>
-                              renderSuggestionCard(
-                                suggestion,
-                                "private",
-                                group.settlementGroupId,
-                                group.balances
-                              )
-                            )}
-                          </div>
-                          {group.fallbackRequired
-                            ? renderFamiliarFallback(group.unresolvedDebtors, group.unresolvedCreditors)
-                            : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              </div>
-            )}
-          </>
+          </div>
         )}
 
-        <section className="card smart-settle-panel">
-          <h2>Settlement History</h2>
-          {settlements.length === 0 ? (
-            <p className="muted">No settlements recorded yet. Paid settlements will appear here.</p>
-          ) : (
-            <div className="settlement-history-list">
-              {settlements.map(s => (
-                <div className="settlement-history-row" key={s.id}>
-                  <span className="history-check" aria-hidden="true">✓</span>
-                  <div className="smart-settle-avatar history-avatar" aria-hidden="true">
-                    {cleanDisplayName(s.fromMemberName || memberNameOf(s.fromMemberId)).slice(0, 1).toUpperCase()}
-                  </div>
-                  <div>
-                    <strong>
-                      {cleanDisplayName(s.fromMemberName || memberNameOf(s.fromMemberId))}
-                      {" → "}
-                      {cleanDisplayName(s.toMemberName || memberNameOf(s.toMemberId))}
-                    </strong>
-                    <p className="small muted">{s.notes || "Settlement payment"}</p>
-                  </div>
-                  <strong className="history-amount">{formatMoney(s.amountEur)}</strong>
-                  <span className="pill paid-pill">Paid</span>
-                  <p className="small muted history-date">
-                    Paid on {s.paidAt?.toDate?.()?.toLocaleString?.() || s.date || "recorded date"}
-                  </p>
-                  {!isDemoMode() ? (
-                  <button
-                    className="secondary-button small-button"
-                    type="button"
-                    onClick={() => handleDeleteSettlement(s)}
-                  >
-                    View details
-                  </button>
-                  ) : null}
-                </div>
-              ))}
+        {/* All settled celebration */}
+        {allSettled && (
+          <div className="settle-all-settled card">
+            <span aria-hidden="true">🎉</span>
+            <div>
+              <strong>All settled up!</strong>
+              <p className="small muted">Everyone's even — no payments needed.</p>
             </div>
-          )}
-        </section>
+          </div>
+        )}
+
+        {/* Payment list */}
+        {hasExpenses && !allSettled && (
+          <section className="card smart-settle-panel">
+            <div className="settle-payment-list">
+              {consolidatedSuggestions.map(s => renderPaymentRow(s))}
+            </div>
+            {groupSettlement.fallbackRequired
+              ? renderFamiliarFallback(groupSettlement.unresolvedDebtors, groupSettlement.unresolvedCreditors)
+              : null}
+          </section>
+        )}
+
+        {/* Settlement options (collapsed by default) */}
+        <details className="settle-advanced-details card">
+          <summary>
+            ⚙ Settlement options
+            <span className="settle-advanced-current">{modeOptions.find(o => o.value === settlementMode)?.label}</span>
+          </summary>
+          <div className="settle-advanced-body">
+            <div>
+              <p className="settle-mode-label">Settlement mode</p>
+              <div className="settle-mode-options">
+                {modeOptions.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`settle-mode-btn${settlementMode === opt.value ? " active" : ""}`}
+                    onClick={() => handleSettlementModeChange(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="small muted settle-mode-desc">{currentModeDesc}</p>
+            </div>
+            {isFamilyCoupleMode ? renderSettlementGroupsManager() : null}
+          </div>
+        </details>
+
+        {/* Payment history */}
+        {(settlements.length > 0 || !hasExpenses) && (
+          <section className="card smart-settle-panel">
+            <h3>Payment history</h3>
+            {settlements.length === 0 ? (
+              <p className="muted">No payments recorded yet.</p>
+            ) : (
+              <div className="settlement-history-list">
+                {settlements.map(s => {
+                  const fromName = cleanDisplayName(s.fromMemberName || memberNameOf(s.fromMemberId));
+                  const toName = cleanDisplayName(s.toMemberName || memberNameOf(s.toMemberId));
+                  const paidDate = s.paidAt?.toDate?.()?.toLocaleDateString?.() || s.date || "";
+                  return (
+                    <div className="settle-history-row" key={s.id}>
+                      <div className="settle-pay-avatar history-avatar" aria-hidden="true">
+                        {fromName.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="settle-history-body">
+                        <strong>{fromName} paid {toName}</strong>
+                        <p className="small muted">
+                          {formatMoney(s.amountEur)}
+                          {s.notes ? ` · ${s.notes}` : ""}
+                          {paidDate ? ` · ${paidDate}` : ""}
+                        </p>
+                      </div>
+                      <span className="pill paid-pill">Paid</span>
+                      {!isDemoMode() && (
+                        <button
+                          className="secondary-button small-button"
+                          type="button"
+                          onClick={() => handleDeleteSettlement(s)}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
       </section>
     );
   }
@@ -8928,28 +8737,55 @@ function App() {
                   : undefined
               }
             >
-              {canManageSelectedTrip() && !demoMode ? (
-              <div className="trip-hero-topright">
-                <button
+              <div className="trip-hero-top">
+                <h1 className="trip-hero-title">{selectedTrip.name}</h1>
+                {canManageSelectedTrip() && !demoMode ? (
+                  <button
                     className="trip-hero-invite"
                     type="button"
                     disabled={creatingInvite}
                     onClick={openInviteShareModal}
                   >
-                    <Icon name="invite" /> {creatingInvite ? "Creating link..." : "Share invite"}
-                </button>
+                    <Icon name="invite" />
+                    <span className="hero-invite-text">{creatingInvite ? "Creating..." : "Invite"}</span>
+                  </button>
+                ) : null}
               </div>
-              ) : null}
-              <h1 className="trip-hero-title">{selectedTrip.name}</h1>
               <div className="trip-hero-dates">
                 <Icon name="calendar" /> {selectedTrip.startDate} – {selectedTrip.endDate}
+              </div>
+              {/* Hero stats strip */}
+              <div className="trip-hero-stats">
+                <div className="hero-stat">
+                  <span className="hero-stat-label">Total spent</span>
+                  <strong className="hero-stat-value">{formatMoney(totals.actual)}</strong>
+                </div>
+                {totals.predicted > 0 && (
+                  <div className="hero-stat">
+                    <span className="hero-stat-label">Budget</span>
+                    <strong className={`hero-stat-value${budgetPct >= 100 ? " negative" : budgetPct >= 80 ? " warning-text" : ""}`}>
+                      {budgetPct}%
+                    </strong>
+                  </div>
+                )}
+                {currentUserMemberId && (() => {
+                  const myBal = balances.find(b => b.memberId === currentUserMemberId);
+                  const net = myBal ? myBal.net : 0;
+                  if (Math.abs(net) < MONEY_EPSILON) return <div className="hero-stat"><span className="hero-stat-label">Balance</span><strong className="hero-stat-value">Settled ✓</strong></div>;
+                  return (
+                    <div className="hero-stat">
+                      <span className="hero-stat-label">{net > 0 ? "You're owed" : "You owe"}</span>
+                      <strong className={`hero-stat-value${net < 0 ? " negative" : " positive"}`}>{formatMoney(Math.abs(net))}</strong>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
             <div className="dashboard-content">
 
-              {/* ── Quick action bar ── */}
-              <div className="dash-action-bar dash-section-actions" aria-label="Primary trip actions">
+              {/* ── Quick actions — desktop only (mobile uses FAB + bottom nav) ── */}
+              <div className="dash-action-bar dash-section-actions dash-actions-desktop" aria-label="Primary trip actions">
                 {!demoMode ? (
                   <button className="dash-action-btn dash-action-expense" type="button" onClick={() => openFastExpenseModal()}>
                     <div className="dash-action-icon dash-action-icon--expense"><Icon name="plus" /></div>
@@ -8958,21 +8794,21 @@ function App() {
                 ) : null}
                 <button className="dash-action-btn" type="button" onClick={() => setActiveTab("prediction")}>
                   <div className="dash-action-icon dash-action-icon--budget"><Icon name="chart" /></div>
-                  <span>Add Budget</span>
+                  <span>Budget</span>
                 </button>
                 <button className="dash-action-btn" type="button" onClick={() => setActiveTab("settlements")}>
                   <div className="dash-action-icon dash-action-icon--settle"><Icon name="handshake" /></div>
-                  <span>Settlements</span>
+                  <span>Settle</span>
                 </button>
                 {!demoMode ? (
                   <button className="dash-action-btn" type="button" onClick={openCreateTask}>
                     <div className="dash-action-icon dash-action-icon--tasks"><Icon name="check" /></div>
-                    <span>New Task</span>
+                    <span>Task</span>
                   </button>
                 ) : null}
-                <button className="dash-action-btn" type="button" onClick={() => setActiveTab("categories")}>
-                  <div className="dash-action-icon dash-action-icon--category"><Icon name="tag" /></div>
-                  <span>Categories</span>
+                <button className="dash-action-btn" type="button" onClick={() => setActiveTab("members")}>
+                  <div className="dash-action-icon" style={{ background: "var(--info-soft)", color: "var(--info)" }}><Icon name="people" /></div>
+                  <span>Members</span>
                 </button>
               </div>
 
@@ -9110,12 +8946,12 @@ function App() {
                           <div className="personal-budget-form-row">
                             <input
                               className="form-input personal-budget-amount-input"
-                              type="number"
-                              min="0"
-                              step="any"
+                              type="text"
+                              inputMode="decimal"
                               placeholder="Amount"
                               value={personalBudgetForm.amount}
-                              onChange={e => setPersonalBudgetForm(f => ({ ...f, amount: e.target.value }))}
+                              onChange={e => setPersonalBudgetForm(f => ({ ...f, amount: e.target.value.replace(/[^\d.,]/g, "") }))}
+                              onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setPersonalBudgetForm(f => ({ ...f, amount: n })); }}
                             />
                             <select
                               className="form-input personal-budget-currency-select"
@@ -9588,12 +9424,12 @@ function App() {
                 <label>
                   Amount in EUR
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={budgetForm.estimatedEur}
                     placeholder="0.00"
-                    onChange={e => setBudgetForm({ ...budgetForm, estimatedEur: e.target.value })}
+                    onChange={e => setBudgetForm({ ...budgetForm, estimatedEur: e.target.value.replace(/[^\d.,]/g, "") })}
+                    onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setBudgetForm(f => ({ ...f, estimatedEur: n })); }}
                     required
                   />
                 </label>
@@ -9620,6 +9456,23 @@ function App() {
                         {option.label}
                       </button>
                     ))}
+                    {(() => {
+                      const myUnit = settlementGroups.find(g => g.isActive !== false && currentUserMemberId && g.memberIds.includes(currentUserMemberId));
+                      if (!myUnit) return null;
+                      return (
+                        <button
+                          className={`scope-option${budgetForm.scope === "unit" ? " selected" : ""}`}
+                          type="button"
+                          onClick={() => setBudgetForm(current => ({
+                            ...current,
+                            scope: "unit",
+                            visibleMemberIds: myUnit.memberIds
+                          }))}
+                        >
+                          Our unit
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -9750,7 +9603,6 @@ function App() {
             <div className="expenses-header">
               <div className="expenses-title">
                 <h2>Expenses</h2>
-                <p className="muted">Track expenses visible to you. Trip totals can include private aggregates.</p>
               </div>
               <div className="expenses-toolbar">
                 <label className="expense-search">
@@ -9759,7 +9611,7 @@ function App() {
                     type="search"
                     value={expenseSearch}
                     onChange={event => setExpenseSearch(event.target.value)}
-                    placeholder="Search expenses..."
+                    placeholder="Search..."
                     aria-label="Search expenses"
                   />
                 </label>
@@ -9769,7 +9621,7 @@ function App() {
                     type="button"
                     onClick={() => openFastExpenseModal()}
                   >
-                    + Add expense
+                    + Add
                   </button>
                 ) : null}
               </div>
@@ -9836,121 +9688,142 @@ function App() {
                   <div className="expense-empty-row">
                     No expenses match your current filters.
                   </div>
-                ) : (
-                  pagedExpenseRows.map(expense => {
-                    const category = categoriesById.get(expense.categoryId);
-                    const participants = participantIdsForExpense(expense);
-                    const visibleParticipants = participants.slice(0, 3);
-                    const participantOverflow = Math.max(0, participants.length - visibleParticipants.length);
-                    const paidByImage = memberImageOf(expense.paidByMemberId);
-                    return (
-                      <article className="expense-table-row" key={expense.id}>
-                        <div className="expense-name-cell" data-label="Expense">
-                          <div
-                            className="expense-category-mark"
-                            style={{ "--category-color": category?.color || "#0f766e" }}
-                          >
-                            {expense.categoryIcon || category?.icon || "€"}
+                ) : (() => {
+                    const showDayGroups = expenseSort === "newest" || expenseSort === "oldest";
+                    const today = todayIso();
+                    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+                    const relDate = d => {
+                      if (!d) return "No date";
+                      if (d === today) return "Today";
+                      if (d === yesterday) return "Yesterday";
+                      try { return new Date(d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }); }
+                      catch { return d; }
+                    };
+                    let lastDate = null;
+                    return pagedExpenseRows.flatMap(expense => {
+                      const rows = [];
+                      if (showDayGroups && expense.date !== lastDate) {
+                        lastDate = expense.date;
+                        rows.push(
+                          <div className="expense-day-header" key={`day-${expense.date}-${expense.id}`}>
+                            <span>{relDate(expense.date)}</span>
                           </div>
-                          <div>
-                            <strong>{expense.description || expense.categoryName || "Expense"}</strong>
-                            <span>{expense.categoryName || category?.name || "Uncategorized"}</span>
-                            <small>
-                              {expense.expenseType === "shared" ? "Shared" : "Personal"} · Paid by {memberNameOf(expense.paidByMemberId)}
-                            </small>
+                        );
+                      }
+                      const category = categoriesById.get(expense.categoryId);
+                      const participants = participantIdsForExpense(expense);
+                      const visibleParticipants = participants.slice(0, 3);
+                      const participantOverflow = Math.max(0, participants.length - visibleParticipants.length);
+                      const paidByImage = memberImageOf(expense.paidByMemberId);
+                      rows.push(
+                        <article className="expense-table-row" key={expense.id}>
+                          <div className="expense-name-cell" data-label="Expense">
+                            <div
+                              className="expense-category-mark"
+                              style={{ "--category-color": category?.color || "#0f766e" }}
+                            >
+                              {expense.categoryIcon || category?.icon || "€"}
+                            </div>
+                            <div>
+                              <strong>{expense.description || expense.categoryName || "Expense"}</strong>
+                              <span>{expense.categoryName || category?.name || "Uncategorized"}</span>
+                              <small>
+                                {expense.expenseType === "shared" ? "Shared" : "Personal"} · Paid by {memberNameOf(expense.paidByMemberId)}
+                              </small>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="expense-date-cell" data-label="Date & time">
-                          <strong>{expense.date || "No date"}</strong>
-                          <span>{expense.time || "--:--"}</span>
-                        </div>
+                          <div className="expense-date-cell" data-label="Date & time">
+                            <strong>{expense.date || "No date"}</strong>
+                            <span>{expense.time || "--:--"}</span>
+                          </div>
 
-                        <div data-label="Type">
-                          <span className={`expense-type-badge ${expense.expenseType === "shared" ? "shared" : "personal"}`}>
-                            {expense.expenseType === "shared" ? "Shared" : "Personal"}
-                          </span>
-                        </div>
+                          <div data-label="Type">
+                            <span className={`expense-type-badge ${expense.expenseType === "shared" ? "shared" : "personal"}`}>
+                              {expense.expenseType === "shared" ? "Shared" : "Personal"}
+                            </span>
+                          </div>
 
-                        <div className="expense-muted-cell" data-label="Split">
-                          {splitLabelOf(expense)}
-                        </div>
+                          <div className="expense-muted-cell" data-label="Split">
+                            {splitLabelOf(expense)}
+                          </div>
 
-                        <div className="expense-paid-cell" data-label="Paid by">
-                          <span
-                            className={`expense-avatar-mini${paidByImage ? " has-image" : ""}`}
-                            style={paidByImage ? { backgroundImage: `url(${paidByImage})` } : undefined}
-                          >
-                            {!paidByImage ? memberInitialOf(expense.paidByMemberId) : null}
-                          </span>
-                          <span>{memberNameOf(expense.paidByMemberId)}</span>
-                        </div>
+                          <div className="expense-paid-cell" data-label="Paid by">
+                            <span
+                              className={`expense-avatar-mini${paidByImage ? " has-image" : ""}`}
+                              style={paidByImage ? { backgroundImage: `url(${paidByImage})` } : undefined}
+                            >
+                              {!paidByImage ? memberInitialOf(expense.paidByMemberId) : null}
+                            </span>
+                            <span>{memberNameOf(expense.paidByMemberId)}</span>
+                          </div>
 
-                        <div className="expense-participants-cell" data-label="Participants">
-                          {participants.length > 0 ? (
-                            <>
-                              <div className="expense-avatar-stack">
-                                {visibleParticipants.map(memberId => {
-                                  const image = memberImageOf(memberId);
-                                  return (
-                                    <span
-                                      className={`expense-avatar-mini${image ? " has-image" : ""}`}
-                                      style={image ? { backgroundImage: `url(${image})` } : undefined}
-                                      key={memberId}
-                                      title={memberNameOf(memberId)}
-                                    >
-                                      {!image ? memberInitialOf(memberId) : null}
-                                    </span>
-                                  );
-                                })}
-                                {participantOverflow > 0 ? (
-                                  <span className="expense-avatar-more">+{participantOverflow}</span>
-                                ) : null}
-                              </div>
-                              <small>{participants.length} {participants.length === 1 ? "person" : "people"}</small>
-                            </>
-                          ) : (
-                            <span className="muted">-</span>
-                          )}
-                          {expense.ratesSource ? (
-                            <small>
-                              Rate: {expense.ratesSource}
-                              {expense.ratesUpdatedAt ? ` · ${expense.ratesUpdatedAt}` : ""}
-                            </small>
-                          ) : null}
-                        </div>
+                          <div className="expense-participants-cell" data-label="Participants">
+                            {participants.length > 0 ? (
+                              <>
+                                <div className="expense-avatar-stack">
+                                  {visibleParticipants.map(memberId => {
+                                    const image = memberImageOf(memberId);
+                                    return (
+                                      <span
+                                        className={`expense-avatar-mini${image ? " has-image" : ""}`}
+                                        style={image ? { backgroundImage: `url(${image})` } : undefined}
+                                        key={memberId}
+                                        title={memberNameOf(memberId)}
+                                      >
+                                        {!image ? memberInitialOf(memberId) : null}
+                                      </span>
+                                    );
+                                  })}
+                                  {participantOverflow > 0 ? (
+                                    <span className="expense-avatar-more">+{participantOverflow}</span>
+                                  ) : null}
+                                </div>
+                                <small>{participants.length} {participants.length === 1 ? "person" : "people"}</small>
+                              </>
+                            ) : (
+                              <span className="muted">-</span>
+                            )}
+                            {expense.ratesSource ? (
+                              <small>
+                                Rate: {expense.ratesSource}
+                                {expense.ratesUpdatedAt ? ` · ${expense.ratesUpdatedAt}` : ""}
+                              </small>
+                            ) : null}
+                          </div>
 
-                        <div className="expense-amount-cell" data-label="Amount">
-                          <strong>{formatMoney(expense.amountEur)}</strong>
-                          {expense.originalCurrency && expense.originalCurrency !== "EUR" ? (
-                            <span>{formatCurrency(expense.originalAmount, expense.originalCurrency)}</span>
-                          ) : null}
-                        </div>
+                          <div className="expense-amount-cell" data-label="Amount">
+                            <strong>{formatMoney(expense.amountEur)}</strong>
+                            {expense.originalCurrency && expense.originalCurrency !== "EUR" ? (
+                              <span>{formatCurrency(expense.originalAmount, expense.originalCurrency)}</span>
+                            ) : null}
+                          </div>
 
-                        <div className="expense-row-actions">
-                          {!demoMode ? (
-                            <>
-                              <button
-                                className="secondary-button small-button"
-                                type="button"
-                                onClick={() => startEditingExpense(expense)}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                className="danger-button small-button"
-                                type="button"
-                                onClick={() => handleDeleteExpense(expense)}
-                              >
-                                Delete
-                              </button>
-                            </>
-                          ) : null}
-                        </div>
-                      </article>
-                    );
-                  })
-                )}
+                          <div className="expense-row-actions">
+                            {!demoMode ? (
+                              <>
+                                <button
+                                  className="secondary-button small-button"
+                                  type="button"
+                                  onClick={() => startEditingExpense(expense)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="danger-button small-button"
+                                  type="button"
+                                  onClick={() => handleDeleteExpense(expense)}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        </article>
+                      );
+                      return rows;
+                    });
+                  })()}
 
                 <footer className="expense-table-footer">
                   <span>
@@ -10654,17 +10527,29 @@ function App() {
                 <p className="muted">No members yet.</p>
               ) : (
                 <div className="member-list">
-                  {members.map(m => (
+                  {(() => {
+                    const UNIT_COLORS = ["#0f766e","#2563eb","#d97706","#7c3aed","#be185d","#0891b2","#15803d","#dc2626"];
+                    const activeUnits = settlementGroups.filter(g => g.isActive !== false);
+                    const memberUnitColor = {};
+                    activeUnits.forEach((g, i) => {
+                      g.memberIds.forEach(id => { memberUnitColor[id] = UNIT_COLORS[i % UNIT_COLORS.length]; });
+                    });
+                    return members.map(m => (
                     <div className="member-row" key={m.id}>
-                      <div
-                        className={`member-avatar${memberImageOf(m) ? " has-image" : ""}`}
-                        style={
-                          memberImageOf(m)
-                            ? { backgroundImage: `url(${memberImageOf(m)})` }
-                            : undefined
-                        }
-                      >
-                        {!memberImageOf(m) ? memberInitialOf(m) : null}
+                      <div className="member-avatar-wrap">
+                        <div
+                          className={`member-avatar${memberImageOf(m) ? " has-image" : ""}`}
+                          style={
+                            memberImageOf(m)
+                              ? { backgroundImage: `url(${memberImageOf(m)})` }
+                              : undefined
+                          }
+                        >
+                          {!memberImageOf(m) ? memberInitialOf(m) : null}
+                        </div>
+                        {memberUnitColor[m.id] && (
+                          <span className="unit-badge-dot" style={{ background: memberUnitColor[m.id] }} title="In a travel unit" />
+                        )}
                       </div>
                       <div style={{ flex: 1 }}>
                         <strong>{memberNameOf(m.id)}</strong>
@@ -10700,10 +10585,182 @@ function App() {
                         </button>
                       ) : null}
                     </div>
-                  ))}
+                  ));
+                  })()}
                 </div>
               )}
             </section>
+
+            {/* Travel Units */}
+            {selectedTrip ? (() => {
+              const activeGroups = settlementGroups.filter(g => g.isActive !== false);
+              const assignedMemberIds = new Set(activeGroups.flatMap(g => g.memberIds));
+              const unassignedMembers = activeMembers.filter(m => !assignedMemberIds.has(m.id));
+              const UNIT_COLORS = ["#0f766e","#2563eb","#d97706","#7c3aed","#be185d","#0891b2","#15803d","#dc2626"];
+              const typeLabels = { couple: "Couple", family: "Family", custom: "Custom" };
+              const typeIcons = { couple: "💑", family: "👨‍👩‍👧", custom: "👥" };
+              return (
+                <section className="card trip-units-card">
+                  <div className="trip-units-header">
+                    <div>
+                      <h2>Travel units</h2>
+                      <p className="small muted">Group members who travel together as one unit — couples, families, or custom groups. Units let you settle and budget as a team.</p>
+                    </div>
+                    {!isDemoMode() && !showSettlementGroupForm && (
+                      <button
+                        className="secondary-button small-button"
+                        type="button"
+                        onClick={() => {
+                          setSettlementGroupForm({ name: "", memberIds: [], type: "couple" });
+                          setEditingSettlementGroupId(null);
+                          setShowSettlementGroupForm(true);
+                        }}
+                      >
+                        + Create unit
+                      </button>
+                    )}
+                  </div>
+
+                  {activeGroups.length === 0 && !showSettlementGroupForm ? (
+                    <div className="trip-units-empty">
+                      <p className="muted">No units yet. Create one to let couples or families settle together.</p>
+                    </div>
+                  ) : (
+                    <div className="unit-cards-grid">
+                      {activeGroups.map((group, i) => {
+                        const color = UNIT_COLORS[i % UNIT_COLORS.length];
+                        const unitMembers = group.memberIds.map(id => members.find(m => m.id === id)).filter(Boolean);
+                        return (
+                          <div className="unit-card" key={group.id}>
+                            <div className="unit-card-main">
+                              <div className="unit-card-avatars">
+                                {unitMembers.slice(0, 4).map(m => (
+                                  <div
+                                    className="unit-card-avatar"
+                                    key={m.id}
+                                    style={{ background: color }}
+                                  >
+                                    {cleanDisplayName(memberDisplayName(m)).slice(0, 1).toUpperCase()}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="unit-card-info">
+                                <strong className="unit-card-name">{group.name}</strong>
+                                <div className="unit-card-meta">
+                                  <span
+                                    className="unit-type-badge"
+                                    style={{ background: color + "22", color }}
+                                  >
+                                    {typeIcons[group.type] || "👥"} {typeLabels[group.type] || group.type}
+                                  </span>
+                                  <span className="small muted unit-members-text">
+                                    {unitMembers.map(m => cleanDisplayName(memberDisplayName(m))).join(" · ")}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            {canManageSelectedTrip() && !isDemoMode() && (
+                              <div className="unit-card-actions">
+                                <button
+                                  className="secondary-button small-button"
+                                  type="button"
+                                  onClick={() => handleEditSettlementGroup(group)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="secondary-button small-button"
+                                  type="button"
+                                  onClick={() => handleDeleteSettlementGroup(group.id)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {unassignedMembers.length > 0 && activeGroups.length > 0 && (
+                        <div className="unit-individuals-note">
+                          <p className="small muted">
+                            Settling individually: {unassignedMembers.map(m => cleanDisplayName(memberDisplayName(m))).join(", ")}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {showSettlementGroupForm && (
+                    <form className="settle-group-form" onSubmit={handleSaveSettlementGroup}>
+                      <h4>{editingSettlementGroupId ? "Edit unit" : "New travel unit"}</h4>
+                      <div className="form-row">
+                        <label className="form-label">Unit name</label>
+                        <input
+                          className="form-input"
+                          type="text"
+                          placeholder="e.g. Priya + Rahul"
+                          value={settlementGroupForm.name}
+                          onChange={e => setSettlementGroupForm(f => ({ ...f, name: e.target.value }))}
+                          required
+                        />
+                      </div>
+                      <div className="form-row">
+                        <label className="form-label">Unit type</label>
+                        <select
+                          className="form-input"
+                          value={settlementGroupForm.type}
+                          onChange={e => setSettlementGroupForm(f => ({ ...f, type: e.target.value }))}
+                        >
+                          <option value="couple">💑 Couple</option>
+                          <option value="family">👨‍👩‍👧 Family</option>
+                          <option value="custom">👥 Custom</option>
+                        </select>
+                      </div>
+                      <div className="form-row">
+                        <label className="form-label">Members (select 2 or more)</label>
+                        <div className="settle-group-member-list">
+                          {activeMembers.map(member => {
+                            const checked = settlementGroupForm.memberIds.includes(member.id);
+                            const otherGroupHas = !checked &&
+                              settlementGroups.filter(g => g.isActive !== false && g.id !== editingSettlementGroupId)
+                                .some(g => g.memberIds.includes(member.id));
+                            return (
+                              <label
+                                key={member.id}
+                                className={`settle-member-checkbox${otherGroupHas ? " dimmed" : ""}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={otherGroupHas}
+                                  onChange={ev => setSettlementGroupForm(f => ({
+                                    ...f,
+                                    memberIds: ev.target.checked
+                                      ? [...f.memberIds, member.id]
+                                      : f.memberIds.filter(id => id !== member.id)
+                                  }))}
+                                />
+                                <span>{cleanDisplayName(memberDisplayName(member))}</span>
+                                {otherGroupHas ? <span className="small muted"> (in another unit)</span> : null}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <FormActions
+                        className="settle-group-form-actions"
+                        onCancel={() => {
+                          setShowSettlementGroupForm(false);
+                          setEditingSettlementGroupId(null);
+                          setSettlementGroupForm({ name: "", memberIds: [], type: "couple" });
+                        }}
+                        saveLabel={editingSettlementGroupId ? "Save unit" : "Create unit"}
+                      />
+                    </form>
+                  )}
+                </section>
+              );
+            })() : null}
           </section>
         ) : null}
 
@@ -10991,30 +11048,65 @@ function App() {
         {/* Bottom navigation — visible on mobile only */}
         <nav className="bottom-nav" data-tour="bottom-nav-tour">
           {[
-            { key: "dashboard",   label: "Overview", icon: <Icon name="receipt" /> },
+            { key: "dashboard",   label: "Home",     icon: <Icon name="receipt" /> },
             { key: "actual",      label: "Expenses", icon: <Icon name="card" /> },
             { key: "settlements", label: "Settle",   icon: <Icon name="handshake" /> },
-            { key: "prediction",  label: "Budget",   icon: <Icon name="chart" /> },
-            { key: "tasks",       label: "Tasks",    icon: <Icon name="check" />  },
           ].map(({ key, label, icon }) => (
             <button
               key={key}
               className={`bottom-nav-item${activeTab === key ? " active" : ""}`}
               type="button"
-              onClick={() => setActiveTab(key)}
+              onClick={() => { setActiveTab(key); setIsMoreSheetOpen(false); }}
             >
               <span className="bottom-nav-icon">{icon}</span>
               <span className="bottom-nav-label">{label}</span>
             </button>
           ))}
+          <button
+            className={`bottom-nav-item${isMoreSheetOpen ? " active" : ""}`}
+            type="button"
+            onClick={() => setIsMoreSheetOpen(v => !v)}
+          >
+            <span className="bottom-nav-icon bottom-nav-more-icon">
+              <span /><span /><span />
+            </span>
+            <span className="bottom-nav-label">More</span>
+          </button>
         </nav>
+
+        {/* More bottom sheet */}
+        {isMoreSheetOpen && (
+          <div className="more-sheet-backdrop" onClick={() => setIsMoreSheetOpen(false)} />
+        )}
+        <div className={`more-sheet${isMoreSheetOpen ? " open" : ""}`}>
+          <div className="more-sheet-handle" />
+          <div className="more-sheet-grid">
+            {[
+              { key: "prediction", label: "Budget",     icon: <Icon name="chart" />,     color: "var(--primary)" },
+              { key: "tasks",      label: "Tasks",       icon: <Icon name="check" />,     color: "var(--purple)" },
+              { key: "members",    label: "Members",     icon: <Icon name="people" />,    color: "var(--info)" },
+              { key: "categories", label: "Categories",  icon: <Icon name="tag" />,       color: "var(--warning)" },
+              { key: "settings",   label: "Settings",    icon: <Icon name="settings" />,  color: "var(--muted)" },
+            ].map(({ key, label, icon, color }) => (
+              <button
+                key={key}
+                className={`more-sheet-item${activeTab === key ? " active" : ""}`}
+                type="button"
+                onClick={() => { setActiveTab(key); setIsMoreSheetOpen(false); }}
+              >
+                <span className="more-sheet-icon" style={{ color }}>{icon}</span>
+                <span className="more-sheet-label">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {!demoMode ? (
         <button
-          className={`floating-add-expense${activeTab === "actual" ? " floating-add-expense--hidden-mobile" : ""}`}
+          className="floating-add-expense"
           type="button"
           aria-label="Add expense"
-          onClick={() => openFastExpenseModal()}
+          onClick={() => { openFastExpenseModal(); setIsMoreSheetOpen(false); }}
         >
           <span className="floating-add-icon"><Icon name="plus" /></span>
           <span className="floating-add-label">Add Expense</span>
@@ -11094,17 +11186,17 @@ function App() {
                   <div className="form-row">
                     <label className="form-label">
                       Amount
-                      {Number(pendingSettleAmount) !== Number(s.amount)
+                      {parseAmount(pendingSettleAmount) !== Number(s.amount)
                         ? <span className="small muted"> (suggested {formatMoney(s.amount)})</span>
                         : null}
                     </label>
                     <input
                       className="form-input"
-                      type="number"
-                      min="0.01"
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
                       value={pendingSettleAmount}
-                      onChange={e => setPendingSettleAmount(e.target.value)}
+                      onChange={e => setPendingSettleAmount(e.target.value.replace(/[^\d.,]/g, ""))}
+                      onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setPendingSettleAmount(n); }}
                     />
                   </div>
                 </div>
@@ -11300,16 +11392,23 @@ function App() {
                   value={taskForm.scope}
                   onChange={e => {
                     const scope = e.target.value;
+                    const myUnit = scope === "our_unit"
+                      ? settlementGroups.find(g => g.isActive !== false && currentUserMemberId && g.memberIds.includes(currentUserMemberId))
+                      : null;
                     setTaskForm(current => ({
                       ...current,
                       scope,
                       selectedMemberIds:
-                        scope === "selected_members" && currentUserMemberId && !current.selectedMemberIds.includes(currentUserMemberId)
+                        scope === "our_unit" && myUnit
+                          ? myUnit.memberIds
+                          : scope === "selected_members" && currentUserMemberId && !current.selectedMemberIds.includes(currentUserMemberId)
                           ? [...current.selectedMemberIds, currentUserMemberId]
                           : current.selectedMemberIds,
                       assignedTo:
                         scope === "personal" && currentUserMemberId
                           ? [currentUserMemberId]
+                          : scope === "our_unit" && myUnit
+                          ? myUnit.memberIds
                           : current.assignedTo
                     }));
                   }}
@@ -11317,13 +11416,16 @@ function App() {
                   {TASK_SCOPE_OPTIONS.map(option => (
                     <option value={option.value} key={option.value}>{option.label}</option>
                   ))}
+                  {settlementGroups.some(g => g.isActive !== false && currentUserMemberId && g.memberIds.includes(currentUserMemberId)) && (
+                    <option value="our_unit">Our unit</option>
+                  )}
                 </select>
               </label>
 
-              {taskForm.scope === "selected_members" ? (
+              {(taskForm.scope === "selected_members" || taskForm.scope === "our_unit") ? (
                 <div className="task-form-section">
-                  <div className="create-trip-img-label">Selected people</div>
-                  <p className="small muted">Group tasks are visible to everyone. Private tasks stay with selected members.</p>
+                  <div className="create-trip-img-label">{taskForm.scope === "our_unit" ? "Unit members" : "Selected people"}</div>
+                  <p className="small muted">{taskForm.scope === "our_unit" ? "Visible to your travel unit." : "Group tasks are visible to everyone. Private tasks stay with selected members."}</p>
                   <div className="checkbox-grid compact-checkbox-grid">
                     {activeMembers.map(member => {
                       const checked = taskForm.selectedMemberIds.includes(member.id);
@@ -11642,14 +11744,14 @@ function App() {
               <label>
                 Amount EUR
                 <input
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={settlementForm.amountEur}
                   placeholder="0.00"
                   onChange={e =>
-                    setSettlementForm({ ...settlementForm, amountEur: e.target.value })
+                    setSettlementForm({ ...settlementForm, amountEur: e.target.value.replace(/[^\d.,]/g, "") })
                   }
+                  onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setSettlementForm(f => ({ ...f, amountEur: n })); }}
                   required
                 />
               </label>

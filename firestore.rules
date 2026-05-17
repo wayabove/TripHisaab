@@ -76,7 +76,7 @@ service cloud.firestore {
     }
 
     function canWriteBudget(data) {
-      return data.scope in ["group", "selected", "me"]
+      return data.scope in ["group", "selected", "me", "unit"]
         && data.estimatedEur is number
         && data.estimatedEur > 0
         && data.visibleMemberIds is list
@@ -312,7 +312,12 @@ service cloud.firestore {
 
       match /settlementGroups/{groupId} {
         allow get, list: if canReadTrip(tripId);
-        allow create, update, delete: if canReadTrip(tripId);
+        allow create, update, delete: if isOwner(tripId)
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.memberIds is list
+          && request.resource.data.memberIds.size() >= 2
+          && request.resource.data.type in ["couple", "family", "custom"];
       }
 
       match /notifications/{notificationId} {

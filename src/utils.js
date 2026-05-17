@@ -37,12 +37,64 @@ export const getCurrencyRate = (rates, currency) =>
 export const convertToEur = (rates, amount, currency) =>
   Number(amount || 0) / getCurrencyRate(rates, currency);
 
-export const formatMoney = amount =>
-  "€" + Number(amount || 0).toFixed(2);
+export function normalizeAmountInput(raw) {
+  if (raw === "" || raw === null || raw === undefined) return "";
+  let s = String(raw).trim().replace(/[^\d.,]/g, "");
+  if (!s) return "";
+  const lastComma = s.lastIndexOf(",");
+  const lastDot = s.lastIndexOf(".");
+  if (lastComma !== -1 && lastDot !== -1) {
+    if (lastComma > lastDot) {
+      // comma is decimal separator: 1.234,56 → 1234.56
+      s = s.replace(/\./g, "").replace(",", ".");
+    } else {
+      // dot is decimal separator: 1,234.56 → 1234.56
+      s = s.replace(/,/g, "");
+    }
+  } else if (lastComma !== -1) {
+    const afterComma = s.slice(lastComma + 1);
+    const beforeComma = s.slice(0, lastComma);
+    if (afterComma.length <= 2 && !beforeComma.includes(",")) {
+      // treat comma as decimal: 42,68 → 42.68
+      s = beforeComma + "." + afterComma;
+    } else {
+      // treat comma as thousands separator: 1,234 → 1234
+      s = s.replace(/,/g, "");
+    }
+  }
+  // collapse multiple dots
+  const parts = s.split(".");
+  if (parts.length > 2) s = parts.slice(0, -1).join("") + "." + parts[parts.length - 1];
+  // strip leading zeros before digits
+  s = s.replace(/^0+(\d)/, "$1");
+  return s;
+}
+
+export function parseAmount(raw) {
+  return parseFloat(normalizeAmountInput(raw)) || 0;
+}
+
+export const formatMoney = amount => {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency", currency: "EUR",
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    }).format(Number(amount || 0));
+  } catch {
+    return "€" + Number(amount || 0).toFixed(2);
+  }
+};
 
 export const formatCurrency = (amount, currency) => {
-  const symbol = CURRENCY_SYMBOLS[currency] || `${currency} `;
-  return symbol + Number(amount || 0).toFixed(2);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency", currency: currency || "EUR",
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    }).format(Number(amount || 0));
+  } catch {
+    const symbol = CURRENCY_SYMBOLS[currency] || `${currency} `;
+    return symbol + Number(amount || 0).toFixed(2);
+  }
 };
 
 // --- Rates cache ----------------------------------------------------------
