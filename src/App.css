@@ -1,7 +1,6 @@
 * {
   box-sizing: border-box;
 }
-
 .app-icon {
   display: block;
   flex-shrink: 0;
@@ -9741,5 +9740,372 @@ body.body-scroll-locked .main-content {
   /* Expense day headers */
   .expense-day-header {
     padding: 12px 12px 4px;
+  }
+}
+
+/* Final mobile visual hierarchy overrides. Kept last so older responsive rules cannot dilute it. */
+@media (max-width: 768px) {
+  .main-content {
+    background:
+      radial-gradient(circle at 0 0, rgba(204, 251, 241, 0.42), transparent 34%),
+      linear-gradient(180deg, #fbfcfd 0%, #f3f6f8 100%);
+  }
+
+  .dash-card,
+  .expense-summary-card,
+  .expense-table-row,
+  .expense-table-card,
+  .task-card,
+  .home-trip-card,
+  .empty-card {
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    border-color: rgba(15, 23, 42, 0.08);
+  }
+
+  .home-hero {
+    min-height: 72px;
+    padding: 12px 14px;
+    background:
+      linear-gradient(90deg, rgba(255, 252, 248, 0.98) 0%, rgba(255, 252, 248, 0.88) 66%, rgba(255, 252, 248, 0.46) 100%),
+      url("/home-hero.svg") right center / auto 92% no-repeat,
+      #fff8f1;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  }
+
+  .home-hero-title {
+    font-size: 26px;
+    line-height: 1.02;
+    margin: 0;
+    letter-spacing: 0;
+  }
+
+  .home-hero-sub {
+    margin-top: 4px;
+    font-size: 12px;
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .home-content {
+    padding: 10px 12px 14px;
+    gap: 10px;
+  }
+
+  .home-search-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .home-search-wrap {
+    height: 40px;
+    border-radius: 14px;
+    box-shadow: none;
+  }
+
+  .home-filter-btn {
+    width: 44px;
+    min-width: 44px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 14px;
+    gap: 0;
+  }
+
+  .home-filter-btn span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .home-filter-chip {
+    min-height: 34px;
+    padding: 7px 11px;
+    gap: 7px;
+    font-size: 12px;
+    box-shadow: none;
+  }
+
+  .home-filter-chip strong {
+    min-width: 22px;
+    padding: 1px 7px;
+    font-size: 11px;
+  }
+
+  .home-trip-card {
+    grid-template-columns: 92px minmax(0, 1fr);
+    min-height: 118px;
+    border-radius: 18px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  }
+
+  .home-trip-card.is-unsettled {
+    border-color: #fdba74;
+    background: linear-gradient(90deg, #fff 0%, #fffaf4 100%);
+  }
+
+  .home-trip-card.is-completed:not(.is-unsettled) {
+    opacity: 0.78;
+  }
+
+  .home-trip-card.is-completed:not(.is-unsettled) .home-status-badge--completed {
+    background: #ecfdf5;
+    border-color: #bbf7d0;
+    color: #047857;
+  }
+
+  .home-trip-img {
+    min-height: 118px;
+  }
+
+  .home-trip-body {
+    padding: 10px 12px;
+    gap: 4px;
+  }
+
+  .home-trip-title-row {
+    align-items: center;
+    padding-right: 34px;
+  }
+
+  .home-trip-name {
+    font-size: 15px;
+    line-height: 1.12;
+  }
+
+  .home-status-badge {
+    min-height: 20px;
+    padding: 3px 7px;
+    font-size: 9px;
+  }
+
+  .home-trip-dates,
+  .home-trip-meta {
+    font-size: 11px;
+  }
+
+  .home-trip-meta span:first-child {
+    display: none;
+  }
+
+  .home-trip-alert {
+    padding: 6px 8px;
+    font-size: 11px;
+    border-radius: 10px;
+  }
+
+  .home-trip-pills {
+    display: none;
+  }
+
+  .home-trip-edit-btn {
+    top: 10px;
+    right: 10px;
+    left: auto;
+    width: 30px;
+    height: 30px;
+    color: var(--primary);
+    background: rgba(255, 255, 255, 0.92);
+    border-color: rgba(15, 118, 110, 0.18);
+  }
+
+  .dashboard-content {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .dash-section-personal { order: 3; }
+  .dash-section-next { order: 4; }
+  .dash-section-activity { order: 5; }
+  .dash-section-breakdown { order: 8; }
+  .dash-section-context { order: 9; }
+
+  .dash-card {
+    padding: 13px;
+    border-radius: 16px;
+  }
+
+  .dash-card-sub,
+  .dash-stat-panel-sub,
+  .budget-message {
+    display: none;
+  }
+
+  .dash-card-header {
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .dash-card h3 {
+    font-size: 14px;
+    margin: 0;
+  }
+
+  .budget-donut-wrap {
+    width: 86px;
+    height: 86px;
+    margin-inline: auto;
+  }
+
+  .budget-donut-pct {
+    font-size: 18px;
+  }
+
+  .budget-donut-sub {
+    font-size: 9px;
+  }
+
+  .budget-inline-stat {
+    padding: 8px 7px;
+    align-items: center;
+    text-align: center;
+  }
+
+  .budget-inline-label {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+
+  .budget-inline-value {
+    font-size: 13px;
+  }
+
+  .dash-stat-panel--6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dash-stat-panel--6 .dash-stat-panel-item {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dash-stat-panel--6 .dash-stat-panel-item:nth-child(3n) {
+    border-right: none;
+  }
+
+  .dash-stat-panel--6 .dash-stat-panel-item:nth-child(n+4) {
+    border-bottom: none;
+  }
+
+  .dash-stat-panel-item {
+    min-height: 72px;
+    padding: 9px 6px;
+    align-items: center;
+    text-align: center;
+  }
+
+  .dash-stat-panel-label {
+    font-size: 9px;
+    line-height: 1.1;
+  }
+
+  .dash-stat-panel-value {
+    font-size: 16px;
+  }
+
+  .expenses-title h2 {
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  .expenses-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .expense-search {
+    height: 42px;
+    border-radius: 14px;
+  }
+
+  .expense-toolbar-add {
+    width: auto !important;
+    min-width: 78px;
+    padding-inline: 14px;
+    border-radius: 14px;
+  }
+
+  .expense-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .expense-summary-card {
+    padding: 11px;
+    border-radius: 16px;
+    gap: 8px;
+  }
+
+  .expense-summary-card p {
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  .expense-summary-card span {
+    font-size: 11px;
+  }
+
+  .expense-summary-card strong {
+    font-size: 17px;
+  }
+
+  .expense-table-row {
+    border-radius: 16px;
+  }
+
+  .floating-add-expense--context-hidden {
+    display: none;
+  }
+}
+
+@media (max-width: 430px) {
+  .home-trip-card {
+    grid-template-columns: 86px minmax(0, 1fr);
+  }
+
+  .home-trip-img {
+    min-height: 116px;
+  }
+
+  .home-trip-title-row {
+    padding-right: 30px;
+  }
+
+  .home-trip-name {
+    font-size: 14px;
+  }
+
+  .expense-summary-grid {
+    gap: 8px;
+  }
+
+  .expense-summary-card {
+    padding: 10px;
+  }
+
+  .dash-stat-panel--6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dash-stat-panel--6 .dash-stat-panel-item {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dash-stat-panel--6 .dash-stat-panel-item:nth-child(2n) {
+    border-right: none;
+  }
+
+  .dash-stat-panel--6 .dash-stat-panel-item:nth-child(n+5) {
+    border-bottom: none;
   }
 }

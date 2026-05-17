@@ -11103,7 +11103,7 @@ function App() {
 
         {!demoMode ? (
         <button
-          className="floating-add-expense"
+          className={`floating-add-expense${["dashboard", "actual"].includes(activeTab) ? "" : " floating-add-expense--context-hidden"}`}
           type="button"
           aria-label="Add expense"
           onClick={() => { openFastExpenseModal(); setIsMoreSheetOpen(false); }}
@@ -12090,7 +12090,7 @@ function App() {
     const homeFilters = [
       { key: "all", label: "All", count: trips.length },
       { key: "active", label: "Active", count: activeTripCount },
-      { key: "unsettled", label: "Needs settlement", count: unsettledCount },
+      { key: "unsettled", label: "Settle", count: unsettledCount },
       { key: "upcoming", label: "Upcoming", count: upcomingCount },
       { key: "completed", label: "Completed", count: completedCount }
     ];
@@ -12203,8 +12203,9 @@ function App() {
                   onChange={e => setTripSearch(e.target.value)}
                 />
               </div>
-              <button className="secondary-button small-button home-filter-btn" type="button" onClick={() => loadTrips(user.uid, user.email)}>
-                ↻ Refresh
+              <button className="secondary-button small-button home-filter-btn" type="button" onClick={() => loadTrips(user.uid, user.email)} aria-label="Refresh trips">
+                <Icon name="refresh" size={18} />
+                <span>Refresh</span>
               </button>
             </div>
 
