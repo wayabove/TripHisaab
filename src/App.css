@@ -1240,8 +1240,12 @@ p {
 .expense-avatar-more {
   display: grid;
   place-items: center;
+  flex: 0 0 26px;
   width: 26px;
+  min-width: 26px;
   height: 26px;
+  min-height: 26px;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   background: var(--primary);
   color: var(--surface);
@@ -1249,6 +1253,9 @@ p {
   font-weight: var(--weight-bold);
   background-size: cover;
   background-position: center;
+  background-repeat: no-repeat;
+  line-height: 1;
+  overflow: hidden;
 }
 
 .expense-avatar-mini.has-image {

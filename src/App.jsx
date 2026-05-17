@@ -271,6 +271,80 @@ function getGroupSettlementExpenses(expenses) {
   });
 }
 
+function isIncludedPersonalExpense(expense) {
+  return expense?.isActive !== false
+    && normalizeExpenseScope(expense) === "personal"
+    && Number(expense?.amountEur || 0) > 0
+    && expense?.includeInGroupTotal !== false;
+}
+
+function getPersonalContributionTotal(contributions, expenses, currentUserUid, currentUserMemberId, canUseLoadedPersonalExpenses = false) {
+  if (canUseLoadedPersonalExpenses) {
+    return roundMoney(
+      expenses
+        .filter(isIncludedPersonalExpense)
+        .reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
+    );
+  }
+
+  const contributionByUser = new Map(
+    contributions.map(contribution => [
+      contribution.memberId || contribution.userId,
+      Number(contribution.totalEur || 0)
+    ])
+  );
+
+  if (currentUserUid && currentUserMemberId) {
+    const currentUserTotal = expenses
+      .filter(expense =>
+        isIncludedPersonalExpense(expense)
+        && expense.paidByMemberId === currentUserMemberId
+      )
+      .reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0);
+    contributionByUser.set(currentUserMemberId, currentUserTotal);
+  }
+
+  return roundMoney(
+    Array.from(contributionByUser.values())
+      .reduce((sum, amount) => sum + Number(amount || 0), 0)
+  );
+}
+
+function getMemberContributionSummary(expenses, memberId) {
+  const includedExpenses = expenses.filter(expense =>
+    isIncludedPersonalExpense(expense)
+    && expense.paidByMemberId === memberId
+  );
+  return {
+    totalEur: roundMoney(
+      includedExpenses.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
+    ),
+    expenseCount: includedExpenses.length
+  };
+}
+
+function getTripTotalsSummary(expenses) {
+  const activeExpenses = expenses.filter(expense =>
+    expense?.isActive !== false && Number(expense?.amountEur || 0) > 0
+  );
+  const sharedExpenses = activeExpenses.filter(expense => expense.expenseType === "shared");
+  const includedPersonalExpenses = activeExpenses.filter(isIncludedPersonalExpense);
+  const sharedTotalEur = roundMoney(
+    sharedExpenses.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
+  );
+  const personalTotalEur = roundMoney(
+    includedPersonalExpenses.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
+  );
+  return {
+    sharedTotalEur,
+    personalTotalEur,
+    totalSpentEur: roundMoney(sharedTotalEur + personalTotalEur),
+    expenseCount: activeExpenses.length,
+    sharedExpenseCount: sharedExpenses.length,
+    personalExpenseCount: includedPersonalExpenses.length
+  };
+}
+
 function getPrivateSettlementGroups(expenses, currentUserId, isAdmin = false) {
   const groups = new Map();
   expenses.forEach(expense => {
@@ -1488,6 +1562,7 @@ function App() {
   const [personalBudgetForm, setPersonalBudgetForm] = useState({ amount: "", currency: "EUR" });
   const [savingPersonalBudget, setSavingPersonalBudget] = useState(false);
   const [personalContributions, setPersonalContributions] = useState([]);
+  const [tripTotalsSummary, setTripTotalsSummary] = useState(null);
 
   const [savingPredictions, setSavingPredictions] = useState(false);
   const [budgetForm, setBudgetForm] = useState(EMPTY_BUDGET_FORM);
@@ -1797,18 +1872,43 @@ function App() {
     [categories]
   );
 
+  const currentUserMemberId = useMemo(
+    () => {
+      if (!user) return "";
+      const byUserId = members.find(m => m.userId === user.uid);
+      if (byUserId) return byUserId.id;
+      const emailLower = getEmailLower(user.email);
+      const byEmail = members.find(
+        m => getEmailLower(m.email) === emailLower
+      );
+      return byEmail?.id || "";
+    },
+    [members, user]
+  );
+
   const totals = useMemo(() => {
-    let actual = 0;
     let shared = 0;
     expenses.forEach(e => {
       const amount = Number(e.amountEur || 0);
-      if (normalizeExpenseScope(e) === "group") actual += amount;
+      if (e.isActive === false || amount <= 0) return;
       if (e.expenseType === "shared") shared += amount;
     });
+    const isTripOwner = selectedTrip?.ownerId === user?.uid;
     // Add all members' personal contributions (amounts they opted to count toward group total).
     // Each member's doc holds only their aggregate — no individual expense details exposed.
-    const contribTotal = personalContributions.reduce((s, c) => s + Number(c.totalEur || 0), 0);
-    actual = roundMoney(actual + contribTotal);
+    const contribTotal = getPersonalContributionTotal(
+      personalContributions,
+      expenses,
+      user?.uid,
+      currentUserMemberId,
+      isTripOwner
+    );
+    if (!isTripOwner && tripTotalsSummary?.totalSpentEur != null) {
+      shared = Number(tripTotalsSummary.sharedTotalEur || 0);
+    }
+    const actual = !isTripOwner && tripTotalsSummary?.totalSpentEur != null
+      ? roundMoney(tripTotalsSummary.totalSpentEur)
+      : roundMoney(shared + contribTotal);
     const predicted = predictions
       .filter(p => normalizeBudgetScope(p) === "group")
       .reduce(
@@ -1820,7 +1920,7 @@ function App() {
       0
     );
     return { predicted, actual, shared, settled };
-  }, [expenses, predictions, settlements, personalContributions]);
+  }, [currentUserMemberId, expenses, personalContributions, predictions, selectedTrip?.ownerId, settlements, tripTotalsSummary, user?.uid]);
 
   const visiblePlanTotal = useMemo(
     () => predictions.reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0),
@@ -1876,20 +1976,6 @@ function App() {
     );
   }, [activeMembers, expenses, settlements]);
 
-  const currentUserMemberId = useMemo(
-    () => {
-      if (!user) return "";
-      const byUserId = members.find(m => m.userId === user.uid);
-      if (byUserId) return byUserId.id;
-      const emailLower = getEmailLower(user.email);
-      const byEmail = members.find(
-        m => getEmailLower(m.email) === emailLower
-      );
-      return byEmail?.id || "";
-    },
-    [members, user]
-  );
-
   // Real-time listener for settlements — keeps all members in sync when someone marks a payment.
   // Must be placed after currentUserMemberId is declared to avoid temporal dead zone.
   useEffect(() => {
@@ -1920,6 +2006,32 @@ function App() {
     );
     return () => unsubscribers.forEach(u => u());
   }, [selectedTrip?.id, user?.uid, currentUserMemberId]);
+
+  useEffect(() => {
+    if (!selectedTrip || selectedTrip.id === DEMO_TRIP_ID || selectedTrip.isDemo) return;
+    const contributionsCol = collection(db, "trips", selectedTrip.id, "personalContributions");
+    return onSnapshot(
+      contributionsCol,
+      snap => {
+        setPersonalContributions(
+          snap.docs.map(d => ({ userId: d.id, ...d.data() }))
+        );
+      },
+      () => {}
+    );
+  }, [selectedTrip]);
+
+  useEffect(() => {
+    if (!selectedTrip || selectedTrip.id === DEMO_TRIP_ID || selectedTrip.isDemo) return;
+    const summaryRef = doc(db, "trips", selectedTrip.id, "tripTotals", "summary");
+    return onSnapshot(
+      summaryRef,
+      snap => {
+        setTripTotalsSummary(snap.exists() ? snap.data() : null);
+      },
+      () => {}
+    );
+  }, [selectedTrip]);
 
   const currentUserBalance = useMemo(
     () => balances.find(b => b.memberId === currentUserMemberId) || null,
@@ -3196,6 +3308,7 @@ function App() {
     setPersonalBudget(null);
     setShowPersonalBudgetForm(false);
     setPersonalContributions([]);
+    setTripTotalsSummary(null);
     closeTaskModal();
     cancelCategoryForm();
     cancelEditingExpense();
@@ -3310,6 +3423,8 @@ function App() {
         : await Promise.all([
             getDocs(query(expenseCollection, where("scope", "==", "group"))),
             getDocs(query(expenseCollection, where("scope", "==", null))).catch(() => ({ docs: [] })),
+            getDocs(query(expenseCollection, where("visibleTo", "==", "all"))).catch(() => ({ docs: [] })),
+            getDocs(query(expenseCollection, where("countsTowardGroupSettlement", "==", true))).catch(() => ({ docs: [] })),
             loadedCurrentUserMemberId
               ? getDocs(
                   query(
@@ -3478,24 +3593,76 @@ function App() {
       const loadedContributions = contribSnap.docs.map(d => ({ userId: d.id, ...d.data() }));
       setPersonalContributions(loadedContributions);
 
+      if (tripContext?.ownerId === user?.uid) {
+        const tripSummary = getTripTotalsSummary(loadedExpenses);
+        await setDoc(
+          doc(db, "trips", tripId, "tripTotals", "summary"),
+          { ...tripSummary, updatedAt: new Date().toISOString() },
+          { merge: true }
+        ).catch(error => {
+          console.warn("Could not sync trip totals summary", error);
+        });
+        setTripTotalsSummary(tripSummary);
+
+        const contributionByUser = new Map(loadedContributions.map(c => [c.userId, c]));
+        const syncedContributions = [];
+        await Promise.all(
+          loadedMembers
+            .filter(member => member.status !== "inactive")
+            .map(async member => {
+              const contributionId = member.userId || member.id;
+              if (!contributionId) return;
+              const summary = getMemberContributionSummary(loadedExpenses, member.id);
+              const existing = contributionByUser.get(contributionId);
+              const changed =
+                Math.abs(Number(existing?.totalEur || 0) - summary.totalEur) > 0.001
+                || Number(existing?.expenseCount || 0) !== summary.expenseCount;
+
+              const contribution = {
+                userId: contributionId,
+                memberId: member.id,
+                ...summary
+              };
+              syncedContributions.push(contribution);
+
+              if (changed) {
+                await setDoc(
+                  doc(db, "trips", tripId, "personalContributions", contributionId),
+                  { ...summary, memberId: member.id, updatedAt: new Date().toISOString() },
+                  { merge: true }
+                ).catch(error => {
+                  console.warn("Could not sync member personal contribution", contributionId, error);
+                });
+              }
+            })
+        );
+
+        setPersonalContributions(prev => {
+          const next = new Map(prev.map(c => [c.userId, c]));
+          syncedContributions.forEach(c => next.set(c.userId, c));
+          return Array.from(next.values());
+        });
+      }
+
       // Self-migration: write current user's contribution total from existing personal expenses.
       // Absence of includeInGroupTotal field is treated as true (count toward group total).
       if (user?.uid) {
-        const myPersonal = loadedExpenses.filter(e =>
-          e.expenseType !== "shared" && e.paidByMemberId === loadedCurrentUserMemberId && e.isActive !== false
-        );
-        const myContribTotal = myPersonal
-          .filter(e => e.includeInGroupTotal !== false)
-          .reduce((s, e) => s + Number(e.amountEur || 0), 0);
+        const myContribution = getMemberContributionSummary(loadedExpenses, loadedCurrentUserMemberId);
         const existingContrib = loadedContributions.find(c => c.userId === user.uid);
-        if (Math.abs((existingContrib?.totalEur || 0) - myContribTotal) > 0.001) {
+        if (
+          Math.abs(Number(existingContrib?.totalEur || 0) - myContribution.totalEur) > 0.001
+          || Number(existingContrib?.expenseCount || 0) !== myContribution.expenseCount
+        ) {
           await setDoc(
             doc(db, "trips", tripId, "personalContributions", user.uid),
-            { totalEur: myContribTotal, updatedAt: new Date().toISOString() }
-          ).catch(() => {});
+            { ...myContribution, memberId: loadedCurrentUserMemberId, updatedAt: new Date().toISOString() },
+            { merge: true }
+          ).catch(error => {
+            console.warn("Could not sync own personal contribution", error);
+          });
           setPersonalContributions(prev => {
             const next = prev.filter(c => c.userId !== user.uid);
-            return [...next, { userId: user.uid, totalEur: myContribTotal }];
+            return [...next, { userId: user.uid, memberId: loadedCurrentUserMemberId, ...myContribution }];
           });
         }
       }
@@ -3887,22 +4054,17 @@ function App() {
   async function recalculatePersonalContribution(updatedExpenses) {
     if (!selectedTrip || !user?.uid || isDemoMode()) return;
     const myMemberId = currentUserMemberId;
-    const total = updatedExpenses
-      .filter(e =>
-        e.expenseType !== "shared" &&
-        e.paidByMemberId === myMemberId &&
-        e.isActive !== false &&
-        e.includeInGroupTotal !== false
-      )
-      .reduce((s, e) => s + Number(e.amountEur || 0), 0);
-    const rounded = roundMoney(total);
+    const summary = getMemberContributionSummary(updatedExpenses, myMemberId);
     await setDoc(
       doc(db, "trips", selectedTrip.id, "personalContributions", user.uid),
-      { totalEur: rounded, updatedAt: new Date().toISOString() }
-    ).catch(() => {});
+      { ...summary, memberId: myMemberId, updatedAt: new Date().toISOString() },
+      { merge: true }
+    ).catch(error => {
+      console.warn("Could not recalculate personal contribution", error);
+    });
     setPersonalContributions(prev => {
       const next = prev.filter(c => c.userId !== user.uid);
-      return [...next, { userId: user.uid, totalEur: rounded }];
+      return [...next, { userId: user.uid, memberId: myMemberId, ...summary }];
     });
   }
 
@@ -6898,7 +7060,9 @@ function App() {
       : budgetPct < 100 ? "Getting close to the limit ⚠️"
       : "Budget exceeded 😬";
 
-    const groupExpenseCount = expenses.filter(e => normalizeExpenseScope(e) === "group" && e.isActive !== false).length;
+    const groupExpenseCount = tripTotalsSummary?.sharedExpenseCount != null
+      ? Number(tripTotalsSummary.sharedExpenseCount || 0)
+      : expenses.filter(e => normalizeExpenseScope(e) === "group" && e.isActive !== false).length;
     const groupCurrency = selectedTrip?.defaultCurrency || "EUR";
     const myPersonalExpenses = currentUserMemberId
       ? expenses.filter(e => e.expenseType !== "shared" && e.paidByMemberId === currentUserMemberId && e.isActive !== false)
@@ -6953,14 +7117,14 @@ function App() {
     const expenseSummaryCards = [
       {
         label: "Total spent",
-        value: formatMoney(expenseStats.total),
+        value: formatMoney(totals.actual),
         sub: `${expenses.length} expense${expenses.length === 1 ? "" : "s"}`,
         icon: "€",
         tone: "mint"
       },
       {
         label: "Shared expenses",
-        value: formatMoney(expenseStats.shared),
+        value: formatMoney(totals.shared),
         sub: `${expenseFilterOptions[1].count} expense${expenseFilterOptions[1].count === 1 ? "" : "s"}`,
         icon: "S",
         tone: "blue"
@@ -7254,7 +7418,7 @@ function App() {
                         </div>
                         <div className="budget-inline-stat">
                           <span className="budget-inline-label">Shared</span>
-                          <strong className="budget-inline-value">{formatMoney(expenseStats.shared)}</strong>
+                          <strong className="budget-inline-value">{formatMoney(totals.shared)}</strong>
                         </div>
                         <div className="budget-inline-stat">
                           <span className="budget-inline-label">Personal</span>
@@ -7276,7 +7440,7 @@ function App() {
                   </div>
                   <div className="dash-stat-panel-item">
                     <span className="dash-stat-panel-label">Shared</span>
-                    <strong className="dash-stat-panel-value">{formatMoney(expenseStats.shared)}</strong>
+                    <strong className="dash-stat-panel-value">{formatMoney(totals.shared)}</strong>
                   </div>
                   <div className="dash-stat-panel-item">
                     <span className="dash-stat-panel-label">Trip Duration</span>
@@ -7412,7 +7576,14 @@ function App() {
                               </div>
                             ))}
                             {myPersonalExpenses.length > 3 && (
-                              <button className="link-button personal-budget-see-all" type="button" onClick={() => setActiveTab("expenses")}>
+                              <button
+                                className="link-button personal-budget-see-all"
+                                type="button"
+                                onClick={() => {
+                                  setExpenseFilter("personal");
+                                  setActiveTab("actual");
+                                }}
+                              >
                                 See all {myPersonalExpenses.length} →
                               </button>
                             )}

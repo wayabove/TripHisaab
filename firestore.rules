@@ -324,7 +324,12 @@ service cloud.firestore {
 
       match /personalContributions/{userId} {
         allow read: if canReadTrip(tripId);
-        allow write: if signedIn() && request.auth.uid == userId;
+        allow write: if signedIn() && (request.auth.uid == userId || isOwner(tripId));
+      }
+
+      match /tripTotals/{summaryId} {
+        allow read: if canReadTrip(tripId);
+        allow write: if isOwner(tripId);
       }
     }
   }
