@@ -1409,6 +1409,56 @@ function DonateButton({ inline = false }) {
   );
 }
 
+// ================================================================
+// Shared UI micro-components
+// ================================================================
+
+function FormActions({
+  onCancel,
+  saving = false,
+  saveLabel = "Save",
+  cancelLabel = "Cancel",
+  className,
+  asFooter = false
+}) {
+  const Tag = asFooter ? "footer" : "div";
+  return (
+    <Tag className={className ?? (asFooter ? "modal-footer" : "form-actions")}>
+      {onCancel && (
+        <button className="secondary-button" type="button" onClick={onCancel}>
+          {cancelLabel}
+        </button>
+      )}
+      <button className="primary-button" type="submit" disabled={saving}>
+        {saving ? "Saving…" : saveLabel}
+      </button>
+    </Tag>
+  );
+}
+
+function EmptyState({ icon, title, description, className = "empty-state", iconClass = "empty-icon", headingLevel = "h3" }) {
+  const H = headingLevel;
+  return (
+    <div className={className}>
+      {icon !== undefined && <div className={iconClass}>{icon}</div>}
+      {title && <H>{title}</H>}
+      {description && <p className="muted">{description}</p>}
+    </div>
+  );
+}
+
+function MemberAvatar({ imageUrl, initial, name, className = "member-avatar" }) {
+  return (
+    <div
+      className={`${className}${imageUrl ? " has-image" : ""}`}
+      style={imageUrl ? { backgroundImage: `url(${imageUrl})` } : undefined}
+      title={name}
+    >
+      {!imageUrl ? initial : null}
+    </div>
+  );
+}
+
 function App() {
   // -------------------- Auth --------------------
   const [user, setUser] = useState(null);
@@ -6855,16 +6905,7 @@ function App() {
 
         </div>
 
-        <footer className="modal-footer">
-          {onCancel && (
-            <button className="secondary-button" type="button" onClick={onCancel}>
-              Cancel
-            </button>
-          )}
-          <button className="primary-button" type="submit" disabled={saving}>
-            {saving ? "Saving…" : isEdit ? "Save expense" : "Add expense"}
-          </button>
-        </footer>
+        <FormActions asFooter onCancel={onCancel} saving={saving} saveLabel={isEdit ? "Save expense" : "Add expense"} />
       </form>
     );
   }
@@ -7446,22 +7487,7 @@ function App() {
                   })}
                 </div>
               </div>
-              <div className="settle-group-form-actions">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => {
-                    setShowSettlementGroupForm(false);
-                    setEditingSettlementGroupId(null);
-                    setSettlementGroupForm({ name: "", memberIds: [], type: "couple" });
-                  }}
-                >
-                  Cancel
-                </button>
-                <button className="primary-button" type="submit">
-                  {editingSettlementGroupId ? "Save group" : "Add group"}
-                </button>
-              </div>
+              <FormActions className="settle-group-form-actions" onCancel={() => { setShowSettlementGroupForm(false); setEditingSettlementGroupId(null); setSettlementGroupForm({ name: "", memberIds: [], type: "couple" }); }} saveLabel={editingSettlementGroupId ? "Save group" : "Add group"} />
             </form>
           ) : (
             <button
@@ -7680,16 +7706,14 @@ function App() {
                     <p className="small muted">Settlements only visible to selected members.</p>
                   </div>
                   {privateGroupsWithSuggestions.length === 0 ? (
-                    <div className="private-empty-state">
-                      <div className="private-empty-icon" aria-hidden="true">
-                        <span>👥</span>
-                        <small>🔒</small>
-                      </div>
-                      <h4>No private settlements yet.</h4>
-                      <p className="muted">
-                        Private settlements appear here for expenses shared only with selected members, like couples, families, or sub-groups.
-                      </p>
-                    </div>
+                    <EmptyState
+                      className="private-empty-state"
+                      iconClass="private-empty-icon"
+                      icon={<><span>👥</span><small>🔒</small></>}
+                      headingLevel="h4"
+                      title="No private settlements yet."
+                      description="Private settlements appear here for expenses shared only with selected members, like couples, families, or sub-groups."
+                    />
                   ) : (
                     <div className="private-settlement-list">
                       {privateGroupsWithSuggestions.map(group => (
@@ -8958,11 +8982,7 @@ function App() {
             </div>
 
             {expenses.length === 0 ? (
-              <div className="empty-card">
-                <div className="empty-icon">€</div>
-                <h3>No expenses yet</h3>
-                <p className="muted">Add your first expense to start tracking trip spending.</p>
-              </div>
+              <EmptyState className="empty-card" icon="€" title="No expenses yet" description="Add your first expense to start tracking trip spending." />
             ) : (
               <section className="expense-table-card" aria-label="Expenses list">
                 <div className="expense-table-head">
@@ -9161,11 +9181,7 @@ function App() {
             </div>
             <section>
               {expenses.length === 0 ? (
-                <div className="empty-card">
-                  <div className="empty-icon">💸</div>
-                  <h3>No expenses yet</h3>
-                  <p className="muted">Add your first expense above.</p>
-                </div>
+                <EmptyState className="empty-card" icon="💸" title="No expenses yet" description="Add your first expense above." />
               ) : (
                 <div className="expense-list">
                   {expenses.map(e => (
@@ -10508,14 +10524,7 @@ function App() {
               </label>
             </div>
 
-            <footer className="modal-footer">
-              <button className="secondary-button" type="button" onClick={closeTaskModal}>
-                Cancel
-              </button>
-              <button className="primary-button" type="submit" disabled={savingTask}>
-                {savingTask ? "Saving..." : editingTaskId ? "Save changes" : "Create task"}
-              </button>
-            </footer>
+            <FormActions asFooter onCancel={closeTaskModal} saving={savingTask} saveLabel={editingTaskId ? "Save changes" : "Create task"} />
           </form>
         </Modal>
 
@@ -10562,17 +10571,7 @@ function App() {
                 + Add another task
               </button>
             </div>
-            <footer className="modal-footer">
-              <button type="button" className="secondary-button" onClick={closeBulkTaskModal}>Cancel</button>
-              <button type="submit" className="primary-button" disabled={savingBulkTasks}>
-                {savingBulkTasks
-                  ? "Saving…"
-                  : (() => {
-                      const n = bulkTaskRows.filter(r => r.title.trim()).length;
-                      return `Create ${n || ""} task${n === 1 ? "" : "s"}`.trim();
-                    })()}
-              </button>
-            </footer>
+            <FormActions asFooter onCancel={closeBulkTaskModal} saving={savingBulkTasks} saveLabel={(() => { const n = bulkTaskRows.filter(r => r.title.trim()).length; return `Create ${n || ""} task${n === 1 ? "" : "s"}`.trim(); })()} />
           </form>
         </Modal>
 
@@ -10747,22 +10746,7 @@ function App() {
               </div>
             </div>
 
-            <footer className="modal-footer">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={closeCategoryModal}
-              >
-                Cancel
-              </button>
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={savingCategory}
-              >
-                {savingCategory ? "Saving..." : "Create category"}
-              </button>
-            </footer>
+            <FormActions asFooter onCancel={closeCategoryModal} saving={savingCategory} saveLabel="Create category" />
           </form>
         </Modal>
         <Modal
@@ -10845,22 +10829,7 @@ function App() {
                 />
               </label>
             </div>
-            <footer className="modal-footer">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => setIsSettlementModalOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={savingSettlement}
-              >
-                {savingSettlement ? "Saving..." : "Record settlement"}
-              </button>
-            </footer>
+            <FormActions asFooter onCancel={() => setIsSettlementModalOpen(false)} saving={savingSettlement} saveLabel="Record settlement" />
           </form>
         </Modal>
         {renderNotificationsModal()}
@@ -11420,22 +11389,7 @@ function App() {
               </div>
             </div>
           </div>
-          <footer className="modal-footer">
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => setIsCreateModalOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              className="primary-button"
-              type="submit"
-              disabled={creatingTrip}
-            >
-              {creatingTrip ? "Creating..." : "Create trip"}
-            </button>
-          </footer>
+          <FormActions asFooter onCancel={() => setIsCreateModalOpen(false)} saving={creatingTrip} saveLabel="Create trip" />
         </form>
       </Modal>
 

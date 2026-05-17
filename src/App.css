@@ -8856,6 +8856,21 @@ p {
 .mb-0 { margin-bottom: 0; }
 
 /* ================================================================
+   Shared micro-component defaults
+   ================================================================ */
+
+.empty-state { text-align: center; padding: var(--space-7) var(--space-5); }
+.empty-state .empty-icon { font-size: 28px; margin-bottom: var(--space-3); }
+.empty-state h3, .empty-state h4 { margin: 0 0 var(--space-2); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+
+.form-actions {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: flex-end;
+  margin-top: var(--space-5);
+}
+
+/* ================================================================
    App toast (replaces browser alert() for user feedback)
    ================================================================ */
 
