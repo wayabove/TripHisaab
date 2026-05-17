@@ -11051,6 +11051,8 @@ function App() {
             { key: "dashboard",   label: "Home",     icon: <Icon name="receipt" /> },
             { key: "actual",      label: "Expenses", icon: <Icon name="card" /> },
             { key: "settlements", label: "Settle",   icon: <Icon name="handshake" /> },
+            { key: "prediction",  label: "Budget",   icon: <Icon name="chart" /> },
+            { key: "tasks",       label: "Tasks",    icon: <Icon name="check" /> },
           ].map(({ key, label, icon }) => (
             <button
               key={key}
@@ -11062,44 +11064,7 @@ function App() {
               <span className="bottom-nav-label">{label}</span>
             </button>
           ))}
-          <button
-            className={`bottom-nav-item${isMoreSheetOpen ? " active" : ""}`}
-            type="button"
-            onClick={() => setIsMoreSheetOpen(v => !v)}
-          >
-            <span className="bottom-nav-icon bottom-nav-more-icon">
-              <span /><span /><span />
-            </span>
-            <span className="bottom-nav-label">More</span>
-          </button>
         </nav>
-
-        {/* More bottom sheet */}
-        {isMoreSheetOpen && (
-          <div className="more-sheet-backdrop" onClick={() => setIsMoreSheetOpen(false)} />
-        )}
-        <div className={`more-sheet${isMoreSheetOpen ? " open" : ""}`}>
-          <div className="more-sheet-handle" />
-          <div className="more-sheet-grid">
-            {[
-              { key: "prediction", label: "Budget",     icon: <Icon name="chart" />,     color: "var(--primary)" },
-              { key: "tasks",      label: "Tasks",       icon: <Icon name="check" />,     color: "var(--purple)" },
-              { key: "members",    label: "Members",     icon: <Icon name="people" />,    color: "var(--info)" },
-              { key: "categories", label: "Categories",  icon: <Icon name="tag" />,       color: "var(--warning)" },
-              { key: "settings",   label: "Settings",    icon: <Icon name="settings" />,  color: "var(--muted)" },
-            ].map(({ key, label, icon, color }) => (
-              <button
-                key={key}
-                className={`more-sheet-item${activeTab === key ? " active" : ""}`}
-                type="button"
-                onClick={() => { setActiveTab(key); setIsMoreSheetOpen(false); }}
-              >
-                <span className="more-sheet-icon" style={{ color }}>{icon}</span>
-                <span className="more-sheet-label">{label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
 
         {!demoMode ? (
         <button
