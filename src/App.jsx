@@ -8093,7 +8093,7 @@ function App() {
             ) : null}
           </div>
           {tripDataLoading ? (
-            <p className="muted" style={{ padding: "24px" }}>Loading trip data...</p>
+            <p className="muted padded-message">Loading trip data...</p>
           ) : null}
 
         {activeTab === "dashboard" ? (
@@ -8131,26 +8131,26 @@ function App() {
               <div className="dash-action-bar dash-section-actions" aria-label="Primary trip actions">
                 {!demoMode ? (
                   <button className="dash-action-btn dash-action-expense" type="button" onClick={() => openFastExpenseModal()}>
-                    <div className="dash-action-icon" style={{ background: "#fff7ed", color: "#ea580c" }}>➕</div>
+                    <div className="dash-action-icon dash-action-icon--expense">➕</div>
                     <span>Add Expense</span>
                   </button>
                 ) : null}
                 <button className="dash-action-btn" type="button" onClick={() => setActiveTab("prediction")}>
-                  <div className="dash-action-icon" style={{ background: "var(--info-soft)", color: "var(--info)" }}>📊</div>
+                  <div className="dash-action-icon dash-action-icon--budget">📊</div>
                   <span>Add Budget</span>
                 </button>
                 <button className="dash-action-btn" type="button" onClick={() => setActiveTab("settlements")}>
-                  <div className="dash-action-icon" style={{ background: "var(--warning-soft)", color: "var(--warning)" }}>🤝</div>
+                  <div className="dash-action-icon dash-action-icon--settle">🤝</div>
                   <span>Settlements</span>
                 </button>
                 {!demoMode ? (
                   <button className="dash-action-btn" type="button" onClick={openCreateTask}>
-                    <div className="dash-action-icon" style={{ background: "var(--primary-muted)", color: "var(--primary)" }}>✓</div>
+                    <div className="dash-action-icon dash-action-icon--tasks">✓</div>
                     <span>New Task</span>
                   </button>
                 ) : null}
                 <button className="dash-action-btn" type="button" onClick={() => setActiveTab("categories")}>
-                  <div className="dash-action-icon" style={{ background: "#f3e8ff", color: "#7c3aed" }}>🏷️</div>
+                  <div className="dash-action-icon dash-action-icon--category">🏷️</div>
                   <span>Categories</span>
                 </button>
               </div>
@@ -8161,7 +8161,7 @@ function App() {
                   <div className="budget-card-top">
                     <div>
                       <h3>{totals.predicted > 0 ? "Budget Overview" : "Spending"}</h3>
-                      <p className="dash-card-sub" style={{ marginBottom: 0 }}>
+                      <p className="dash-card-sub mb-0">
                         {totals.predicted > 0 ? `${budgetPct}% of budget used` : "No budget set yet"}
                       </p>
                     </div>
@@ -8426,8 +8426,7 @@ function App() {
                       </p>
                     </div>
                     <button
-                      className="link-button"
-                      style={{ fontSize: "13px", whiteSpace: "nowrap" }}
+                      className="link-button link-button--sm"
                       type="button"
                       onClick={() => setActiveTab("settlements")}
                     >
@@ -8499,7 +8498,7 @@ function App() {
                       <h3>Recent expenses</h3>
                       <p className="dash-card-sub">Latest visible transactions</p>
                     </div>
-                    <button className="link-button" style={{ fontSize: "13px", whiteSpace: "nowrap" }} type="button" onClick={() => setActiveTab("actual")}>
+                    <button className="link-button link-button--sm" type="button" onClick={() => setActiveTab("actual")}>
                       View all →
                     </button>
                   </div>
@@ -8574,7 +8573,7 @@ function App() {
                       </div>
                     )}
                   </div>
-                  <button className="secondary-button small-button" style={{ marginTop: "14px", width: "100%" }} type="button" onClick={() => setActiveTab("members")}>
+                  <button className="secondary-button small-button btn-full-top" type="button" onClick={() => setActiveTab("members")}>
                     View all members
                   </button>
                 </div>
@@ -10048,7 +10047,7 @@ function App() {
               </button>
             </form>
 
-            <div className="settings-list" style={{ marginTop: "16px" }}>
+            <div className="settings-list settings-section-sm">
               <p><strong>Status:</strong> {selectedTrip.status}</p>
               <p><strong>Members:</strong> {members.length}</p>
               <p><strong>Active members:</strong> {activeMembers.length}</p>
@@ -10059,12 +10058,12 @@ function App() {
               </p>
             </div>
 
-            <section style={{ marginTop: "20px" }}>
+            <section className="settings-section">
               <h2>Export</h2>
               <p className="small muted">
                 Downloads a formatted Excel workbook (.xlsx) with 6 sheets: Summary, Members, Expenses, Categories, Settlements, and Tasks. Opens directly in Excel or Google Sheets with colour-coded formatting.
               </p>
-              <p className="small muted" style={{ marginTop: "6px" }}>
+              <p className="small muted settings-section-sm" style={{ marginTop: 0 }}>
                 Other members' personal expense details are redacted for privacy. The file is marked confidential.
               </p>
               <button
@@ -10076,7 +10075,7 @@ function App() {
               </button>
             </section>
 
-            <section style={{ marginTop: "20px" }}>
+            <section className="settings-section">
               <h2>App Tour</h2>
               <p className="small muted">New here or need a refresher? Replay the interactive walkthrough.</p>
               <button
@@ -10088,13 +10087,13 @@ function App() {
               </button>
             </section>
 
-            <section style={{ marginTop: "20px" }}>
+            <section className="settings-section">
               <h2>Support the App</h2>
               <p className="small muted">Like TripHisaab? Buy me a Coffee! ☕</p>
               <DonateButton inline />
             </section>
 
-            <section style={{ marginTop: "20px" }}>
+            <section className="settings-section">
               <h2>Exchange rates</h2>
               <p className="small muted">{ratesStatusLabel}</p>
               {ratesMeta.error ? (
@@ -10108,7 +10107,7 @@ function App() {
               >
                 {ratesLoading ? "Refreshing rates..." : "Refresh live rates"}
               </button>
-              <div className="settings-list" style={{ marginTop: "14px" }}>
+              <div className="settings-list settings-section-sm">
                 {SUPPORTED_CURRENCIES.map(c => (
                   <p key={c}>
                     <strong>1 EUR</strong> = {getCurrencyRate(c).toFixed(4)} {c}
@@ -11292,7 +11291,7 @@ function App() {
             {/* Stats row */}
             <div className="home-stats-row" data-tour="home-stats">
               <div className="home-stat-card">
-                <div className="home-stat-icon" style={{background:"#E8F4FF"}}>💼</div>
+                <div className="home-stat-icon home-stat-icon--work">💼</div>
                 <div>
                   <div className="home-stat-label">Total trips</div>
                   <div className="home-stat-num">{trips.length}</div>
@@ -11300,7 +11299,7 @@ function App() {
                 </div>
               </div>
               <div className="home-stat-card">
-                <div className="home-stat-icon" style={{background:"#E8FFF0"}}>✈️</div>
+                <div className="home-stat-icon home-stat-icon--travel">✈️</div>
                 <div>
                   <div className="home-stat-label">Active trips</div>
                   <div className="home-stat-num">{activeTripCount}</div>
@@ -11308,7 +11307,7 @@ function App() {
                 </div>
               </div>
               <div className="home-stat-card">
-                <div className="home-stat-icon" style={{background:"#FFF0E8"}}>📅</div>
+                <div className="home-stat-icon home-stat-icon--calendar">📅</div>
                 <div>
                   <div className="home-stat-label">Upcoming trips</div>
                   <div className="home-stat-num">{upcomingCount}</div>
