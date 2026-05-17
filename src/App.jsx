@@ -1639,6 +1639,7 @@ function App() {
   });
   const [expenseFormTab, setExpenseFormTab] = useState("basic");
   const expenseTouchStartXRef = useRef(null);
+  const crossUnitExpandedTripsRef = useRef(new Set());
 
   const [categoryForm, setCategoryForm] = useState({
     name: "",
@@ -6323,6 +6324,19 @@ function App() {
     );
     return updates.length;
   }
+
+  // Auto-run expansion once per trip when admin has both expenses and ≥2 settlement groups loaded.
+  // This means existing trips don't need groups to be manually re-saved.
+  useEffect(() => {
+    if (!selectedTrip || !user) return;
+    if (selectedTrip.ownerId !== user.uid) return;
+    if (settlementGroups.filter(g => g.isActive !== false).length < 2) return;
+    if (expenses.length === 0) return;
+    if (crossUnitExpandedTripsRef.current.has(selectedTrip.id)) return;
+    crossUnitExpandedTripsRef.current.add(selectedTrip.id);
+    expandCrossUnitVisibility(settlementGroups);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrip?.id, settlementGroups.length, expenses.length]);
 
   async function handleSaveSettlementGroup(e) {
     e.preventDefault();
