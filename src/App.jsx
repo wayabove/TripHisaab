@@ -7372,14 +7372,14 @@ function App() {
       return first.length > 9 ? first.slice(0, 8) + "…" : first;
     }
 
-    const expenseDateTimeValue = `${formData.date || todayIso()}T${formData.time || nowTimeIso()}`;
-
-    function handleDateTimeChange(value) {
-      const [date, time = ""] = String(value || "").split("T");
-      setFormData({
-        ...formData,
-        date: date || todayIso(),
-        time: time ? time.slice(0, 5) : nowTimeIso()
+    function formatExpenseDate(isoDate) {
+      const today = todayIso();
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      if (!isoDate || isoDate === today) return "Today";
+      if (isoDate === yesterday) return "Yesterday";
+      const [y, m, d] = isoDate.split("-").map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
+        weekday: "short", day: "numeric", month: "short"
       });
     }
 
@@ -7474,50 +7474,67 @@ function App() {
             />
           </label>
 
-          {/* Category + Date & time */}
-          <div className="grid-2 expense-form-meta-grid">
-            <label>
-              Category
-              <select
-                value={formData.categoryId}
-                onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-                required
-              >
-                <option value="">Choose category</option>
-                {activeCategories.map(c => (
-                  <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Date & time
+          {/* Category */}
+          <label>
+            Category
+            <select
+              value={formData.categoryId}
+              onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+              required
+            >
+              <option value="">Choose category</option>
+              {activeCategories.map(c => (
+                <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
+              ))}
+            </select>
+          </label>
+
+          {/* Date + Time chips */}
+          <div className="exp-datetime-row">
+            <label className="exp-date-chip">
+              <span className="exp-chip-icon">📅</span>
+              <span className="exp-chip-label">{formatExpenseDate(formData.date)}</span>
               <input
-                type="datetime-local"
-                value={expenseDateTimeValue}
-                onClick={openDatePicker}
-                onChange={e => handleDateTimeChange(e.target.value)}
+                type="date"
+                className="exp-chip-input"
+                value={formData.date || todayIso()}
+                onChange={e => setFormData({ ...formData, date: e.target.value || todayIso() })}
                 required
+              />
+            </label>
+            <label className="exp-time-chip">
+              <span className="exp-chip-icon">🕐</span>
+              <span className="exp-chip-label">{formData.time || nowTimeIso()}</span>
+              <input
+                type="time"
+                className="exp-chip-input"
+                value={formData.time || nowTimeIso()}
+                onChange={e => setFormData({ ...formData, time: e.target.value || nowTimeIso() })}
               />
             </label>
           </div>
 
-          {/* Expense type toggle */}
-          <div className="exp-type-row">
-            <span className="exp-section-header">Expense type</span>
-            <div className="exp-type-toggle">
+          {/* Expense type cards */}
+          <div>
+            <div className="exp-section-header" style={{ marginBottom: "10px" }}>Expense type</div>
+            <div className="exp-type-cards">
               <button
                 type="button"
-                className={`exp-type-btn${formData.expenseType === "personal" ? " active" : ""}`}
+                className={`exp-type-card${formData.expenseType === "personal" ? " active" : ""}`}
                 onClick={() => handleExpenseTypeChange("personal")}
               >
-                <Icon name="receipt" /> Personal
+                <span className="exp-type-emoji">🙋</span>
+                <span className="exp-type-label">Personal</span>
+                <span className="exp-type-sub">Just me</span>
               </button>
               <button
                 type="button"
-                className={`exp-type-btn${formData.expenseType === "shared" ? " active" : ""}`}
+                className={`exp-type-card${formData.expenseType === "shared" ? " active" : ""}`}
                 onClick={() => handleExpenseTypeChange("shared")}
               >
-                <Icon name="users" /> Shared
+                <span className="exp-type-emoji">👥</span>
+                <span className="exp-type-label">Shared</span>
+                <span className="exp-type-sub">Split the cost</span>
               </button>
             </div>
           </div>
