@@ -5936,6 +5936,269 @@ p {
   text-align: right;
 }
 
+/* ---- Compact breakdown card ---- */
+.breakdown-card--compact {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+.breakdown-card--compact:hover {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
+}
+.breakdown-card--compact:active { transform: none; }
+
+.breakdown-compact-layout {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.breakdown-ring--sm {
+  width: 88px;
+  height: 88px;
+  flex-shrink: 0;
+}
+.breakdown-ring--sm .breakdown-ring-center strong { font-size: 11px; }
+.breakdown-ring--sm .breakdown-ring-center span { font-size: 9px; }
+
+.breakdown-ring--lg {
+  width: 140px;
+  height: 140px;
+}
+.breakdown-ring--lg .breakdown-ring-center strong { font-size: 14px; }
+
+.breakdown-compact-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.breakdown-compact-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.breakdown-compact-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.breakdown-compact-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.breakdown-compact-cta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.breakdown-compact-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.breakdown-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.breakdown-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.breakdown-chip-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakdown-chip-amt {
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.breakdown-chip--more {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ---- Category breakdown modal content ---- */
+.category-breakdown-modal .modal-body {
+  padding: 16px;
+}
+
+.cbm-donut-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.cbm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.cbm-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cbm-item:last-child { border-bottom: none; }
+
+.cbm-item-top {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cbm-icon { font-size: 17px; text-align: center; }
+
+.cbm-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cbm-amount {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+}
+
+.cbm-pct {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+  min-width: 32px;
+}
+
+.cbm-bar-track {
+  height: 4px;
+  background: var(--surface-alt, #f1f5f9);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.cbm-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+/* ---- Personal spending compact strip ---- */
+.personal-strip-card { padding: 12px 16px; }
+
+.personal-strip-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.personal-strip-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.personal-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.personal-strip-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  background: var(--primary-soft);
+  border-radius: 50%;
+}
+
+.personal-strip-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.personal-strip-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.personal-strip-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.personal-strip-sub .over-budget { color: #dc2626; font-weight: 600; }
+.personal-strip-sub .near-budget { color: #d97706; font-weight: 600; }
+.personal-strip-sub .under-budget { color: #16a34a; font-weight: 600; }
+
+.personal-strip-bar-wrap { margin-top: 5px; }
+.personal-strip-bar {
+  height: 4px;
+  background: var(--surface-alt, #f1f5f9);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.personal-strip-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+.personal-strip-bar-fill.near-budget { background: #d97706; }
+.personal-strip-bar-fill.over-budget { background: #dc2626; }
+
+.personal-strip-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.personal-strip-amount {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.personal-strip-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 3px;
+}
+.personal-strip-actions .link-button { font-size: 12px; }
+
 /* ============================================================
    BOTTOM NAVIGATION (mobile only, always in DOM)
    ============================================================ */

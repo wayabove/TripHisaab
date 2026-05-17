@@ -1578,6 +1578,7 @@ function App() {
 
   const [personalBudget, setPersonalBudget] = useState(null);
   const [showPersonalBudgetForm, setShowPersonalBudgetForm] = useState(false);
+  const [showCategoryBreakdown, setShowCategoryBreakdown] = useState(false);
   const [personalBudgetForm, setPersonalBudgetForm] = useState({ amount: "", currency: "EUR" });
   const [savingPersonalBudget, setSavingPersonalBudget] = useState(false);
   const [personalContributions, setPersonalContributions] = useState([]);
@@ -7638,144 +7639,93 @@ function App() {
 
               {currentUserMemberId && (
                 <div className="dash-row dash-section-personal">
-                  <div className="dash-card personal-budget-card">
-                    <div className="personal-budget-header">
-                      <div>
-                        <h3>My Personal Spending</h3>
-                        <p className="dash-card-sub">Expense details stay private. Included amounts may count toward the trip total.</p>
-                      </div>
-                      {!showPersonalBudgetForm && (
-                        <button
-                          className="link-button"
-                          type="button"
-                          onClick={() => {
-                            setPersonalBudgetForm({
-                              amount: personalBudget ? String(personalBudget.originalAmount) : "",
-                              currency: personalBudget?.originalCurrency || groupCurrency
-                            });
-                            setShowPersonalBudgetForm(true);
-                          }}
-                        >
-                          {personalBudget ? "Edit budget →" : "Set budget →"}
-                        </button>
-                      )}
-                    </div>
-
+                  <div className="dash-card personal-strip-card">
                     {showPersonalBudgetForm ? (
-                      <div className="personal-budget-form">
-                        <div className="personal-budget-form-row">
-                          <input
-                            className="form-input personal-budget-amount-input"
-                            type="number"
-                            min="0"
-                            step="any"
-                            placeholder="Amount"
-                            value={personalBudgetForm.amount}
-                            onChange={e => setPersonalBudgetForm(f => ({ ...f, amount: e.target.value }))}
-                          />
-                          <select
-                            className="form-input personal-budget-currency-select"
-                            value={personalBudgetForm.currency}
-                            onChange={e => setPersonalBudgetForm(f => ({ ...f, currency: e.target.value }))}
-                          >
-                            {SUPPORTED_CURRENCIES.map(c => (
-                              <option key={c.code} value={c.code}>{c.code} – {c.name}</option>
-                            ))}
-                          </select>
+                      <>
+                        <div className="personal-strip-form-header">
+                          <span className="personal-strip-label">Personal budget</span>
+                          <button className="link-button" type="button" onClick={() => setShowPersonalBudgetForm(false)}>Cancel</button>
                         </div>
-                        <div className="personal-budget-form-actions">
-                          <button
-                            className="primary-button small-button"
-                            type="button"
-                            disabled={savingPersonalBudget}
-                            onClick={handleSavePersonalBudget}
-                          >
-                            {savingPersonalBudget ? "Saving…" : "Save"}
-                          </button>
-                          <button
-                            className="secondary-button small-button"
-                            type="button"
-                            onClick={() => setShowPersonalBudgetForm(false)}
-                          >
-                            Cancel
-                          </button>
-                          {personalBudget && (
-                            <button
-                              className="danger-button small-button"
-                              type="button"
-                              onClick={handleDeletePersonalBudget}
+                        <div className="personal-budget-form">
+                          <div className="personal-budget-form-row">
+                            <input
+                              className="form-input personal-budget-amount-input"
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="Amount"
+                              value={personalBudgetForm.amount}
+                              onChange={e => setPersonalBudgetForm(f => ({ ...f, amount: e.target.value }))}
+                            />
+                            <select
+                              className="form-input personal-budget-currency-select"
+                              value={personalBudgetForm.currency}
+                              onChange={e => setPersonalBudgetForm(f => ({ ...f, currency: e.target.value }))}
                             >
-                              Remove
+                              {SUPPORTED_CURRENCIES.map(c => (
+                                <option key={c.code} value={c.code}>{c.code} – {c.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="personal-budget-form-actions">
+                            <button className="primary-button small-button" type="button" disabled={savingPersonalBudget} onClick={handleSavePersonalBudget}>
+                              {savingPersonalBudget ? "Saving…" : "Save"}
                             </button>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="personal-budget-body">
-                        <div className="personal-budget-stats">
-                          <div className="personal-budget-stat">
-                            <span className="personal-budget-stat-label">My spending</span>
-                            <strong className="personal-budget-stat-value">{formatMoney(myPersonalSpentEur, groupCurrency)}</strong>
-                            <span className="personal-budget-stat-sub">{myPersonalExpenses.length} expense{myPersonalExpenses.length !== 1 ? "s" : ""}</span>
-                          </div>
-                          {myPersonalBudgetEur > 0 ? (
-                            <>
-                              <div className="personal-budget-stat">
-                                <span className="personal-budget-stat-label">My budget</span>
-                                <strong className="personal-budget-stat-value">
-                                  {personalBudget.originalCurrency !== groupCurrency
-                                    ? `${formatCurrency(personalBudget.originalAmount, personalBudget.originalCurrency)} (${formatMoney(myPersonalBudgetEur, groupCurrency)})`
-                                    : formatMoney(myPersonalBudgetEur, groupCurrency)}
-                                </strong>
-                              </div>
-                              <div className="personal-budget-stat">
-                                <span className="personal-budget-stat-label">{myPersonalRemaining >= 0 ? "Remaining" : "Over by"}</span>
-                                <strong className={`personal-budget-stat-value ${myPersonalRemaining < 0 ? "over-budget" : myPersonalPct >= 80 ? "near-budget" : "under-budget"}`}>
-                                  {formatMoney(Math.abs(myPersonalRemaining), groupCurrency)}
-                                </strong>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="personal-budget-stat personal-budget-no-budget">
-                              <span className="personal-budget-stat-label muted">No personal budget set</span>
-                              <span className="personal-budget-stat-sub muted">Set one to track your personal limit</span>
-                            </div>
-                          )}
-                        </div>
-                        {myPersonalBudgetEur > 0 && (
-                          <div className="personal-budget-progress-wrap">
-                            <div className="personal-budget-progress-bar">
-                              <div
-                                className={`personal-budget-progress-fill ${myPersonalPct >= 100 ? "over-budget" : myPersonalPct >= 80 ? "near-budget" : ""}`}
-                                style={{ width: `${myPersonalPct}%` }}
-                              />
-                            </div>
-                            <span className="personal-budget-pct">{myPersonalPct}% used</span>
-                          </div>
-                        )}
-                        {myPersonalExpenses.length > 0 && (
-                          <div className="personal-budget-recent">
-                            <p className="personal-budget-recent-label">Recent personal expenses</p>
-                            {myPersonalExpenses.slice(0, 3).map(e => (
-                              <div className="personal-budget-recent-row" key={e.id}>
-                                <span className="personal-budget-recent-desc">{e.description || e.categoryName}</span>
-                                <span className="personal-budget-recent-amount">{formatMoney(e.amountEur, groupCurrency)}</span>
-                              </div>
-                            ))}
-                            {myPersonalExpenses.length > 3 && (
-                              <button
-                                className="link-button personal-budget-see-all"
-                                type="button"
-                                onClick={() => {
-                                  setExpenseFilter("personal");
-                                  setActiveTab("actual");
-                                }}
-                              >
-                                See all {myPersonalExpenses.length} →
-                              </button>
+                            {personalBudget && (
+                              <button className="danger-button small-button" type="button" onClick={handleDeletePersonalBudget}>Remove</button>
                             )}
                           </div>
-                        )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="personal-strip-row">
+                        <div className="personal-strip-icon">🔒</div>
+                        <div className="personal-strip-info">
+                          <div className="personal-strip-title">My personal spending</div>
+                          <div className="personal-strip-sub">
+                            {myPersonalExpenses.length} expense{myPersonalExpenses.length !== 1 ? "s" : ""}
+                            {myPersonalBudgetEur > 0 && (
+                              <> · <span className={myPersonalRemaining < 0 ? "over-budget" : myPersonalPct >= 80 ? "near-budget" : "under-budget"}>
+                                {myPersonalPct}% of budget used
+                              </span></>
+                            )}
+                          </div>
+                          {myPersonalBudgetEur > 0 && (
+                            <div className="personal-strip-bar-wrap">
+                              <div className="personal-strip-bar">
+                                <div
+                                  className={`personal-strip-bar-fill ${myPersonalPct >= 100 ? "over-budget" : myPersonalPct >= 80 ? "near-budget" : ""}`}
+                                  style={{ width: `${Math.min(100, myPersonalPct)}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="personal-strip-right">
+                          <div className="personal-strip-amount">{formatMoney(myPersonalSpentEur, groupCurrency)}</div>
+                          <div className="personal-strip-actions">
+                            <button
+                              className="link-button"
+                              type="button"
+                              onClick={() => { setExpenseFilter("personal"); setActiveTab("actual"); }}
+                            >
+                              View →
+                            </button>
+                            <button
+                              className="link-button"
+                              type="button"
+                              onClick={() => {
+                                setPersonalBudgetForm({
+                                  amount: personalBudget ? String(personalBudget.originalAmount) : "",
+                                  currency: personalBudget?.originalCurrency || groupCurrency
+                                });
+                                setShowPersonalBudgetForm(true);
+                              }}
+                            >
+                              {personalBudget ? "Budget" : "+ Budget"}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -8035,38 +7985,94 @@ function App() {
                 </div>
               </div>
 
-              {/* ── Row 4: Spending by category ── */}
+              {/* ── Row 4: Spending by category (compact + tap for detail) ── */}
               {spendingBreakdown.length > 0 && (
-                <div className="dash-card breakdown-card dash-section-breakdown">
-                  <h3>Spending by category</h3>
-                  <p className="dash-card-sub">Where your money goes</p>
-                  <div className="breakdown-ring-layout">
+                <div
+                  className="dash-card breakdown-card breakdown-card--compact dash-section-breakdown"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="View category breakdown"
+                  onClick={() => setShowCategoryBreakdown(true)}
+                  onKeyDown={e => e.key === "Enter" && setShowCategoryBreakdown(true)}
+                >
+                  <div className="breakdown-compact-layout">
                     <div
-                      className="breakdown-ring"
+                      className="breakdown-ring breakdown-ring--sm"
                       style={{ background: `conic-gradient(${breakdownGradient})` }}
-                      aria-label="Spending category chart"
+                      aria-hidden="true"
                     >
                       <div className="breakdown-ring-center">
                         <span>Total</span>
                         <strong>{formatMoney(totals.actual)}</strong>
                       </div>
                     </div>
-                    <div className="breakdown-items">
-                      {spendingBreakdown.map(c => {
-                        const pct = Math.max(1, Math.round((c.actual / totals.actual) * 100));
-                        return (
-                          <div className="breakdown-item" key={c.id}>
-                            <div className="breakdown-cat-icon" style={{ color: c.color }}>{c.icon}</div>
-                            <div className="breakdown-cat-name">{c.name}</div>
-                            <div className="breakdown-amount">{formatMoney(c.actual)}</div>
-                            <div className="breakdown-pct">{pct}%</div>
+                    <div className="breakdown-compact-right">
+                      <div className="breakdown-compact-header">
+                        <div>
+                          <div className="breakdown-compact-title">Spending by category</div>
+                          <div className="breakdown-compact-sub">{spendingBreakdown.length} categories</div>
+                        </div>
+                        <div className="breakdown-compact-cta">View all →</div>
+                      </div>
+                      <div className="breakdown-compact-chips">
+                        {spendingBreakdown.slice(0, 3).map(c => (
+                          <div className="breakdown-chip" key={c.id}>
+                            <span className="breakdown-chip-dot" style={{ background: c.color }} />
+                            <span className="breakdown-chip-name">{c.name}</span>
+                            <span className="breakdown-chip-amt">{formatMoney(c.actual)}</span>
                           </div>
-                        );
-                      })}
+                        ))}
+                        {spendingBreakdown.length > 3 && (
+                          <div className="breakdown-chip breakdown-chip--more">
+                            +{spendingBreakdown.length - 3} more
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
+
+              {/* Category breakdown modal */}
+              <Modal
+                isOpen={showCategoryBreakdown}
+                onClose={() => setShowCategoryBreakdown(false)}
+                title="Spending by category"
+                className="category-breakdown-modal"
+              >
+                <div className="modal-body">
+                  <div className="cbm-donut-wrap">
+                    <div
+                      className="breakdown-ring breakdown-ring--lg"
+                      style={{ background: `conic-gradient(${breakdownGradient})` }}
+                      aria-hidden="true"
+                    >
+                      <div className="breakdown-ring-center">
+                        <span>Total</span>
+                        <strong>{formatMoney(totals.actual)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="cbm-list">
+                    {spendingBreakdown.map(c => {
+                      const pct = Math.max(1, Math.round((c.actual / totals.actual) * 100));
+                      return (
+                        <div className="cbm-item" key={c.id}>
+                          <div className="cbm-item-top">
+                            <div className="cbm-icon" style={{ color: c.color }}>{c.icon}</div>
+                            <div className="cbm-name">{c.name}</div>
+                            <div className="cbm-amount">{formatMoney(c.actual)}</div>
+                            <div className="cbm-pct">{pct}%</div>
+                          </div>
+                          <div className="cbm-bar-track">
+                            <div className="cbm-bar-fill" style={{ width: `${pct}%`, background: c.color }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </Modal>
 
             </div>
           </>
