@@ -7963,17 +7963,23 @@ body.body-scroll-locked .main-content {
 
 /* --- Responsive --- */
 @media (max-width: 480px) {
-  .exp-form-body { padding: 14px 16px; }
-  .expense-form-priority,
+  .exp-form-body { padding: 12px 14px; gap: 10px; }
+  .exp-shared-section { padding: 12px; gap: 10px; }
+  .expense-form-priority { gap: 8px; }
   .expense-form-meta-grid {
     grid-template-columns: 1fr;
   }
   .expense-amount-input {
-    min-height: 54px;
+    min-height: 52px;
     font-size: 26px;
   }
-  .split-type-btn { font-size: 12px; padding: 8px 8px; }
+  .exp-type-card { padding: 12px 8px 10px; gap: 3px; }
+  .exp-type-emoji { font-size: 24px; }
+  .exp-type-label { font-size: 13px; }
+  .exp-type-sub  { font-size: 11px; }
+  .split-type-btn { font-size: 12px; padding: 8px; }
   .member-tile-grid { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 8px; }
+  .member-tile { padding: 8px 4px; gap: 4px; }
   .member-tile-avatar { width: 36px; height: 36px; font-size: 15px; }
 }
 
@@ -9264,10 +9270,10 @@ body.body-scroll-locked .main-content {
 
   .expense-modal .exp-form-body {
     flex: 1 1 auto;
-    padding: 12px;
+    padding: 10px 12px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    gap: 12px;
+    gap: 10px;
   }
 
   .expense-modal .expense-form-priority,
@@ -9299,7 +9305,6 @@ body.body-scroll-locked .main-content {
     min-width: 0;
   }
 
-  .member-tile-grid,
   .category-editor-grid,
   .category-stat-grid,
   .grid-2,
@@ -9307,6 +9312,12 @@ body.body-scroll-locked .main-content {
   .home-trip-grid,
   .invite-share-actions {
     grid-template-columns: 1fr;
+  }
+
+  /* Keep member tiles compact multi-column in all contexts */
+  .member-tile-grid {
+    grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+    gap: 8px;
   }
 }
 
