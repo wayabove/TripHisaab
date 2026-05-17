@@ -743,8 +743,10 @@ function getSmartSettleSummaryByMode(
   );
   let consolidatedSuggestions;
   if (mode === "family_couple") {
+    // Use group-only balances so all unit members see the same Final Settlement amount.
+    // Private cross-unit expenses are not uniformly visible, causing per-user inconsistency.
     const units = getSettlementUnits(activeMembers, settlementGroups);
-    consolidatedSuggestions = generateFamilyCoupleSettlements(combinedMemberBalances, units, currency);
+    consolidatedSuggestions = generateFamilyCoupleSettlements(groupBalances, units, currency);
   } else {
     consolidatedSuggestions = generateSettlementSuggestions(combinedMemberBalances, currency);
   }
@@ -6893,7 +6895,11 @@ function App() {
             <div className="consolidated-panel-header">
               <div>
                 <h3>Final Settlement</h3>
-                <p className="small muted">Minimum payments combining all group and private expenses.</p>
+                <p className="small muted">
+                  {isFamilyCoupleMode
+                    ? "Minimum payments between units based on shared group expenses."
+                    : "Minimum payments combining all group and private expenses."}
+                </p>
               </div>
               {consolidatedSuggestions.length > 0 ? (
                 <p className="smart-settle-summary-sentence">
@@ -6913,7 +6919,9 @@ function App() {
             )}
             <p className="consolidated-note small muted">
               This is your final answer. Use "Show breakdown" below to mark individual payments as paid.
-              {!isAdmin && " · Private expenses you are not part of are excluded from this view."}
+              {isFamilyCoupleMode
+                ? " · Private expenses are excluded from this view — settle them separately in the breakdown."
+                : (!isAdmin && " · Private expenses you are not part of are excluded from this view.")}
             </p>
           </section>
         ) : null}
