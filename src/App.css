@@ -6776,6 +6776,28 @@ p {
 .exp-tab-body { padding: 18px 22px; }
 .exp-tab-content { display: grid; gap: 14px; }
 
+.expense-form-priority {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(116px, 0.55fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.expense-amount-input {
+  min-height: 58px;
+  font-size: 28px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.expense-form-meta-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.95fr);
+}
+
+.exp-tabbed-form input[type="datetime-local"] {
+  min-height: 46px;
+}
+
 /* --- Section header --- */
 .exp-section-header {
   font-size: 12px;
@@ -7006,6 +7028,14 @@ p {
   .exp-tab-btn    { min-width: 44px; padding: 10px 4px 9px; }
   .exp-tab-icon   { font-size: 18px; }
   .exp-tab-body   { padding: 14px 16px; }
+  .expense-form-priority,
+  .expense-form-meta-grid {
+    grid-template-columns: 1fr;
+  }
+  .expense-amount-input {
+    min-height: 54px;
+    font-size: 26px;
+  }
   .split-type-btn { font-size: 12px; padding: 8px 8px; }
   .member-tile-grid { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 8px; }
   .member-tile-avatar { width: 36px; height: 36px; font-size: 15px; }

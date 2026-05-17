@@ -6,7 +6,9 @@
       "Bash(npm run *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(npx firebase *)"
+      "Bash(npx firebase *)",
+      "Bash(cd \"/f/0ffice_Work/TripHisaab/trip-expense-tracker\" && ls -la src/)",
+      "Read(//f/f/0ffice_Work/TripHisaab/trip-expense-tracker/**)"
     ]
   }
 }

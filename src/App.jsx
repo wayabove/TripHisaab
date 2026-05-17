@@ -5835,6 +5835,17 @@ function App() {
       return first.length > 9 ? first.slice(0, 8) + "…" : first;
     }
 
+    const expenseDateTimeValue = `${formData.date || todayIso()}T${formData.time || nowTimeIso()}`;
+
+    function handleDateTimeChange(value) {
+      const [date, time = ""] = String(value || "").split("T");
+      setFormData({
+        ...formData,
+        date: date || todayIso(),
+        time: time ? time.slice(0, 5) : nowTimeIso()
+      });
+    }
+
     function handleExpenseTypeChange(nextType) {
       if (nextType === "personal" && expenseFormTab === "paidby") {
         setExpenseFormTab("basic");
@@ -5862,13 +5873,13 @@ function App() {
     // Tabs vary by expense type
     const EXP_TABS = isShared
       ? [
-          { id: "basic",  label: "Basic",   icon: "📋" },
-          { id: "paidby", label: "Paid by", icon: "👥" },
-          { id: "notes",  label: "Notes",   icon: "📝" },
+          { id: "basic",  label: "Details", icon: "📋" },
+          { id: "paidby", label: "Split",   icon: "👥" },
+          { id: "notes",  label: "More",    icon: "📝" },
         ]
       : [
-          { id: "basic", label: "Basic", icon: "📋" },
-          { id: "notes", label: "Notes", icon: "📝" },
+          { id: "basic", label: "Details", icon: "📋" },
+          { id: "notes", label: "More", icon: "📝" },
         ];
 
     // Clamp active tab to valid tabs for current type
@@ -5917,11 +5928,11 @@ function App() {
           {activeTab === "basic" && (
             <div className="exp-tab-content">
 
-              {/* Amount + Currency at the top */}
-              <div className="grid-2">
+              <div className="expense-form-priority">
                 <label>
                   Amount
                   <input
+                    className="expense-amount-input"
                     type="number"
                     min="0"
                     step="0.01"
@@ -5955,41 +5966,41 @@ function App() {
                 </div>
               )}
 
-              <div className="grid-2">
+              <label>
+                What was it?
+                <input
+                  type="text"
+                  value={formData.description}
+                  placeholder="e.g. Lunch, taxi, hotel"
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                />
+              </label>
+
+              <div className="grid-2 expense-form-meta-grid">
                 <label>
-                  Date
-                  <input
-                    type="date"
-                    value={formData.date}
-                    onClick={openDatePicker}
-                    onChange={e => setFormData({ ...formData, date: e.target.value })}
+                  Category
+                  <select
+                    value={formData.categoryId}
+                    onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
                     required
-                  />
+                  >
+                    <option value="">Choose category</option>
+                    {activeCategories.map(c => (
+                      <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
+                    ))}
+                  </select>
                 </label>
                 <label>
-                  Time
+                  Date & time
                   <input
-                    type="time"
-                    value={formData.time}
-                    onChange={e => setFormData({ ...formData, time: e.target.value })}
+                    type="datetime-local"
+                    value={expenseDateTimeValue}
+                    onClick={openDatePicker}
+                    onChange={e => handleDateTimeChange(e.target.value)}
                     required
                   />
                 </label>
               </div>
-
-              <label>
-                Category
-                <select
-                  value={formData.categoryId}
-                  onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-                  required
-                >
-                  <option value="">Choose category</option>
-                  {activeCategories.map(c => (
-                    <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
-                  ))}
-                </select>
-              </label>
 
               <div className="exp-section-header">Expense type</div>
               <div className="exp-type-toggle">
@@ -6183,16 +6194,6 @@ function App() {
           {/* ── Notes ── */}
           {activeTab === "notes" && (
             <div className="exp-tab-content">
-              <label>
-                Description
-                <input
-                  type="text"
-                  value={formData.description}
-                  placeholder="e.g. Lunch, taxi, hotel (optional)"
-                  onChange={e => setFormData({ ...formData, description: e.target.value })}
-                />
-              </label>
-
               <label>
                 Payment method
                 <select
