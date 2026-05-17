@@ -61,7 +61,8 @@ const EMPTY_EXPENSE_FORM = {
   splitType: "equal",
   paidByMemberId: "",
   splitMemberIds: [],
-  customSplitShares: {}
+  customSplitShares: {},
+  includeInGroupTotal: true
 };
 
 const TRIP_IMAGE_MAX_WIDTH = 640;
@@ -1486,6 +1487,7 @@ function App() {
   const [showPersonalBudgetForm, setShowPersonalBudgetForm] = useState(false);
   const [personalBudgetForm, setPersonalBudgetForm] = useState({ amount: "", currency: "EUR" });
   const [savingPersonalBudget, setSavingPersonalBudget] = useState(false);
+  const [personalContributions, setPersonalContributions] = useState([]);
 
   const [savingPredictions, setSavingPredictions] = useState(false);
   const [budgetForm, setBudgetForm] = useState(EMPTY_BUDGET_FORM);
@@ -1800,11 +1802,13 @@ function App() {
     let shared = 0;
     expenses.forEach(e => {
       const amount = Number(e.amountEur || 0);
-      // Only count group-scope expenses in the group total so the budget % is
-      // consistent for all members (same logic as the budget prediction filter).
       if (normalizeExpenseScope(e) === "group") actual += amount;
       if (e.expenseType === "shared") shared += amount;
     });
+    // Add all members' personal contributions (amounts they opted to count toward group total).
+    // Each member's doc holds only their aggregate — no individual expense details exposed.
+    const contribTotal = personalContributions.reduce((s, c) => s + Number(c.totalEur || 0), 0);
+    actual = roundMoney(actual + contribTotal);
     const predicted = predictions
       .filter(p => normalizeBudgetScope(p) === "group")
       .reduce(
@@ -1816,7 +1820,7 @@ function App() {
       0
     );
     return { predicted, actual, shared, settled };
-  }, [expenses, predictions, settlements]);
+  }, [expenses, predictions, settlements, personalContributions]);
 
   const visiblePlanTotal = useMemo(
     () => predictions.reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0),
@@ -2895,6 +2899,7 @@ function App() {
         "tasks",
         "invites",
         "personalBudgets",
+        "personalContributions",
         "settlementGroups"
       ];
       const snaps = await Promise.all(
@@ -3190,6 +3195,7 @@ function App() {
     setSelectedNotification(null);
     setPersonalBudget(null);
     setShowPersonalBudgetForm(false);
+    setPersonalContributions([]);
     closeTaskModal();
     cancelCategoryForm();
     cancelEditingExpense();
@@ -3465,6 +3471,33 @@ function App() {
         setPersonalBudget(pbSnap?.exists() ? { ...pbSnap.data() } : null);
       } else {
         setPersonalBudget(null);
+      }
+
+      // Load all members' personal contribution totals (aggregate only — no expense detail exposed).
+      const contribSnap = await getDocs(collection(db, "trips", tripId, "personalContributions")).catch(() => ({ docs: [] }));
+      const loadedContributions = contribSnap.docs.map(d => ({ userId: d.id, ...d.data() }));
+      setPersonalContributions(loadedContributions);
+
+      // Self-migration: write current user's contribution total from existing personal expenses.
+      // Absence of includeInGroupTotal field is treated as true (count toward group total).
+      if (user?.uid) {
+        const myPersonal = loadedExpenses.filter(e =>
+          e.expenseType !== "shared" && e.paidByMemberId === loadedCurrentUserMemberId && e.isActive !== false
+        );
+        const myContribTotal = myPersonal
+          .filter(e => e.includeInGroupTotal !== false)
+          .reduce((s, e) => s + Number(e.amountEur || 0), 0);
+        const existingContrib = loadedContributions.find(c => c.userId === user.uid);
+        if (Math.abs((existingContrib?.totalEur || 0) - myContribTotal) > 0.001) {
+          await setDoc(
+            doc(db, "trips", tripId, "personalContributions", user.uid),
+            { totalEur: myContribTotal, updatedAt: new Date().toISOString() }
+          ).catch(() => {});
+          setPersonalContributions(prev => {
+            const next = prev.filter(c => c.userId !== user.uid);
+            return [...next, { userId: user.uid, totalEur: myContribTotal }];
+          });
+        }
       }
 
       setBudgetForm(current => ({
@@ -3848,7 +3881,31 @@ function App() {
     }
   }
 
-  // -------------------- Personal budget --------------------
+  // -------------------- Personal budget & contributions --------------------
+  // Recalculates the current user's personal contribution total from the live
+  // expenses array and writes a single aggregate doc visible to all trip members.
+  async function recalculatePersonalContribution(updatedExpenses) {
+    if (!selectedTrip || !user?.uid || isDemoMode()) return;
+    const myMemberId = currentUserMemberId;
+    const total = updatedExpenses
+      .filter(e =>
+        e.expenseType !== "shared" &&
+        e.paidByMemberId === myMemberId &&
+        e.isActive !== false &&
+        e.includeInGroupTotal !== false
+      )
+      .reduce((s, e) => s + Number(e.amountEur || 0), 0);
+    const rounded = roundMoney(total);
+    await setDoc(
+      doc(db, "trips", selectedTrip.id, "personalContributions", user.uid),
+      { totalEur: rounded, updatedAt: new Date().toISOString() }
+    ).catch(() => {});
+    setPersonalContributions(prev => {
+      const next = prev.filter(c => c.userId !== user.uid);
+      return [...next, { userId: user.uid, totalEur: rounded }];
+    });
+  }
+
   async function handleSavePersonalBudget() {
     if (!selectedTrip || !user?.uid || isDemoMode()) return;
     const amount = Number(personalBudgetForm.amount);
@@ -4123,6 +4180,9 @@ function App() {
         scope: expenseScope,
         visibleTo,
         countsTowardGroupSettlement: expenseScope === "group",
+        includeInGroupTotal: expenseScope === "personal"
+          ? normalizedExpenseForm.includeInGroupTotal !== false
+          : true,
         isActive: true,
         createdBy: user.uid,
         createdAt: serverTimestamp(),
@@ -4203,7 +4263,8 @@ function App() {
       paidByMemberId: defaultPayerId,
       splitMemberIds: defaultSplitMemberIds,
       customSplitShares:
-        expense.customSplitSharesOriginal || expense.customSplitShares || {}
+        expense.customSplitSharesOriginal || expense.customSplitShares || {},
+      includeInGroupTotal: expense.includeInGroupTotal !== false
     });
   }
 
@@ -4289,6 +4350,9 @@ function App() {
           scope: expenseScope,
           visibleTo,
           countsTowardGroupSettlement: expenseScope === "group",
+          includeInGroupTotal: expenseScope === "personal"
+            ? expenseEditForm.includeInGroupTotal !== false
+            : true,
           isActive: true,
           updatedAt: serverTimestamp()
         }
@@ -5770,6 +5834,24 @@ function App() {
                   👥 Shared
                 </button>
               </div>
+
+              {formData.expenseType === "personal" && (
+                <label className="include-in-group-toggle">
+                  <div className="include-in-group-toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={formData.includeInGroupTotal !== false}
+                      onChange={e => setFormData({ ...formData, includeInGroupTotal: e.target.checked })}
+                    />
+                    <span className="include-in-group-label">Count toward group total</span>
+                  </div>
+                  <p className="include-in-group-hint">
+                    {formData.includeInGroupTotal !== false
+                      ? "Amount added to trip's Total Spent visible to all members. Details stay private."
+                      : "Fully private — only visible in your Personal Spending card."}
+                  </p>
+                </label>
+              )}
             </div>
           )}
 

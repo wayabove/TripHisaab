@@ -321,6 +321,11 @@ service cloud.firestore {
       match /personalBudgets/{userId} {
         allow read, write: if signedIn() && request.auth.uid == userId;
       }
+
+      match /personalContributions/{userId} {
+        allow read: if canReadTrip(tripId);
+        allow write: if signedIn() && request.auth.uid == userId;
+      }
     }
   }
 }

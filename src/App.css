@@ -7736,3 +7736,10 @@ p {
 .personal-budget-amount-input { flex: 1; min-width: 0; }
 .personal-budget-currency-select { width: 160px; flex-shrink: 0; }
 .personal-budget-form-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---- Include in group total toggle (personal expense form) ---- */
+.include-in-group-toggle { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; cursor: pointer; }
+.include-in-group-toggle-row { display: flex; align-items: center; gap: 8px; }
+.include-in-group-toggle-row input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--primary, #0f766e); cursor: pointer; flex-shrink: 0; }
+.include-in-group-label { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.include-in-group-hint { font-size: 0.78rem; color: var(--text-muted); margin: 0; padding-left: 25px; line-height: 1.4; }
