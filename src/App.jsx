@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 const APP_VERSION = "2.1.0";
 const TRIP_SNAPSHOT_PREFIX = "triphisaab-trip-snapshot";
+const TRIP_LIST_SNAPSHOT_PREFIX = "triphisaab-trip-list-snapshot";
+const PENDING_WRITES_STORAGE_KEY = "triphisaab-pending-write-count";
 import {
   signInWithPopup,
   signOut,
@@ -308,6 +310,10 @@ function getWriteVersion(data) {
 
 function getTripSnapshotKey(userId, tripId) {
   return `${TRIP_SNAPSHOT_PREFIX}-${userId || "anon"}-${tripId}`;
+}
+
+function getTripListSnapshotKey(userId) {
+  return `${TRIP_LIST_SNAPSHOT_PREFIX}-${userId || "anon"}`;
 }
 
 function getPrivateSettlementGroups(expenses, currentUserId, isAdmin = false) {
@@ -1542,8 +1548,8 @@ function EmptyState({ icon, title, description, className = "empty-state", iconC
   );
 }
 
-function SyncStatusBanner({ isOnline, syncStatus, hasPendingWrites, lastRefreshAt, onRefresh }) {
-  const show = !isOnline || syncStatus === "syncing" || syncStatus === "pending" || hasPendingWrites || syncStatus === "error";
+function SyncStatusBanner({ isOnline, syncStatus, hasPendingWrites, pendingWriteCount, lastRefreshAt, offlineSnapshotAt, onRefresh }) {
+  const show = !isOnline || syncStatus === "syncing" || syncStatus === "pending" || hasPendingWrites || pendingWriteCount > 0 || syncStatus === "error";
   if (!show) return null;
   const label =
     !isOnline
@@ -1552,21 +1558,25 @@ function SyncStatusBanner({ isOnline, syncStatus, hasPendingWrites, lastRefreshA
       ? "Syncing"
       : syncStatus === "error"
       ? "Sync issue"
+      : pendingWriteCount > 0
+      ? `${pendingWriteCount} change${pendingWriteCount === 1 ? "" : "s"} waiting`
       : "Pending sync";
   const detail =
     !isOnline
-      ? "You can keep editing. Changes sync when you're back online."
+      ? "You can keep editing from the last saved trip data. Changes sync when you're back online."
       : syncStatus === "syncing"
       ? "Refreshing the latest trip data..."
       : syncStatus === "error"
       ? "Some changes may need attention when the network is stable."
       : "Changes saved on this device and waiting for confirmation.";
+  const bannerStatus = !isOnline ? "offline" : pendingWriteCount > 0 ? "pending" : syncStatus;
   return (
-    <div className={`sync-banner sync-banner--${!isOnline ? "offline" : syncStatus}`} role="status" aria-live="polite">
+    <div className={`sync-banner sync-banner--${bannerStatus}`} role="status" aria-live="polite">
       <div className="sync-banner-dot" />
       <div className="sync-banner-copy">
         <strong>{label}</strong>
         <span>{detail}</span>
+        {offlineSnapshotAt ? <small>Offline copy saved {offlineSnapshotAt.toLocaleString([], { dateStyle: "short", timeStyle: "short" })}</small> : null}
         {lastRefreshAt && isOnline ? <small>Last checked {lastRefreshAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small> : null}
       </div>
       {isOnline ? (
@@ -1641,7 +1651,15 @@ function App() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
   const [syncStatus, setSyncStatus] = useState("synced");
   const [hasPendingWrites, setHasPendingWrites] = useState(false);
+  const [pendingWriteCount, setPendingWriteCount] = useState(() => {
+    try {
+      return Math.max(0, Number(localStorage.getItem(PENDING_WRITES_STORAGE_KEY) || 0));
+    } catch {
+      return 0;
+    }
+  });
   const [lastRefreshAt, setLastRefreshAt] = useState(null);
+  const [offlineSnapshotAt, setOfflineSnapshotAt] = useState(null);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState(() =>
     typeof Notification === "undefined" ? "unsupported" : Notification.permission
   );
@@ -1665,6 +1683,7 @@ function App() {
     }
   });
   const [tripDataLoading, setTripDataLoading] = useState(false);
+  const [loadedTripDataId, setLoadedTripDataId] = useState("");
   const [deletingTrip, setDeletingTrip] = useState(false);
   const [leavingTrip, setLeavingTrip] = useState(false);
 
@@ -1860,7 +1879,7 @@ function App() {
       setSyncStatus("syncing");
       refreshCurrentView({ silent: true }).finally(() => {
         setLastRefreshAt(new Date());
-        setSyncStatus("synced");
+        setSyncStatus(pendingWriteCount > 0 ? "pending" : "synced");
         showToast("Back online. Data refreshed.", "success");
       });
     };
@@ -1874,7 +1893,19 @@ function App() {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
     };
-  }, [selectedTrip?.id, user?.uid, user?.email]);
+  }, [selectedTrip?.id, user?.uid, user?.email, pendingWriteCount]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PENDING_WRITES_STORAGE_KEY, String(Math.max(0, pendingWriteCount)));
+    } catch {
+      /* localStorage unavailable */
+    }
+    if (pendingWriteCount > 0) {
+      setHasPendingWrites(true);
+      if (syncStatus === "synced") setSyncStatus(navigator.onLine === false ? "offline" : "pending");
+    }
+  }, [pendingWriteCount, syncStatus]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -1942,6 +1973,39 @@ function App() {
     document.addEventListener('scroll', onScroll, { passive: true, capture: true });
     return () => document.removeEventListener('scroll', onScroll, true);
   }, []);
+
+  useEffect(() => {
+    if (!user?.uid || !selectedTrip?.id || loadedTripDataId !== selectedTrip.id) return;
+    saveTripSnapshot(selectedTrip.id, {
+      trip: selectedTrip,
+      members,
+      categories,
+      predictions,
+      expenses,
+      settlements,
+      tasks,
+      notifications,
+      settlementGroups,
+      personalBudget,
+      personalContributions,
+      tripTotalsSummary
+    });
+  }, [
+    user?.uid,
+    selectedTrip,
+    loadedTripDataId,
+    members,
+    categories,
+    predictions,
+    expenses,
+    settlements,
+    tasks,
+    notifications,
+    settlementGroups,
+    personalBudget,
+    personalContributions,
+    tripTotalsSummary
+  ]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async currentUser => {
@@ -3281,10 +3345,18 @@ function App() {
         return bT - aT;
       });
       setTrips(loaded);
+      saveTripListSnapshot(userId, loaded);
       return loaded;
     } catch (error) {
       console.error("Could not load trips:", error);
-      showToast("Could not load trips. Check your Firestore rules.", "error");
+      const restoredTrips = readTripListSnapshot(userId);
+      if (restoredTrips.length > 0) {
+        setTrips(restoredTrips);
+        setSyncStatus(navigator.onLine === false ? "offline" : "error");
+        showToast("Showing saved trips from this device.", "info");
+        return restoredTrips;
+      }
+      showToast("Could not load trips. Connect once to save trips for offline use.", "error");
       return [];
     } finally {
       setTripLoading(false);
@@ -3385,6 +3457,17 @@ function App() {
     setSyncStatus("synced");
   }
 
+  function updatePendingWriteCount(delta) {
+    setPendingWriteCount(current => {
+      const next = Math.max(0, current + delta);
+      if (next === 0 && delta < 0) {
+        setHasPendingWrites(false);
+        if (syncStatus !== "error") setSyncStatus(navigator.onLine === false ? "offline" : "synced");
+      }
+      return next;
+    });
+  }
+
   async function refreshCurrentView({ silent = false } = {}) {
     if (!user) return;
     if (navigator.onLine === false) {
@@ -3423,30 +3506,65 @@ function App() {
 
   async function queueFirestoreWrite(writePromise, action = "Change") {
     if (navigator.onLine === false) {
+      updatePendingWriteCount(1);
       writePromise.catch(error => {
         console.error(`${action} failed while syncing`, error);
         setSyncStatus("error");
-      });
+      }).finally(() => updatePendingWriteCount(-1));
       offlineSaveMessage(action);
       return { queued: true };
     }
-    await writePromise;
+    updatePendingWriteCount(1);
+    try {
+      await writePromise;
+    } finally {
+      updatePendingWriteCount(-1);
+    }
     setLastRefreshAt(new Date());
     return { queued: false };
   }
 
+  function saveTripListSnapshot(userId, tripList) {
+    if (!userId) return;
+    try {
+      localStorage.setItem(
+        getTripListSnapshotKey(userId),
+        JSON.stringify({
+          appVersion: APP_VERSION,
+          savedAt: new Date().toISOString(),
+          trips: tripList
+        })
+      );
+    } catch (error) {
+      console.warn("Could not save offline trip list snapshot", error);
+    }
+  }
+
+  function readTripListSnapshot(userId) {
+    if (!userId) return [];
+    try {
+      const raw = localStorage.getItem(getTripListSnapshotKey(userId));
+      const parsed = raw ? JSON.parse(raw) : null;
+      return Array.isArray(parsed?.trips) ? parsed.trips : [];
+    } catch {
+      return [];
+    }
+  }
+
   function saveTripSnapshot(tripId, snapshot) {
     if (!user?.uid || !tripId) return;
+    const savedAt = new Date().toISOString();
     try {
       localStorage.setItem(
         getTripSnapshotKey(user.uid, tripId),
         JSON.stringify({
           appVersion: APP_VERSION,
-          savedAt: new Date().toISOString(),
+          savedAt,
           tripId,
           ...snapshot
         })
       );
+      setOfflineSnapshotAt(new Date(savedAt));
     } catch (error) {
       console.warn("Could not save offline trip snapshot", error);
     }
@@ -3475,6 +3593,8 @@ function App() {
     setPersonalBudget(snapshot.personalBudget || null);
     setPersonalContributions(snapshot.personalContributions || []);
     setTripTotalsSummary(snapshot.tripTotalsSummary || null);
+    setLoadedTripDataId(snapshot.tripId || selectedTrip?.id || "");
+    setOfflineSnapshotAt(snapshot.savedAt ? new Date(snapshot.savedAt) : null);
     setSyncStatus(navigator.onLine === false ? "offline" : "synced");
     setLastRefreshAt(snapshot.savedAt ? new Date(snapshot.savedAt) : null);
     return true;
@@ -4275,6 +4395,7 @@ function App() {
           ? getTripTotalsSummary(loadedExpenses)
           : tripTotalsSummary
       });
+      setLoadedTripDataId(tripId);
 
       setBudgetForm(current => ({
         ...current,
@@ -4660,9 +4781,13 @@ function App() {
       return;
     }
     try {
-      await deleteDoc(doc(db, "trips", selectedTrip.id, "predictions", entry.id));
+      const { queued } = await queueFirestoreWrite(
+        deleteDoc(doc(db, "trips", selectedTrip.id, "predictions", entry.id)),
+        "Budget deletion"
+      );
+      setPredictions(current => current.filter(item => item.id !== entry.id));
       if (editingBudgetId === entry.id) resetBudgetForm();
-      await loadTripData(selectedTrip.id);
+      if (!queued) await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not delete plan budget:", error);
       showToast("Could not delete plan budget.", "error");
@@ -4676,10 +4801,13 @@ function App() {
     if (!selectedTrip || !user?.uid || isDemoMode()) return;
     const myMemberId = currentUserMemberId;
     const summary = getMemberContributionSummary(updatedExpenses, myMemberId);
-    await setDoc(
-      doc(db, "trips", selectedTrip.id, "personalContributions", user.uid),
-      { ...summary, memberId: myMemberId, updatedAt: new Date().toISOString() },
-      { merge: true }
+    await queueFirestoreWrite(
+      setDoc(
+        doc(db, "trips", selectedTrip.id, "personalContributions", user.uid),
+        { ...summary, memberId: myMemberId, updatedAt: new Date().toISOString() },
+        { merge: true }
+      ),
+      "Personal contribution"
     ).catch(error => {
       console.warn("Could not recalculate personal contribution", error);
     });
@@ -4716,7 +4844,10 @@ function App() {
     if (!selectedTrip || !user?.uid || isDemoMode()) return;
     if (!window.confirm("Remove your personal budget?")) return;
     try {
-      await deleteDoc(doc(db, "trips", selectedTrip.id, "personalBudgets", user.uid));
+      await queueFirestoreWrite(
+        deleteDoc(doc(db, "trips", selectedTrip.id, "personalBudgets", user.uid)),
+        "Personal budget removal"
+      );
       setPersonalBudget(null);
       setShowPersonalBudgetForm(false);
     } catch (err) {
@@ -5023,8 +5154,14 @@ function App() {
     const undoId = expenseFeedback.expenseId;
     setExpenseFeedback(null);
     try {
-      await deleteDoc(doc(db, "trips", selectedTrip.id, "expenses", undoId));
-      await loadTripData(selectedTrip.id);
+      const { queued } = await queueFirestoreWrite(
+        deleteDoc(doc(db, "trips", selectedTrip.id, "expenses", undoId)),
+        "Expense undo"
+      );
+      const nextExpenses = expenses.filter(expense => expense.id !== undoId);
+      setExpenses(nextExpenses);
+      await recalculatePersonalContribution(nextExpenses);
+      if (!queued) await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not undo expense:", error);
       showToast("Could not undo expense.", "error");
@@ -5209,11 +5346,15 @@ function App() {
     );
     if (!confirmed) return;
     try {
-      await deleteDoc(
-        doc(db, "trips", selectedTrip.id, "expenses", expense.id)
+      const { queued } = await queueFirestoreWrite(
+        deleteDoc(doc(db, "trips", selectedTrip.id, "expenses", expense.id)),
+        "Expense deletion"
       );
+      const nextExpenses = expenses.filter(item => item.id !== expense.id);
+      setExpenses(nextExpenses);
+      await recalculatePersonalContribution(nextExpenses);
       if (editingExpenseId === expense.id) cancelEditingExpense();
-      await loadTripData(selectedTrip.id);
+      if (!queued) await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not delete expense:", error);
       showToast("Could not delete expense.", "error");
@@ -5554,11 +5695,16 @@ function App() {
     }
     if (!window.confirm(`Archive "${task.title}"?`)) return;
     try {
-      await updateDoc(doc(db, "trips", selectedTrip.id, "tasks", task.id), {
+      const taskUpdate = {
         isActive: false,
         updatedAt: serverTimestamp()
-      });
-      await loadTripData(selectedTrip.id);
+      };
+      const { queued } = await queueFirestoreWrite(
+        updateDoc(doc(db, "trips", selectedTrip.id, "tasks", task.id), taskUpdate),
+        "Task archive"
+      );
+      setTasks(current => current.map(item => item.id === task.id ? { ...item, isActive: false, updatedAt: new Date() } : item));
+      if (!queued) await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not archive task:", error);
       showToast("Could not archive task.", "error");
@@ -5985,7 +6131,8 @@ function App() {
   }
 
   async function createCompletedSettlement(data, amount, extra = {}) {
-    const settlementRef = await addDoc(collection(db, "trips", selectedTrip.id, "settlements"), {
+    const settlementRef = doc(collection(db, "trips", selectedTrip.id, "settlements"));
+    await queueFirestoreWrite(setDoc(settlementRef, {
       date: data.date || todayIso(),
       fromMemberId: data.fromMemberId,
       fromMemberName: memberNameOf(data.fromMemberId),
@@ -6003,12 +6150,13 @@ function App() {
       paidAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       ...extra
-    });
+    }), "Settlement");
     return settlementRef.id;
   }
 
   async function createSettlementApprovalNotification(data, amount) {
-    await addDoc(collection(db, "trips", selectedTrip.id, "notifications"), {
+    const notificationRef = doc(collection(db, "trips", selectedTrip.id, "notifications"));
+    await queueFirestoreWrite(setDoc(notificationRef, {
       type: "settlement_approval_requested",
       status: "pending",
       tripId: selectedTrip.id,
@@ -6029,12 +6177,13 @@ function App() {
       createdAt: serverTimestamp(),
       createdAtIso: new Date().toISOString(),
       updatedAt: serverTimestamp()
-    });
+    }), "Settlement notification");
   }
 
   async function createSettlementCompletedNotification(data, amount, settlementId) {
     try {
-      await addDoc(collection(db, "trips", selectedTrip.id, "notifications"), {
+      const notificationRef = doc(collection(db, "trips", selectedTrip.id, "notifications"));
+      await queueFirestoreWrite(setDoc(notificationRef, {
         type: "settlement_completed",
         status: "unread",
         tripId: selectedTrip.id,
@@ -6056,7 +6205,7 @@ function App() {
         createdAt: serverTimestamp(),
         createdAtIso: new Date().toISOString(),
         updatedAt: serverTimestamp()
-      });
+      }), "Settlement notification");
     } catch (error) {
       console.warn("Settlement completed, but notification could not be sent:", error);
     }
@@ -6136,16 +6285,19 @@ function App() {
         Number(notification.amountEur || 0),
         { approvedFromNotificationId: notification.id }
       );
-      await updateDoc(doc(db, "trips", selectedTrip.id, "notifications", notification.id), {
-        status: "approved",
-        settlementId,
-        approvedBy: user.uid,
-        approvedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
+      await queueFirestoreWrite(
+        updateDoc(doc(db, "trips", selectedTrip.id, "notifications", notification.id), {
+          status: "approved",
+          settlementId,
+          approvedBy: user.uid,
+          approvedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }),
+        "Notification approval"
+      );
       await createSettlementCompletedNotification(notification, Number(notification.amountEur || 0), settlementId);
       setSelectedNotification(null);
-      await loadTripData(selectedTrip.id);
+      if (navigator.onLine !== false) await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not approve settlement:", error);
       showToast("Could not approve settlement.", "error");
@@ -6265,11 +6417,14 @@ function App() {
     try {
       await Promise.all(
         readTargets.map(n =>
-          updateDoc(doc(db, "trips", selectedTrip.id, "notifications", n.id), {
-            status: "read",
-            readAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          })
+          queueFirestoreWrite(
+            updateDoc(doc(db, "trips", selectedTrip.id, "notifications", n.id), {
+              status: "read",
+              readAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            }),
+            "Notification read state"
+          )
         )
       );
     } catch (error) {
@@ -8787,7 +8942,9 @@ function App() {
             isOnline={isOnline}
             syncStatus={syncStatus}
             hasPendingWrites={hasPendingWrites}
+            pendingWriteCount={pendingWriteCount}
             lastRefreshAt={lastRefreshAt}
+            offlineSnapshotAt={offlineSnapshotAt}
             onRefresh={() => refreshCurrentView()}
           />
           {tripDataLoading ? (
@@ -11941,7 +12098,9 @@ function App() {
             isOnline={isOnline}
             syncStatus={syncStatus}
             hasPendingWrites={hasPendingWrites}
+            pendingWriteCount={pendingWriteCount}
             lastRefreshAt={lastRefreshAt}
+            offlineSnapshotAt={offlineSnapshotAt}
             onRefresh={() => refreshCurrentView()}
           />
 

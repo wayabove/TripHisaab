@@ -1166,6 +1166,7 @@ p {
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(12px);
 }
 
 .sync-banner--offline,
@@ -1218,6 +1219,10 @@ p {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.25;
+}
+
+.sync-banner-copy small + small {
+  margin-top: -1px;
 }
 
 .sync-banner-refresh {
@@ -6620,10 +6625,20 @@ p {
     top: 64px;
     margin: 8px 12px 0;
     padding: 9px 10px;
+    align-items: flex-start;
   }
 
   .sync-banner-copy span {
     font-size: 11px;
+  }
+
+  .sync-banner-copy small {
+    font-size: 10.5px;
+  }
+
+  .sync-banner-refresh {
+    min-height: 30px;
+    padding: 0 10px;
   }
 
   /* Show bottom nav */
