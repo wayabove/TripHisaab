@@ -1436,6 +1436,48 @@ function FormActions({
   );
 }
 
+function Icon({ name, size = 20, strokeWidth = 2, className = "app-icon", title }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    className,
+    "aria-hidden": title ? undefined : "true",
+    role: title ? "img" : undefined
+  };
+  const paths = {
+    plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
+    receipt: <><path d="M4 3v18l3-2 3 2 3-2 3 2 3-2 1 1V3H4z" /><path d="M8 8h8" /><path d="M8 12h8" /><path d="M8 16h5" /></>,
+    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /><path d="M7 15h3" /></>,
+    chart: <><path d="M4 19V5" /><path d="M4 19h16" /><rect x="7" y="11" width="3" height="5" rx="1" /><rect x="12" y="7" width="3" height="9" rx="1" /><rect x="17" y="9" width="3" height="7" rx="1" /></>,
+    handshake: <><path d="M7 11l3-3 4 4 3-3" /><path d="M3 12l4-4 5 5" /><path d="M21 12l-4-4-6 6" /><path d="M8 15l2 2" /><path d="M12 15l2 2" /></>,
+    check: <path d="M20 6 9 17l-5-5" />,
+    tag: <><path d="M20 13 11 22l-8-8 9-9h7v8z" /><path d="M16 8h.01" /></>,
+    users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
+    link: <><path d="M10 13a5 5 0 0 0 7.54.54l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15" /><path d="M14 11a5 5 0 0 0-7.54-.54l-2 2a5 5 0 0 0 7.07 7.07l1.15-1.15" /></>,
+    calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4" /><path d="M8 2v4" /><path d="M3 10h18" /></>,
+    message: <><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" /><path d="M8 10h.01" /><path d="M12 10h.01" /><path d="M16 10h.01" /></>,
+    list: <><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" /></>,
+    note: <><path d="M4 4h12l4 4v12H4z" /><path d="M16 4v4h4" /><path d="M8 13h8" /><path d="M8 17h5" /></>,
+    euro: <><path d="M4 10h10" /><path d="M4 14h9" /><path d="M18 6.5A7 7 0 1 0 18 17.5" /></>,
+    cash: <><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="3" /><path d="M6 9v.01" /><path d="M18 15v.01" /></>,
+    bank: <><path d="M3 10h18" /><path d="M5 10v8" /><path d="M9 10v8" /><path d="M15 10v8" /><path d="M19 10v8" /><path d="M3 18h18" /><path d="M12 3 4 8h16z" /></>,
+    refresh: <><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /></>,
+    plane: <><path d="M22 2 11 13" /><path d="m22 2-7 20-4-9-9-4 20-7z" /></>,
+    briefcase: <><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M3 12h18" /></>,
+    suitcase: <><rect x="5" y="6" width="14" height="15" rx="2" /><path d="M9 6V4h6v2" /><path d="M9 11h.01" /><path d="M15 11h.01" /></>,
+    eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></>,
+    cloud: <><path d="M17.5 19H7a5 5 0 1 1 1-9.9A7 7 0 0 1 21 12.5 3.5 3.5 0 0 1 17.5 19z" /></>,
+    settings: <><path d="M4 7h16" /><path d="M4 17h16" /><circle cx="9" cy="7" r="2" /><circle cx="15" cy="17" r="2" /></>
+  };
+  return <svg {...common}>{title ? <title>{title}</title> : null}{paths[name] || paths.receipt}</svg>;
+}
+
 function EmptyState({ icon, title, description, className = "empty-state", iconClass = "empty-icon", headingLevel = "h3" }) {
   const H = headingLevel;
   return (
@@ -4965,12 +5007,12 @@ function App() {
       setShowBetaWelcome(false);
     }
     const features = [
-      { icon: '💰', title: 'Plan Budget',       sub: 'Set category budgets before you travel' },
-      { icon: '💳', title: 'Track Expenses',    sub: 'Log every spend, split by person or group' },
-      { icon: '🤝', title: 'Smart Settle',      sub: 'See who owes whom and settle in one tap' },
-      { icon: '✅', title: 'Trip Tasks',         sub: 'Assign and track todos before and during the trip' },
-      { icon: '👥', title: 'Group & Members',   sub: 'Invite travel mates, manage access and roles' },
-      { icon: '📊', title: 'Spending Insights', sub: 'Visual breakdown by category' },
+      { icon: <Icon name="euro" />, title: 'Plan Budget',       sub: 'Set category budgets before you travel' },
+      { icon: <Icon name="card" />, title: 'Track Expenses',    sub: 'Log every spend, split by person or group' },
+      { icon: <Icon name="handshake" />, title: 'Smart Settle',      sub: 'See who owes whom and settle in one tap' },
+      { icon: <Icon name="check" />, title: 'Trip Tasks',         sub: 'Assign and track todos before and during the trip' },
+      { icon: <Icon name="users" />, title: 'Group & Members',   sub: 'Invite travel mates, manage access and roles' },
+      { icon: <Icon name="chart" />, title: 'Spending Insights', sub: 'Visual breakdown by category' },
     ];
     return (
       <div className="beta-welcome-overlay" role="dialog" aria-modal="true" aria-label="Welcome to TripHisaab Beta">
@@ -4992,7 +5034,7 @@ function App() {
             ))}
           </ul>
           <p className="beta-welcome-tip">
-            Found a bug or have ideas? Tap the <strong>💬</strong> button anytime to share feedback.
+            Found a bug or have ideas? Tap the feedback button anytime to share feedback.
           </p>
           <button className="primary-button beta-welcome-cta" type="button" onClick={dismiss}>
             Start exploring →
@@ -5077,7 +5119,7 @@ function App() {
               </label>
             </div>
             <button className="primary-button feedback-send-btn" type="button" onClick={sendFeedback}>
-              Send via email ✉️
+              Send via email
             </button>
           </div>
         )}
@@ -5088,7 +5130,7 @@ function App() {
           aria-expanded={feedbackOpen}
           onClick={() => setFeedbackOpen(v => !v)}
         >
-          <span className="feedback-fab-icon">💬</span>
+          <span className="feedback-fab-icon"><Icon name="message" /></span>
           <span className="feedback-fab-label">Feedback</span>
         </button>
       </div>
@@ -6556,13 +6598,13 @@ function App() {
     // Tabs vary by expense type
     const EXP_TABS = isShared
       ? [
-          { id: "basic",  label: "Details", icon: "📋" },
-          { id: "paidby", label: "Split",   icon: "👥" },
-          { id: "notes",  label: "More",    icon: "📝" },
+          { id: "basic",  label: "Details", icon: <Icon name="receipt" /> },
+          { id: "paidby", label: "Split",   icon: <Icon name="users" /> },
+          { id: "notes",  label: "More",    icon: <Icon name="note" /> },
         ]
       : [
-          { id: "basic", label: "Details", icon: "📋" },
-          { id: "notes", label: "More", icon: "📝" },
+          { id: "basic", label: "Details", icon: <Icon name="receipt" /> },
+          { id: "notes", label: "More", icon: <Icon name="note" /> },
         ];
 
     // Clamp active tab to valid tabs for current type
@@ -6692,14 +6734,14 @@ function App() {
                   className={`exp-type-btn${formData.expenseType === "personal" ? " active" : ""}`}
                   onClick={() => handleExpenseTypeChange("personal")}
                 >
-                  👤 Personal
+                  <Icon name="receipt" /> Personal
                 </button>
                 <button
                   type="button"
                   className={`exp-type-btn${formData.expenseType === "shared" ? " active" : ""}`}
                   onClick={() => handleExpenseTypeChange("shared")}
                 >
-                  👥 Shared
+                  <Icon name="users" /> Shared
                 </button>
               </div>
 
@@ -6883,10 +6925,10 @@ function App() {
                   value={formData.paymentMethod}
                   onChange={e => setFormData({ ...formData, paymentMethod: e.target.value })}
                 >
-                  <option value="card">💳 Card</option>
-                  <option value="cash">💵 Cash</option>
-                  <option value="bank">🏦 Bank transfer</option>
-                  <option value="other">🔄 Other</option>
+                  <option value="card">Card</option>
+                  <option value="cash">Cash</option>
+                  <option value="bank">Bank transfer</option>
+                  <option value="other">Other</option>
                 </select>
               </label>
 
@@ -7138,28 +7180,28 @@ function App() {
         label: "Pending total",
         value: formatMoney(pendingTotal),
         detail: "Needs to be settled",
-        icon: "€",
+        icon: <Icon name="euro" />,
         tone: "mint"
       },
       {
         label: "Payments needed",
         value: consolidatedSuggestions.length,
         detail: `${pendingSuggestions.length} total incl. private`,
-        icon: "⇄",
+        icon: <Icon name="refresh" />,
         tone: "blue"
       },
       {
         label: isFamilyCoupleMode ? "Units involved" : "People involved",
         value: involvedSet.size,
         detail: "In this settlement",
-        icon: "👥",
+        icon: <Icon name="users" />,
         tone: "purple"
       },
       {
         label: "Private groups",
         value: privateGroupsWithSuggestions.length,
         detail: "With private settlements",
-        icon: "👪",
+        icon: <Icon name="users" />,
         tone: "amber"
       }
     ];
@@ -7905,28 +7947,28 @@ function App() {
         label: "Trip total",
         value: formatMoney(totals.actual),
         sub: "Shared plus included personal totals",
-        icon: "€",
+        icon: <Icon name="euro" />,
         tone: "mint"
       },
       {
         label: "Shared",
         value: formatMoney(totals.shared),
         sub: `${expenseFilterOptions[1].count} expense${expenseFilterOptions[1].count === 1 ? "" : "s"}`,
-        icon: "S",
+        icon: <Icon name="users" />,
         tone: "blue"
       },
       {
         label: "My personal",
         value: formatMoney(expenseStats.personal),
         sub: `${expenseFilterOptions[2].count} expense${expenseFilterOptions[2].count === 1 ? "" : "s"}`,
-        icon: "P",
+        icon: <Icon name="receipt" />,
         tone: "violet"
       },
       {
         label: "This week",
         value: formatMoney(expenseStats.thisWeek),
         sub: `${expenseStats.thisWeekCount} expense${expenseStats.thisWeekCount === 1 ? "" : "s"}`,
-        icon: "W",
+        icon: <Icon name="calendar" />,
         tone: "amber",
         mobileOptional: true
       }
@@ -7955,14 +7997,14 @@ function App() {
     };
 
     const navItems = [
-      { key: "dashboard", label: "Trip Overview", icon: "⊞" },
-      { key: "prediction", label: "Plan Budget", icon: "📊" },
-      { key: "actual", label: "Expenses", icon: "💳" },
-      { key: "settlements", label: "Settle", icon: "🤝" },
-      { key: "tasks", label: "Tasks", icon: "✓" },
-      { key: "categories", label: "Categories", icon: "🏷" },
-      { key: "members", label: "Members", icon: "👥" },
-      { key: "settings", label: "Settings", icon: "⚙" },
+      { key: "dashboard", label: "Trip Overview", icon: <Icon name="receipt" /> },
+              { key: "prediction", label: "Plan Budget", icon: <Icon name="chart" /> },
+              { key: "actual", label: "Expenses", icon: <Icon name="card" /> },
+              { key: "settlements", label: "Settle", icon: <Icon name="handshake" /> },
+              { key: "tasks", label: "Tasks", icon: <Icon name="check" /> },
+              { key: "categories", label: "Categories", icon: <Icon name="tag" /> },
+              { key: "members", label: "Members", icon: <Icon name="users" /> },
+      { key: "settings", label: "Settings", icon: <Icon name="settings" /> },
     ];
 
     return (
@@ -8001,7 +8043,7 @@ function App() {
                 openInviteShareModal();
               }}
             >
-              <span className="sidebar-nav-icon">🔗</span>
+              <span className="sidebar-nav-icon"><Icon name="link" /></span>
               {creatingInvite ? "Creating invite..." : "Share invite"}
             </button>
           ) : null}
@@ -8100,13 +8142,13 @@ function App() {
                     disabled={creatingInvite}
                     onClick={openInviteShareModal}
                   >
-                    🔗 {creatingInvite ? "Creating link..." : "Share invite"}
+                    <Icon name="link" /> {creatingInvite ? "Creating link..." : "Share invite"}
                 </button>
               </div>
               ) : null}
               <h1 className="trip-hero-title">{selectedTrip.name}</h1>
               <div className="trip-hero-dates">
-                📅 {selectedTrip.startDate} – {selectedTrip.endDate}
+                <Icon name="calendar" /> {selectedTrip.startDate} – {selectedTrip.endDate}
               </div>
             </div>
 
@@ -8116,26 +8158,26 @@ function App() {
               <div className="dash-action-bar dash-section-actions" aria-label="Primary trip actions">
                 {!demoMode ? (
                   <button className="dash-action-btn dash-action-expense" type="button" onClick={() => openFastExpenseModal()}>
-                    <div className="dash-action-icon dash-action-icon--expense">➕</div>
+                    <div className="dash-action-icon dash-action-icon--expense"><Icon name="plus" /></div>
                     <span>Add Expense</span>
                   </button>
                 ) : null}
                 <button className="dash-action-btn" type="button" onClick={() => setActiveTab("prediction")}>
-                  <div className="dash-action-icon dash-action-icon--budget">📊</div>
+                  <div className="dash-action-icon dash-action-icon--budget"><Icon name="chart" /></div>
                   <span>Add Budget</span>
                 </button>
                 <button className="dash-action-btn" type="button" onClick={() => setActiveTab("settlements")}>
-                  <div className="dash-action-icon dash-action-icon--settle">🤝</div>
+                  <div className="dash-action-icon dash-action-icon--settle"><Icon name="handshake" /></div>
                   <span>Settlements</span>
                 </button>
                 {!demoMode ? (
                   <button className="dash-action-btn" type="button" onClick={openCreateTask}>
-                    <div className="dash-action-icon dash-action-icon--tasks">✓</div>
+                    <div className="dash-action-icon dash-action-icon--tasks"><Icon name="check" /></div>
                     <span>New Task</span>
                   </button>
                 ) : null}
                 <button className="dash-action-btn" type="button" onClick={() => setActiveTab("categories")}>
-                  <div className="dash-action-icon dash-action-icon--category">🏷️</div>
+                  <div className="dash-action-icon dash-action-icon--category"><Icon name="tag" /></div>
                   <span>Categories</span>
                 </button>
               </div>
@@ -8579,7 +8621,7 @@ function App() {
                     </div>
                     {totals.actual > 0 && daysIn > 0 && (
                       <div className="dash-glance-item">
-                        <div className="dash-glance-icon info">📊</div>
+                        <div className="dash-glance-icon info"><Icon name="chart" /></div>
                         <div>
                           <div className="dash-glance-title">Keep it balanced</div>
                           <div className="dash-glance-sub">Average spend per day: {formatMoney(totals.actual / daysIn)}</div>
@@ -8588,7 +8630,7 @@ function App() {
                     )}
                     {suggestedSettlements.length > 0 && (
                       <div className="dash-glance-item">
-                        <div className="dash-glance-icon primary">🤝</div>
+                        <div className="dash-glance-icon primary"><Icon name="handshake" /></div>
                         <div>
                           <div className="dash-glance-title">Smart settle available</div>
                           <div className="dash-glance-sub">{suggestedSettlements.length} suggested settlement{suggestedSettlements.length !== 1 ? "s" : ""}</div>
@@ -8982,7 +9024,7 @@ function App() {
             </div>
 
             {expenses.length === 0 ? (
-              <EmptyState className="empty-card" icon="€" title="No expenses yet" description="Add your first expense to start tracking trip spending." />
+              <EmptyState className="empty-card" icon={<Icon name="euro" />} title="No expenses yet" description="Add your first expense to start tracking trip spending." />
             ) : (
               <section className="expense-table-card" aria-label="Expenses list">
                 <div className="expense-table-head">
@@ -9299,7 +9341,7 @@ function App() {
               <div className="task-summary-grid">
                 {taskStats.map(stat => (
                   <article className="task-summary-card" key={stat.label}>
-                    <span className={`task-summary-icon ${stat.tone}`}>✓</span>
+                    <span className={`task-summary-icon ${stat.tone}`}><Icon name="check" /></span>
                     <div>
                       <strong>{stat.value}</strong>
                       <p>{stat.label}</p>
@@ -9446,10 +9488,10 @@ function App() {
           const categoriesInExpenses = categories.filter(category => expenseCategoryCounts.has(category.id)).length;
           const categoriesInBudget = categories.filter(category => budgetCategoryIds.has(category.id)).length;
           const categoryStats = [
-            { label: "Active categories", value: categories.filter(category => category.isActive).length, icon: "A", tone: "mint" },
-            { label: "Inactive categories", value: categories.filter(category => !category.isActive).length, icon: "I", tone: "peach" },
-            { label: "Used in budget", value: categoriesInBudget, icon: "B", tone: "blue" },
-            { label: "Used in expenses", value: categoriesInExpenses, icon: "E", tone: "violet" }
+            { label: "Active categories", value: categories.filter(category => category.isActive).length, icon: <Icon name="check" />, tone: "mint" },
+            { label: "Inactive categories", value: categories.filter(category => !category.isActive).length, icon: <Icon name="refresh" />, tone: "peach" },
+            { label: "Used in budget", value: categoriesInBudget, icon: <Icon name="chart" />, tone: "blue" },
+            { label: "Used in expenses", value: categoriesInExpenses, icon: <Icon name="card" />, tone: "violet" }
           ];
           const filteredCategories = categories.filter(category => {
             const search = categorySearch.trim().toLowerCase();
@@ -10155,11 +10197,11 @@ function App() {
         {/* Bottom navigation — visible on mobile only */}
         <nav className="bottom-nav" data-tour="bottom-nav-tour">
           {[
-            { key: "dashboard",   label: "Overview", icon: "⊞" },
-            { key: "actual",      label: "Expenses", icon: "💳" },
-            { key: "settlements", label: "Settle",   icon: "🤝" },
-            { key: "prediction",  label: "Budget",   icon: "📊" },
-            { key: "tasks",       label: "Tasks",    icon: "✓"  },
+            { key: "dashboard",   label: "Overview", icon: <Icon name="receipt" /> },
+            { key: "actual",      label: "Expenses", icon: <Icon name="card" /> },
+            { key: "settlements", label: "Settle",   icon: <Icon name="handshake" /> },
+            { key: "prediction",  label: "Budget",   icon: <Icon name="chart" /> },
+            { key: "tasks",       label: "Tasks",    icon: <Icon name="check" />  },
           ].map(({ key, label, icon }) => (
             <button
               key={key}
@@ -10180,7 +10222,7 @@ function App() {
           aria-label="Add expense"
           onClick={() => openFastExpenseModal()}
         >
-          <span className="floating-add-icon">+</span>
+          <span className="floating-add-icon"><Icon name="plus" /></span>
           <span className="floating-add-label">Add Expense</span>
         </button>
         ) : null}
@@ -10952,7 +10994,7 @@ function App() {
 
           <div className="landing-privacy-grid">
             <div className="landing-privacy-block">
-              <span className="landing-privacy-icon">📥</span>
+              <span className="landing-privacy-icon"><Icon name="receipt" /></span>
               <div>
                 <strong>What we collect</strong>
                 <p>When you sign in with Google, we receive your name, email address, and profile photo. That is it. Inside the app, we store only what you create: trips, expenses, budgets, members, tasks, and settlements. We never read anything from your Google account beyond these three basics.</p>
@@ -10960,7 +11002,7 @@ function App() {
             </div>
 
             <div className="landing-privacy-block">
-              <span className="landing-privacy-icon">👁️</span>
+              <span className="landing-privacy-icon"><Icon name="eye" /></span>
               <div>
                 <strong>Who can see your trips</strong>
                 <p>Only you and the people you personally invite can see a trip's data. Nobody outside your group can browse your expenses. Trip owners control who has access and can remove any member at any time.</p>
@@ -10968,7 +11010,7 @@ function App() {
             </div>
 
             <div className="landing-privacy-block">
-              <span className="landing-privacy-icon">🏦</span>
+              <span className="landing-privacy-icon"><Icon name="bank" /></span>
               <div>
                 <strong>We never touch real money</strong>
                 <p>TripHisaab only records numbers you type in. We have no connection to your bank, your cards, or any payment system. We cannot see, move, or access any real funds — ever.</p>
@@ -10976,7 +11018,7 @@ function App() {
             </div>
 
             <div className="landing-privacy-block">
-              <span className="landing-privacy-icon">🚫</span>
+              <span className="landing-privacy-icon"><Icon name="check" /></span>
               <div>
                 <strong>What we never do</strong>
                 <p>We do not sell your data. We do not share it with advertisers. We do not run ads inside the app. We do not profile you, track you across other websites, or use your data for anything beyond making the app work for you.</p>
@@ -10984,7 +11026,7 @@ function App() {
             </div>
 
             <div className="landing-privacy-block">
-              <span className="landing-privacy-icon">☁️</span>
+              <span className="landing-privacy-icon"><Icon name="cloud" /></span>
               <div>
                 <strong>Where it lives</strong>
                 <p>All data is stored on Google Firebase — an encrypted, secure cloud service. We do not run our own servers. Your data benefits from the same security infrastructure that powers products used by billions of people.</p>
@@ -10992,7 +11034,7 @@ function App() {
             </div>
 
             <div className="landing-privacy-block">
-              <span className="landing-privacy-icon">🎛️</span>
+              <span className="landing-privacy-icon"><Icon name="settings" /></span>
               <div>
                 <strong>You stay in control</strong>
                 <p>Export any trip as a CSV file anytime. Delete a trip and all its data permanently whenever you want. Your data belongs to you — we are just holding it while you need it.</p>
@@ -11227,7 +11269,7 @@ function App() {
             {/* Stats row */}
             <div className="home-stats-row" data-tour="home-stats">
               <div className="home-stat-card">
-                <div className="home-stat-icon home-stat-icon--work">💼</div>
+                <div className="home-stat-icon home-stat-icon--work"><Icon name="briefcase" /></div>
                 <div>
                   <div className="home-stat-label">Total trips</div>
                   <div className="home-stat-num">{trips.length}</div>
@@ -11235,7 +11277,7 @@ function App() {
                 </div>
               </div>
               <div className="home-stat-card">
-                <div className="home-stat-icon home-stat-icon--travel">✈️</div>
+                <div className="home-stat-icon home-stat-icon--travel"><Icon name="plane" /></div>
                 <div>
                   <div className="home-stat-label">Active trips</div>
                   <div className="home-stat-num">{activeTripCount}</div>
@@ -11243,7 +11285,7 @@ function App() {
                 </div>
               </div>
               <div className="home-stat-card">
-                <div className="home-stat-icon home-stat-icon--calendar">📅</div>
+                <div className="home-stat-icon home-stat-icon--calendar"><Icon name="calendar" /></div>
                 <div>
                   <div className="home-stat-label">Upcoming trips</div>
                   <div className="home-stat-num">{upcomingCount}</div>
@@ -11261,7 +11303,7 @@ function App() {
               <p className="muted" style={{padding:"20px 0"}}>Loading trips...</p>
             ) : filteredTrips.length === 0 ? (
               <div className="empty-card">
-                <div className="empty-icon">🧳</div>
+                <div className="empty-icon"><Icon name="suitcase" /></div>
                 <h3>{tripSearch ? "No trips match your search" : "No trips yet"}</h3>
                 <p className="muted">
                   {tripSearch ? "Try a different name." : "Tap + Create new trip to get started."}
