@@ -27,7 +27,25 @@ import {
   SUPPORTED_CURRENCIES,
   FALLBACK_EXCHANGE_RATES_FROM_EUR,
   TRIP_STATUSES,
-  CATEGORY_TYPES
+  CATEGORY_TYPES,
+  MEMBER_DIRECTORY_STORAGE_KEY,
+  APP_VIEW_STORAGE_KEY,
+  LAST_TRIP_STORAGE_KEY,
+  LAST_TAB_STORAGE_KEY,
+  TRIP_IMAGE_MAX_WIDTH,
+  TRIP_IMAGE_MAX_HEIGHT,
+  TRIP_IMAGE_QUALITY,
+  TRIP_IMAGE_MAX_BYTES,
+  PROFILE_IMAGE_SIZE,
+  PROFILE_IMAGE_QUALITY,
+  MONEY_EPSILON,
+  EMPTY_EXPENSE_FORM,
+  EMPTY_BUDGET_FORM,
+  EMPTY_TASK_FORM,
+  CATEGORY_EMOJI_OPTIONS,
+  BUDGET_SCOPE_OPTIONS,
+  TASK_TYPE_OPTIONS,
+  TASK_SCOPE_OPTIONS
 } from "./constants";
 import {
   todayIso,
@@ -47,83 +65,6 @@ import {
   openDatePicker
 } from "./utils";
 import "./App.css";
-
-const EMPTY_EXPENSE_FORM = {
-  date: "",
-  time: "",
-  categoryId: "",
-  description: "",
-  originalAmount: "",
-  originalCurrency: "EUR",
-  paymentMethod: "card",
-  notes: "",
-  expenseType: "personal",
-  splitType: "equal",
-  paidByMemberId: "",
-  splitMemberIds: [],
-  customSplitShares: {},
-  includeInGroupTotal: true
-};
-
-const TRIP_IMAGE_MAX_WIDTH = 640;
-const TRIP_IMAGE_MAX_HEIGHT = 360;
-const TRIP_IMAGE_QUALITY = 0.68;
-const TRIP_IMAGE_MAX_BYTES = 260 * 1024;
-const PROFILE_IMAGE_SIZE = 256;
-const PROFILE_IMAGE_QUALITY = 0.82;
-const MEMBER_DIRECTORY_STORAGE_KEY = "triphisaab-member-directory";
-const APP_VIEW_STORAGE_KEY = "triphisaab-app-view";
-const LAST_TRIP_STORAGE_KEY = "triphisaab-last-trip";
-const LAST_TAB_STORAGE_KEY = "triphisaab-last-tab";
-const CATEGORY_EMOJI_OPTIONS = [
-  "📌", "✈️", "🚆", "🚕", "🚌", "⛽", "🏨", "🏠",
-  "🍽️", "☕", "🍕", "🛒", "🛍️", "🎟️", "🎡", "🏖️",
-  "💸", "💳", "🧾", "🎁", "💊", "📱", "🧳", "✨",
-  "🍔", "🍜", "🥐", "🥤", "🍷", "🚗", "🚲", "🚇",
-  "⛴️", "🛫", "🛬", "🛌", "🏕️", "🎭", "🎮", "📷",
-  "🧴", "👕", "👶", "🐾", "🗺️", "🧡", "⭐", "🔖"
-];
-
-const BUDGET_SCOPE_OPTIONS = [
-  { value: "group", label: "Whole group" },
-  { value: "selected", label: "Selected people" },
-  { value: "me", label: "Only me" }
-];
-
-const TASK_TYPE_OPTIONS = [
-  { value: "general", label: "General" },
-  { value: "booking", label: "Booking" },
-  { value: "payment", label: "Payment" },
-  { value: "receipt", label: "Receipt" },
-  { value: "packing", label: "Packing" },
-  { value: "document", label: "Document" }
-];
-
-const TASK_SCOPE_OPTIONS = [
-  { value: "group", label: "Whole group" },
-  { value: "selected_members", label: "Selected people" },
-  { value: "personal", label: "Only me" }
-];
-
-const EMPTY_BUDGET_FORM = {
-  categoryId: "",
-  title: "",
-  estimatedEur: "",
-  scope: "group",
-  visibleMemberIds: []
-};
-
-const EMPTY_TASK_FORM = {
-  title: "",
-  type: "general",
-  scope: "group",
-  assignedTo: [],
-  selectedMemberIds: [],
-  dueDate: "",
-  notes: ""
-};
-
-const MONEY_EPSILON = 0.01;
 
 function roundMoney(amount) {
   return Math.round(Number(amount || 0) * 100) / 100;
@@ -1569,6 +1510,8 @@ function App() {
   const [pendingSettleAmount, setPendingSettleAmount] = useState("");
   const [pendingSettleActualPayer, setPendingSettleActualPayer] = useState("");
   const [smartSettleToast, setSmartSettleToast] = useState("");
+  const [appToast, setAppToast] = useState(null);
+  const appToastTimer = useRef(null);
   const [settlementMode, setSettlementMode] = useState("fewest_payments");
   const [settlementGroups, setSettlementGroups] = useState([]);
   const [settlementGroupForm, setSettlementGroupForm] = useState({ name: "", memberIds: [], type: "couple" });
@@ -2310,6 +2253,58 @@ function App() {
     return "Fallback fixed MVP rates";
   }, [ratesMeta]);
 
+  const myPersonalExpenses = useMemo(
+    () =>
+      currentUserMemberId
+        ? expenses.filter(
+            e =>
+              e.expenseType !== "shared" &&
+              e.paidByMemberId === currentUserMemberId &&
+              e.isActive !== false
+          )
+        : [],
+    [expenses, currentUserMemberId]
+  );
+
+  const memberSpending = useMemo(() => {
+    const result = balances.map(b => {
+      const personalPaid = roundMoney(
+        expenses
+          .filter(
+            e =>
+              e.isActive !== false &&
+              e.expenseType !== "shared" &&
+              e.paidByMemberId === b.memberId
+          )
+          .reduce((s, e) => s + Number(e.amountEur || 0), 0)
+      );
+      return { ...b, personalPaid, totalPaid: roundMoney(b.paid + personalPaid) };
+    });
+    result.sort((a, b) => {
+      if (a.memberId === currentUserMemberId) return -1;
+      if (b.memberId === currentUserMemberId) return 1;
+      return b.totalPaid - a.totalPaid;
+    });
+    return result;
+  }, [balances, expenses, currentUserMemberId]);
+
+  const spendingBreakdown = useMemo(
+    () =>
+      categories
+        .map((category, index) => {
+          const actual = actualByCategoryId.get(category.id) || 0;
+          return {
+            ...category,
+            actual,
+            color:
+              category.color ||
+              ["#0f766e", "#2563eb", "#7c3aed", "#ea580c", "#16a34a", "#db2777"][index % 6]
+          };
+        })
+        .filter(category => category.actual > 0),
+    [categories, actualByCategoryId]
+  );
+
   // -------------------- Rates --------------------
   async function loadLiveExchangeRates() {
     setRatesLoading(true);
@@ -2376,6 +2371,13 @@ function App() {
     } finally {
       setRatesLoading(false);
     }
+  }
+
+  // -------------------- Toast notifications --------------------
+  function showToast(message, type = "error") {
+    if (appToastTimer.current) clearTimeout(appToastTimer.current);
+    setAppToast({ message, type });
+    appToastTimer.current = setTimeout(() => setAppToast(null), 3800);
   }
 
   // -------------------- Auth & user profile --------------------
@@ -2485,7 +2487,7 @@ function App() {
       }
     } catch (error) {
       console.error("Could not save profile picture:", error);
-      alert("Could not save profile picture.");
+      showToast("Could not save profile picture.", "error");
     } finally {
       setSavingProfilePicture(false);
     }
@@ -2498,7 +2500,7 @@ function App() {
       const imageDataUrl = await readProfileImage(file);
       await saveProfilePicture(imageDataUrl);
     } catch (error) {
-      alert(error.message || "Could not upload profile picture.");
+      showToast(error.message || "Could not upload profile picture.", "error");
     } finally {
       event.target.value = "";
     }
@@ -2570,9 +2572,7 @@ function App() {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error("Google login failed:", error);
-      alert(
-        "Google login failed. Check that Google sign-in is enabled in Firebase Authentication."
-      );
+      showToast("Google login failed. Check that Google sign-in is enabled in Firebase Authentication.", "error");
     }
   }
 
@@ -2587,9 +2587,7 @@ function App() {
       return;
     }
 
-    alert(
-      "To add TripHisaab to your home screen:\n\nOn iPhone/iPad: tap Share, then Add to Home Screen.\nOn Android: open the browser menu, then tap Install app or Add to Home screen."
-    );
+    showToast("To add TripHisaab: on iPhone tap Share then Add to Home Screen; on Android open the browser menu and tap Install or Add to Home Screen.", "info");
   }
 
   function renderInstallButton({ compact = false } = {}) {
@@ -2618,7 +2616,7 @@ function App() {
       closeTrip();
     } catch (error) {
       console.error("Logout failed:", error);
-      alert("Logout failed. Please try again.");
+      showToast("Logout failed. Please try again.", "error");
     }
   }
 
@@ -2738,7 +2736,7 @@ function App() {
       }
     } catch (error) {
       console.error("Could not accept invite:", error);
-      alert("Could not join trip. Check your Firestore rules.");
+      showToast("Could not join trip. Check your Firestore rules.", "error");
     } finally {
       setAcceptingInvite(false);
     }
@@ -2747,7 +2745,7 @@ function App() {
   async function createInviteLink() {
     if (!selectedTrip || !user) return;
     if (!canManageSelectedTrip()) {
-      alert("Only the trip owner can create invite links.");
+      showToast("Only the trip owner can create invite links.", "error");
       return "";
     }
     setCreatingInvite(true);
@@ -2774,7 +2772,7 @@ function App() {
       return link;
     } catch (error) {
       console.error("Could not create invite link:", error);
-      alert("Could not create invite link. Check your Firestore rules.");
+      showToast("Could not create invite link. Check your Firestore rules.", "error");
       return "";
     } finally {
       setCreatingInvite(false);
@@ -2786,9 +2784,9 @@ function App() {
     if (!link) return;
     try {
       await navigator.clipboard.writeText(link);
-      alert("Invite link created and copied.");
+      showToast("Invite link created and copied.", "success");
     } catch {
-      alert("Invite link created. Copy it from the field below.");
+      showToast("Invite link created. Copy it from the field below.", "info");
     }
   }
 
@@ -2864,9 +2862,9 @@ function App() {
     if (!inviteLink) return;
     try {
       await navigator.clipboard.writeText(inviteLink);
-      alert("Invite link copied.");
+      showToast("Invite link copied.", "success");
     } catch {
-      alert("Could not copy automatically. Select and copy the link manually.");
+      showToast("Could not copy automatically. Select and copy the link manually.", "error");
     }
   }
 
@@ -2924,7 +2922,7 @@ function App() {
       return loaded;
     } catch (error) {
       console.error("Could not load trips:", error);
-      alert("Could not load trips. Check your Firestore rules.");
+      showToast("Could not load trips. Check your Firestore rules.", "error");
       return [];
     } finally {
       setTripLoading(false);
@@ -2934,15 +2932,15 @@ function App() {
   async function handleCreateTrip(event) {
     event.preventDefault();
     if (!user) {
-      alert("Please log in first.");
+      showToast("Please log in first.", "error");
       return;
     }
     if (!form.name.trim()) {
-      alert("Trip name is required.");
+      showToast("Trip name is required.", "error");
       return;
     }
     if (new Date(form.endDate) < new Date(form.startDate)) {
-      alert("End date must be on or after start date.");
+      showToast("End date must be on or after start date.", "error");
       return;
     }
     setCreatingTrip(true);
@@ -3007,7 +3005,7 @@ function App() {
       await loadTrips(user.uid, user.email);
     } catch (error) {
       console.error("Could not create trip:", error);
-      alert("Could not create trip. Check your Firestore rules.");
+      showToast("Could not create trip. Check your Firestore rules.", "error");
     } finally {
       setCreatingTrip(false);
     }
@@ -3024,7 +3022,7 @@ function App() {
   async function handleDeleteTrip(targetTrip = selectedTrip) {
     if (!targetTrip || !user) return;
     if (!canManageTrip(targetTrip)) {
-      alert("Only the trip owner can delete this trip.");
+      showToast("Only the trip owner can delete this trip.", "error");
       return;
     }
 
@@ -3077,7 +3075,7 @@ function App() {
       await loadTrips(user.uid, user.email);
     } catch (error) {
       console.error("Could not delete trip:", error);
-      alert("Could not delete trip. Check your Firestore rules.");
+      showToast("Could not delete trip. Check your Firestore rules.", "error");
     } finally {
       setDeletingTrip(false);
     }
@@ -3114,11 +3112,11 @@ function App() {
     event.preventDefault();
     if (!user || !editingTripId) return;
     if (!editForm.name.trim()) {
-      alert("Trip name is required.");
+      showToast("Trip name is required.", "error");
       return;
     }
     if (new Date(editForm.endDate) < new Date(editForm.startDate)) {
-      alert("End date must be on or after start date.");
+      showToast("End date must be on or after start date.", "error");
       return;
     }
     setSavingEdit(true);
@@ -3147,7 +3145,7 @@ function App() {
       await loadTrips(user.uid, user.email);
     } catch (error) {
       console.error("Could not update trip:", error);
-      alert("Could not update trip. Check your Firestore rules.");
+      showToast("Could not update trip. Check your Firestore rules.", "error");
     } finally {
       setSavingEdit(false);
     }
@@ -3161,7 +3159,7 @@ function App() {
 
     if (!canManageSelectedTrip()) {
       if (!tripImageChanged) {
-        alert("Choose a new trip image before saving.");
+        showToast("Choose a new trip image before saving.", "error");
         return;
       }
       setSavingTripSettings(true);
@@ -3177,7 +3175,7 @@ function App() {
         await loadTrips(user.uid, user.email);
       } catch (error) {
         console.error("Could not save trip image:", error);
-        alert("Could not save trip image. Please publish the latest Firestore rules and try again.");
+        showToast("Could not save trip image. Please publish the latest Firestore rules and try again.", "error");
       } finally {
         setSavingTripSettings(false);
       }
@@ -3185,11 +3183,11 @@ function App() {
     }
 
     if (!settingsTripForm.name.trim()) {
-      alert("Trip name is required.");
+      showToast("Trip name is required.", "error");
       return;
     }
     if (new Date(settingsTripForm.endDate) < new Date(settingsTripForm.startDate)) {
-      alert("End date must be on or after start date.");
+      showToast("End date must be on or after start date.", "error");
       return;
     }
     setSavingTripSettings(true);
@@ -3222,10 +3220,11 @@ function App() {
       console.error("Could not save trip settings:", error);
       const tripImageChanged =
         (selectedTrip.imageDataUrl || "") !== (settingsTripForm.imageDataUrl || "");
-      alert(
+      showToast(
         tripImageChanged
           ? "Could not save trip settings. Try uploading a smaller trip image, or check that your database rules allow trip updates."
-          : "Could not save trip settings."
+          : "Could not save trip settings.",
+        "error"
       );
     } finally {
       setSavingTripSettings(false);
@@ -3239,7 +3238,7 @@ function App() {
       const imageDataUrl = await readTripImage(file);
       setSettingsTripForm(current => ({ ...current, imageDataUrl }));
     } catch (error) {
-      alert(error.message || "Could not upload image.");
+      showToast(error.message || "Could not upload image.", "error");
     } finally {
       event.target.value = "";
     }
@@ -3256,7 +3255,7 @@ function App() {
       const imageDataUrl = await readTripImage(file);
       setForm(current => ({ ...current, imageDataUrl }));
     } catch (error) {
-      alert(error.message || "Could not upload image.");
+      showToast(error.message || "Could not upload image.", "error");
     } finally {
       event.target.value = "";
     }
@@ -3269,7 +3268,7 @@ function App() {
       const imageDataUrl = await readTripImage(file);
       setEditForm(current => ({ ...current, imageDataUrl }));
     } catch (error) {
-      alert(error.message || "Could not upload image.");
+      showToast(error.message || "Could not upload image.", "error");
     } finally {
       event.target.value = "";
     }
@@ -3732,7 +3731,7 @@ function App() {
       }));
     } catch (error) {
       console.error("Could not load trip data:", error);
-      alert("Could not load trip data. Check your Firestore rules.");
+      showToast("Could not load trip data. Check your Firestore rules.", "error");
     } finally {
       setTripDataLoading(false);
     }
@@ -3754,14 +3753,14 @@ function App() {
     event.preventDefault();
     if (!selectedTrip || !user) return;
     if (!canManageSelectedTrip()) {
-      alert("Only the trip owner can add members.");
+      showToast("Only the trip owner can add members.", "error");
       return;
     }
 
     const displayName = memberForm.displayName.trim();
     const emailLower = getEmailLower(memberForm.email);
     if (!emailLower) {
-      alert("Email is required so your friend can log in and access this trip.");
+      showToast("Email is required so your friend can log in and access this trip.", "error");
       return;
     }
     const alreadyExists = members.some(
@@ -3819,11 +3818,11 @@ function App() {
       await loadTripData(selectedTrip.id);
 
       if (alreadyExists) {
-        alert("This member already existed. Their access is active again.");
+        showToast("This member already existed. Their access is active again.", "success");
       }
     } catch (error) {
       console.error("Could not add member:", error);
-      alert("Could not add member. Check your Firestore rules.");
+      showToast("Could not add member. Check your Firestore rules.", "error");
     } finally {
       setSavingMember(false);
     }
@@ -3832,16 +3831,16 @@ function App() {
   async function handleToggleMemberStatus(member) {
     if (!selectedTrip || !user) return;
     if (!canManageSelectedTrip()) {
-      alert("Only the trip owner can manage members.");
+      showToast("Only the trip owner can manage members.", "error");
       return;
     }
     if (member.isOwner) {
-      alert("The owner cannot be deactivated.");
+      showToast("The owner cannot be deactivated.", "error");
       return;
     }
     const emailLower = getEmailLower(member.email);
     if (!emailLower) {
-      alert("This member has no email, so access cannot be managed.");
+      showToast("This member has no email, so access cannot be managed.", "error");
       return;
     }
     const isInactive = member.status === "inactive";
@@ -3881,7 +3880,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not update member status:", error);
-      alert("Could not update member. Check your Firestore rules.");
+      showToast("Could not update member. Check your Firestore rules.", "error");
     } finally {
       setUpdatingMemberId("");
     }
@@ -3898,16 +3897,14 @@ function App() {
   async function handleLeaveTrip() {
     if (!selectedTrip || !user) return;
     if (canManageSelectedTrip()) {
-      alert("Trip owners cannot leave their own trip. Delete the trip instead if you no longer need it.");
+      showToast("Trip owners cannot leave their own trip. Delete the trip instead if you no longer need it.", "error");
       return;
     }
 
     const balanceNet = Number(currentUserBalance?.net || 0);
     if (Math.abs(balanceNet) > 0.01) {
       const direction = balanceNet < 0 ? "owe" : "are owed";
-      alert(
-        `You cannot leave this trip yet.\n\nYou still ${direction} ${formatMoney(Math.abs(balanceNet))}. Please settle up before leaving.`
-      );
+      showToast(`You cannot leave this trip yet. You still ${direction} ${formatMoney(Math.abs(balanceNet))}. Please settle up before leaving.`, "error");
       setActiveTab("settlements");
       return;
     }
@@ -3921,7 +3918,7 @@ function App() {
     try {
       const emailLower = getEmailLower(user.email);
       if (!emailLower) {
-        alert("Could not identify your account email, so this trip access cannot be removed.");
+        showToast("Could not identify your account email, so this trip access cannot be removed.", "error");
         return;
       }
 
@@ -3967,7 +3964,7 @@ function App() {
         await loadTrips(user.uid, user.email);
       } catch (fallbackError) {
         console.error("Could not hide left trip:", fallbackError);
-        alert("Could not leave trip. Check your Firestore rules.");
+        showToast("Could not leave trip. Check your Firestore rules.", "error");
       }
     } finally {
       setLeavingTrip(false);
@@ -4018,15 +4015,15 @@ function App() {
   async function handleSavePredictions(event) {
     event.preventDefault();
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit trip budgets.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to edit trip budgets.", "info");
     const amount = Number(budgetForm.estimatedEur);
-    if (!budgetForm.categoryId) return alert("Choose a category.");
-    if (!amount || amount <= 0) return alert("Enter a budget amount above zero.");
-    if (!currentUserMemberId) return alert("Could not find your trip member profile yet.");
+    if (!budgetForm.categoryId) return showToast("Choose a category.", "error");
+    if (!amount || amount <= 0) return showToast("Enter a budget amount above zero.", "error");
+    if (!currentUserMemberId) return showToast("Could not find your trip member profile yet.", "error");
     const scope = budgetForm.scope || "group";
     const visibleMemberIds = buildBudgetVisibility(scope);
     if (scope === "selected" && visibleMemberIds.length === 0) {
-      return alert("Choose at least one person for this budget entry.");
+      return showToast("Choose at least one person for this budget entry.", "error");
     }
     const category = categoriesById.get(budgetForm.categoryId);
     setSavingPredictions(true);
@@ -4056,10 +4053,10 @@ function App() {
       }
       await loadTripData(selectedTrip.id);
       resetBudgetForm({ categoryId: budgetForm.categoryId });
-      alert("Plan budget saved.");
+      showToast("Plan budget saved.", "success");
     } catch (error) {
       console.error("Could not save plan budget:", error);
-      alert("Could not save plan budget.");
+      showToast("Could not save plan budget.", "error");
     } finally {
       setSavingPredictions(false);
     }
@@ -4067,7 +4064,7 @@ function App() {
 
   async function handleDeleteBudget(entry) {
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit trip budgets.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to edit trip budgets.", "info");
     if (!window.confirm(`Delete this budget entry for ${entry.categoryName || "this category"}?`)) {
       return;
     }
@@ -4077,7 +4074,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not delete plan budget:", error);
-      alert("Could not delete plan budget.");
+      showToast("Could not delete plan budget.", "error");
     }
   }
 
@@ -4104,7 +4101,7 @@ function App() {
   async function handleSavePersonalBudget() {
     if (!selectedTrip || !user?.uid || isDemoMode()) return;
     const amount = Number(personalBudgetForm.amount);
-    if (!amount || amount <= 0) return alert("Enter a valid amount.");
+    if (!amount || amount <= 0) return showToast("Enter a valid amount.", "error");
     setSavingPersonalBudget(true);
     try {
       const currency = personalBudgetForm.currency || selectedTrip.defaultCurrency || "EUR";
@@ -4115,7 +4112,7 @@ function App() {
       setShowPersonalBudgetForm(false);
     } catch (err) {
       console.error("Could not save personal budget:", err);
-      alert("Could not save personal budget.");
+      showToast("Could not save personal budget.", "error");
     } finally {
       setSavingPersonalBudget(false);
     }
@@ -4130,7 +4127,7 @@ function App() {
       setShowPersonalBudgetForm(false);
     } catch (err) {
       console.error("Could not remove personal budget:", err);
-      alert("Could not remove personal budget.");
+      showToast("Could not remove personal budget.", "error");
     }
   }
 
@@ -4154,28 +4151,29 @@ function App() {
       const total = Number(formData.originalAmount || 0);
       const customTotal = getCustomSplitTotal(formData);
       if (Math.abs(total - customTotal) > 0.02) {
-        alert(
-          `Custom split must equal the total expense amount.\n\nExpense total: ${formatCurrency(
+        showToast(
+          `Custom split must equal the total expense amount. Expense total: ${formatCurrency(
             total,
             formData.originalCurrency
-          )}\nCustom split total: ${formatCurrency(customTotal, formData.originalCurrency)}`
+          )}, Custom split total: ${formatCurrency(customTotal, formData.originalCurrency)}`,
+          "error"
         );
         return false;
       }
       if (getCustomSplitMemberIds(formData).length === 0) {
-        alert("Add at least one custom split amount.");
+        showToast("Add at least one custom split amount.", "error");
         return false;
       }
     }
     if (formData.splitType === "percent") {
       const pctTotal = getPercentageSplitTotal(formData);
       if (Math.abs(pctTotal - 100) > 0.1) {
-        alert(`Percentages must total 100%.\n\nCurrent total: ${pctTotal.toFixed(1)}%`);
+        showToast(`Percentages must total 100%. Current total: ${pctTotal.toFixed(1)}%`, "error");
         return false;
       }
       const hasAny = Object.values(formData.customSplitShares || {}).some(v => Number(v) > 0);
       if (!hasAny) {
-        alert("Enter a percentage for at least one person.");
+        showToast("Enter a percentage for at least one person.", "error");
         return false;
       }
     }
@@ -4274,7 +4272,7 @@ function App() {
 
   function openFastExpenseModal(overrides = {}) {
     if (isDemoMode()) {
-      alert("Demo trip is read-only. Sign in with Google to create and edit your own trips.");
+      showToast("Demo trip is read-only. Sign in with Google to create and edit your own trips.", "info");
       return;
     }
     setExpenseFeedback(null);
@@ -4287,7 +4285,7 @@ function App() {
   async function handleAddExpense(event) {
     event.preventDefault();
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to add expenses.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to add expenses.", "info");
 
     const normalizedExpenseForm = {
       ...expenseForm,
@@ -4309,14 +4307,14 @@ function App() {
     const originalAmount = Number(normalizedExpenseForm.originalAmount);
     const originalCurrency = normalizedExpenseForm.originalCurrency || "EUR";
 
-    if (!normalizedExpenseForm.categoryId) return alert("Choose a category.");
-    if (!normalizedExpenseForm.paidByMemberId) return alert("Choose who paid.");
-    if (!originalAmount || originalAmount <= 0) return alert("Enter a valid amount.");
+    if (!normalizedExpenseForm.categoryId) return showToast("Choose a category.", "error");
+    if (!normalizedExpenseForm.paidByMemberId) return showToast("Choose who paid.", "error");
+    if (!originalAmount || originalAmount <= 0) return showToast("Enter a valid amount.", "error");
     if (!validateCustomSplit(normalizedExpenseForm)) return;
 
     const splitMemberIds = getCleanSplitMemberIds(normalizedExpenseForm);
     if (normalizedExpenseForm.expenseType === "shared" && splitMemberIds.length === 0) {
-      return alert("Choose at least one split member.");
+      return showToast("Choose at least one split member.", "error");
     }
 
     setSavingExpense(true);
@@ -4397,7 +4395,7 @@ function App() {
       });
     } catch (error) {
       console.error("Could not save expense:", error);
-      alert("Could not save expense.");
+      showToast("Could not save expense.", "error");
     } finally {
       setSavingExpense(false);
     }
@@ -4412,7 +4410,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not undo expense:", error);
-      alert("Could not undo expense.");
+      showToast("Could not undo expense.", "error");
     }
   }
 
@@ -4475,14 +4473,14 @@ function App() {
   async function handleUpdateExpense(event) {
     event.preventDefault();
     if (!selectedTrip || !editingExpenseId) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit expenses.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to edit expenses.", "info");
 
     const originalAmount = Number(expenseEditForm.originalAmount);
     const originalCurrency = expenseEditForm.originalCurrency || "EUR";
 
-    if (!expenseEditForm.categoryId) return alert("Choose a category.");
-    if (!expenseEditForm.paidByMemberId) return alert("Choose who paid.");
-    if (!originalAmount || originalAmount <= 0) return alert("Enter a valid amount.");
+    if (!expenseEditForm.categoryId) return showToast("Choose a category.", "error");
+    if (!expenseEditForm.paidByMemberId) return showToast("Choose who paid.", "error");
+    if (!originalAmount || originalAmount <= 0) return showToast("Enter a valid amount.", "error");
     if (!validateCustomSplit(expenseEditForm)) return;
 
     const splitMemberIds = getCleanSplitMemberIds(expenseEditForm);
@@ -4556,7 +4554,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not update expense:", error);
-      alert("Could not update expense.");
+      showToast("Could not update expense.", "error");
     } finally {
       setSavingExpenseEdit(false);
     }
@@ -4564,7 +4562,7 @@ function App() {
 
   async function handleDeleteExpense(expense) {
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to delete expenses.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to delete expenses.", "info");
     const confirmed = window.confirm(
       `Delete this expense?\n\n${
         expense.description || expense.categoryName
@@ -4579,7 +4577,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not delete expense:", error);
-      alert("Could not delete expense.");
+      showToast("Could not delete expense.", "error");
     }
   }
 
@@ -4678,11 +4676,11 @@ function App() {
   async function handleSaveBulkTasks(e) {
     e.preventDefault();
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to manage tasks.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to manage tasks.", "info");
     const creatorId = currentUserMemberId;
-    if (!creatorId) return alert("Could not find your trip member profile yet.");
+    if (!creatorId) return showToast("Could not find your trip member profile yet.", "error");
     const validRows = bulkTaskRows.filter(r => r.title.trim().length > 0);
-    if (validRows.length === 0) return alert("Add at least one task title.");
+    if (validRows.length === 0) return showToast("Add at least one task title.", "error");
     setSavingBulkTasks(true);
     try {
       const batch = writeBatch(db);
@@ -4711,7 +4709,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (err) {
       console.error("Could not save tasks:", err);
-      alert("Could not save tasks. Check your Firestore rules.");
+      showToast("Could not save tasks. Check your Firestore rules.", "error");
     } finally {
       setSavingBulkTasks(false);
     }
@@ -4719,7 +4717,7 @@ function App() {
 
   async function handleBulkAssign() {
     if (!selectedTrip || selectedTaskIds.size === 0) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to manage tasks.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to manage tasks.", "info");
     const creatorId = currentUserMemberId;
     let assignedTo, scope, visibleTo;
     if (bulkAssignMode === "group") {
@@ -4728,7 +4726,7 @@ function App() {
       assignedTo = activeMembers.map(m => m.id);
     } else {
       const memberIds = Array.from(new Set([...bulkAssignMemberIds, creatorId].filter(Boolean)));
-      if (memberIds.length === 0) return alert("Select at least one member.");
+      if (memberIds.length === 0) return showToast("Select at least one member.", "error");
       scope = "selected_members";
       visibleTo = memberIds;
       assignedTo = memberIds;
@@ -4748,7 +4746,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (err) {
       console.error("Could not assign tasks:", err);
-      alert("Could not assign tasks.");
+      showToast("Could not assign tasks.", "error");
     } finally {
       setSavingBulkAssign(false);
     }
@@ -4772,16 +4770,16 @@ function App() {
   async function handleSaveTask(event) {
     event.preventDefault();
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to manage tasks.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to manage tasks.", "info");
     const normalized = normalizeTaskFormForSave();
-    if (!normalized.title) return alert("Task title is required.");
-    if (!normalized.createdBy) return alert("Could not find your trip member profile yet.");
-    if (!normalized.assignedTo.length) return alert("Assign this task to at least one member.");
+    if (!normalized.title) return showToast("Task title is required.", "error");
+    if (!normalized.createdBy) return showToast("Could not find your trip member profile yet.", "error");
+    if (!normalized.assignedTo.length) return showToast("Assign this task to at least one member.", "error");
     if (
       normalized.scope === "selected_members"
       && (!Array.isArray(normalized.visibleTo) || normalized.visibleTo.length === 0)
     ) {
-      return alert("Choose at least one person who can see this task.");
+      return showToast("Choose at least one person who can see this task.", "error");
     }
 
     setSavingTask(true);
@@ -4789,7 +4787,7 @@ function App() {
       if (editingTaskId) {
         const task = tasks.find(t => t.id === editingTaskId);
         if (!canUserEditTask(task, currentUserMemberId, canManageSelectedTrip())) {
-          alert("Only the task creator can edit this task.");
+          showToast("Only the task creator can edit this task.", "error");
           return;
         }
         await updateDoc(doc(db, "trips", selectedTrip.id, "tasks", editingTaskId), {
@@ -4812,7 +4810,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not save task:", error);
-      alert("Could not save task. Check your Firestore rules.");
+      showToast("Could not save task. Check your Firestore rules.", "error");
     } finally {
       setSavingTask(false);
     }
@@ -4820,9 +4818,9 @@ function App() {
 
   async function handleMarkTaskDone(task) {
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to update tasks.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to update tasks.", "info");
     if (!canUserCompleteTask(task, currentUserMemberId)) {
-      alert("Only assigned members or the creator can complete this task.");
+      showToast("Only assigned members or the creator can complete this task.", "error");
       return;
     }
     try {
@@ -4835,15 +4833,15 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not complete task:", error);
-      alert("Could not mark task done.");
+      showToast("Could not mark task done.", "error");
     }
   }
 
   async function handleReopenTask(task) {
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to update tasks.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to update tasks.", "info");
     if (!canUserCompleteTask(task, currentUserMemberId)) {
-      alert("Only assigned members or the creator can reopen this task.");
+      showToast("Only assigned members or the creator can reopen this task.", "error");
       return;
     }
     try {
@@ -4856,15 +4854,15 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not reopen task:", error);
-      alert("Could not reopen task.");
+      showToast("Could not reopen task.", "error");
     }
   }
 
   async function handleArchiveTask(task) {
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to archive tasks.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to archive tasks.", "info");
     if (!canUserEditTask(task, currentUserMemberId, canManageSelectedTrip())) {
-      alert("Only the task creator can archive this task.");
+      showToast("Only the task creator can archive this task.", "error");
       return;
     }
     if (!window.confirm(`Archive "${task.title}"?`)) return;
@@ -4876,7 +4874,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not archive task:", error);
-      alert("Could not archive task.");
+      showToast("Could not archive task.", "error");
     }
   }
 
@@ -5059,9 +5057,9 @@ function App() {
   async function handleSaveCategory(event) {
     event.preventDefault();
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit categories.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to edit categories.", "info");
     if (!categoryForm.name.trim()) {
-      alert("Category name is required.");
+      showToast("Category name is required.", "error");
       return;
     }
     setSavingCategory(true);
@@ -5121,7 +5119,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not save category:", error);
-      alert("Could not save category. Check your Firestore rules.");
+      showToast("Could not save category. Check your Firestore rules.", "error");
     } finally {
       setSavingCategory(false);
     }
@@ -5129,7 +5127,7 @@ function App() {
 
   async function handleToggleCategory(category) {
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit categories.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to edit categories.", "info");
     try {
       await updateDoc(
         doc(db, "trips", selectedTrip.id, "categories", category.id),
@@ -5141,13 +5139,13 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not update category status:", error);
-      alert("Could not update category status.");
+      showToast("Could not update category status.", "error");
     }
   }
 
   async function handleDeleteCategory(category) {
     if (!selectedTrip) return;
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to edit categories.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to edit categories.", "info");
     const usedByExpenses = expenses.some(e => e.categoryId === category.id);
     const message = usedByExpenses
       ? `Delete "${category.name}"?\n\nExisting expenses will keep their saved category name, but this category will no longer be available for new budgets or expenses.`
@@ -5167,7 +5165,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not delete category:", error);
-      alert("Could not delete category.");
+      showToast("Could not delete category.", "error");
     }
   }
 
@@ -5195,10 +5193,10 @@ function App() {
   }
 
   async function handleMarkSmartSettlementPaid(suggested, settlementLayer = "group", settlementGroupId = null, customAmount = null, actualFromMemberId = null) {
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to record settlements.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to record settlements.", "info");
     if (!selectedTrip || !user) return;
     const amount = customAmount != null ? Number(customAmount) : Number(suggested.amount || 0);
-    if (!amount || amount <= 0) return alert("Enter a valid amount.");
+    if (!amount || amount <= 0) return showToast("Enter a valid amount.", "error");
     const fromMemberId = actualFromMemberId || suggested.fromMemberId || suggested.fromUserId;
     setSavingSettlement(true);
     try {
@@ -5234,21 +5232,21 @@ function App() {
       setSmartSettleToast("Settlement marked as paid.");
     } catch (error) {
       console.error("Could not mark Smart Settle payment as paid:", error);
-      alert("Could not mark this settlement as paid.");
+      showToast("Could not mark this settlement as paid.", "error");
     } finally {
       setSavingSettlement(false);
     }
   }
 
   async function saveSettlement(data) {
-    if (isDemoMode()) return alert("Demo trip is read-only. Sign in to record settlements.");
+    if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to record settlements.", "info");
     if (!selectedTrip || !user) return;
     const amount = Number(data.amountEur);
-    if (!data.fromMemberId || !data.toMemberId) return alert("Choose both people.");
+    if (!data.fromMemberId || !data.toMemberId) return showToast("Choose both people.", "error");
     if (data.fromMemberId === data.toMemberId) {
-      return alert("Payer and receiver cannot be the same person.");
+      return showToast("Payer and receiver cannot be the same person.", "error");
     }
-    if (!amount || amount <= 0) return alert("Enter a valid settlement amount.");
+    if (!amount || amount <= 0) return showToast("Enter a valid settlement amount.", "error");
 
     setSavingSettlement(true);
     try {
@@ -5257,7 +5255,7 @@ function App() {
 
       if (isDebtorRecording && !data.skipApprovalRequest) {
         await createSettlementApprovalNotification(data, amount);
-        alert("Settlement sent for approval.");
+        showToast("Settlement sent for approval.", "success");
       } else {
         const settlementId = await createCompletedSettlement(data, amount);
         if (isCreditorRecording) {
@@ -5286,13 +5284,13 @@ function App() {
             amount
           );
           await loadTripData(selectedTrip.id);
-          alert("Could not send approval notification, so the settlement was recorded directly.");
+          showToast("Could not send approval notification, so the settlement was recorded directly.", "error");
           return true;
         } catch (fallbackError) {
           console.error("Could not record fallback settlement:", fallbackError);
         }
       }
-      alert("Could not settle up.");
+      showToast("Could not settle up.", "error");
       return false;
     } finally {
       setSavingSettlement(false);
@@ -5404,7 +5402,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not approve settlement:", error);
-      alert("Could not approve settlement.");
+      showToast("Could not approve settlement.", "error");
     } finally {
       setApprovingNotificationId("");
     }
@@ -5427,7 +5425,7 @@ function App() {
       await loadTripData(selectedTrip.id);
     } catch (error) {
       console.error("Could not delete settlement:", error);
-      alert("Could not delete settlement.");
+      showToast("Could not delete settlement.", "error");
     }
   }
 
@@ -5492,7 +5490,7 @@ function App() {
       setSmartSettleToast("Settlement summary copied.");
     } catch (error) {
       console.error("Could not copy Smart Settle summary:", error);
-      alert(lines.join("\n"));
+      showToast("Could not copy to clipboard. Check browser permissions.", "error");
     }
   }
 
@@ -6957,7 +6955,7 @@ function App() {
     e.preventDefault();
     if (!selectedTrip || isDemoMode()) return;
     const { name, type } = settlementGroupForm;
-    if (!name.trim()) return alert("Group name is required.");
+    if (!name.trim()) return showToast("Group name is required.", "error");
 
     const activeTripMembers = members.filter(m => m.status !== "inactive");
     const activeTripMemberIds = new Set(activeTripMembers.map(m => m.id));
@@ -6967,13 +6965,13 @@ function App() {
     if (removedCount > 0) {
       setSettlementGroupForm(f => ({ ...f, memberIds: validMemberIds }));
       if (validMemberIds.length < 2) {
-        return alert(`${removedCount} selected member(s) are no longer in this trip. The group needs at least 2 valid members.`);
+        return showToast(`${removedCount} selected member(s) are no longer in this trip. The group needs at least 2 valid members.`, "error");
       }
-      alert(`${removedCount} selected member(s) are no longer in this trip and were removed from the selection.`);
+      showToast(`${removedCount} selected member(s) are no longer in this trip and were removed from the selection.`, "info");
     }
 
     const memberIds = validMemberIds;
-    if (memberIds.length < 2) return alert("A settlement group must have at least 2 members.");
+    if (memberIds.length < 2) return showToast("A settlement group must have at least 2 members.", "error");
 
     const activeGroups = settlementGroups.filter(g => g.isActive !== false && g.id !== editingSettlementGroupId);
 
@@ -6984,14 +6982,14 @@ function App() {
         sortedExisting.every((id, i) => id === sortedNew[i]);
     });
     if (duplicate) {
-      return alert(`A group with the same members already exists: "${duplicate.name}". Edit or remove that group instead.`);
+      return showToast(`A group with the same members already exists: "${duplicate.name}". Edit or remove that group instead.`, "error");
     }
 
     const takenIds = new Set(activeGroups.flatMap(g => g.memberIds));
     const conflict = memberIds.find(id => takenIds.has(id));
     if (conflict) {
       const m = members.find(mb => mb.id === conflict);
-      return alert(`${memberDisplayName(m) || conflict} is already in another settlement group.`);
+      return showToast(`${memberDisplayName(m) || conflict} is already in another settlement group.`, "error");
     }
 
     let updatedGroups;
@@ -7021,7 +7019,7 @@ function App() {
       await expandCrossUnitVisibility(updatedGroups);
     } catch (err) {
       console.error("Failed to save settlement group:", err);
-      alert("Failed to save settlement group. Please try again.");
+      showToast("Failed to save settlement group. Please try again.", "error");
       return;
     }
     setShowSettlementGroupForm(false);
@@ -7047,7 +7045,7 @@ function App() {
       ));
     } catch (err) {
       console.error("Failed to remove settlement group:", err);
-      alert("Failed to remove settlement group. Please try again.");
+      showToast("Failed to remove settlement group. Please try again.", "error");
     }
     if (editingSettlementGroupId === groupId) {
       setShowSettlementGroupForm(false);
@@ -7792,9 +7790,6 @@ function App() {
       ? Number(tripTotalsSummary.sharedExpenseCount || 0)
       : expenses.filter(e => normalizeExpenseScope(e) === "group" && e.isActive !== false).length;
     const groupCurrency = selectedTrip?.defaultCurrency || "EUR";
-    const myPersonalExpenses = currentUserMemberId
-      ? expenses.filter(e => e.expenseType !== "shared" && e.paidByMemberId === currentUserMemberId && e.isActive !== false)
-      : [];
     const myPersonalSpentEur = roundMoney(myPersonalExpenses.reduce((s, e) => s + Number(e.amountEur || 0), 0));
     const myPersonalBudgetEur = personalBudget?.amountEur || 0;
     const myPersonalPct = myPersonalBudgetEur > 0 ? Math.min(100, Math.round((myPersonalSpentEur / myPersonalBudgetEur) * 100)) : 0;
@@ -7807,23 +7802,6 @@ function App() {
         s.fromMemberId === currentUserMemberId ||
         s.toMemberId === currentUserMemberId
       );
-
-    // ── Per-member holistic spending: group paid + personal paid + net balance ──
-    const memberSpending = balances.map(b => {
-      const personalPaid = roundMoney(
-        expenses
-          .filter(e => e.isActive !== false && e.expenseType !== "shared" && e.paidByMemberId === b.memberId)
-          .reduce((s, e) => s + Number(e.amountEur || 0), 0)
-      );
-      return { ...b, personalPaid, totalPaid: roundMoney(b.paid + personalPaid) };
-    });
-
-    // Sort: current user first, then by totalPaid desc
-    memberSpending.sort((a, b) => {
-      if (a.memberId === currentUserMemberId) return -1;
-      if (b.memberId === currentUserMemberId) return 1;
-      return b.totalPaid - a.totalPaid;
-    });
 
     // Unit-level spending (only when settlement groups exist)
     const activeUnitGroups = settlementGroups.filter(g => g.isActive !== false);
@@ -7880,23 +7858,6 @@ function App() {
       );
     }
 
-    const spendingBreakdown = categories
-      .map((category, index) => {
-        const actual = actualByCategoryId.get(category.id) || 0;
-        return {
-          ...category,
-          actual,
-          color: category.color || [
-            "#0f766e",
-            "#2563eb",
-            "#7c3aed",
-            "#ea580c",
-            "#16a34a",
-            "#db2777"
-          ][index % 6]
-        };
-      })
-      .filter(category => category.actual > 0);
     let breakdownCursor = 0;
     const breakdownGradient = spendingBreakdown.length > 0
       ? spendingBreakdown
@@ -10121,7 +10082,7 @@ function App() {
               type="button"
               onClick={async () => {
                 await loadTripData(selectedTrip.id);
-                alert("Trip data refreshed.");
+                showToast("Trip data refreshed.", "success");
               }}
             >
               Refresh trip data
@@ -10230,6 +10191,12 @@ function App() {
         {smartSettleToast ? (
           <div className="smart-settle-toast" role="status">
             {smartSettleToast}
+          </div>
+        ) : null}
+
+        {appToast ? (
+          <div className={`app-toast app-toast--${appToast.type}`} role="alert">
+            {appToast.message}
           </div>
         ) : null}
 

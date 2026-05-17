@@ -31,3 +31,92 @@ export const TRIP_STATUSES = ["Active", "Completed", "Archived"];
 export const CATEGORY_TYPES = [
   "Travel", "Daily", "Accommodation", "Food", "Shopping", "Miscellaneous"
 ];
+
+// --- App storage keys ---
+
+export const MEMBER_DIRECTORY_STORAGE_KEY = "triphisaab-member-directory";
+export const APP_VIEW_STORAGE_KEY = "triphisaab-app-view";
+export const LAST_TRIP_STORAGE_KEY = "triphisaab-last-trip";
+export const LAST_TAB_STORAGE_KEY = "triphisaab-last-tab";
+
+// --- Image processing constants ---
+
+export const TRIP_IMAGE_MAX_WIDTH = 640;
+export const TRIP_IMAGE_MAX_HEIGHT = 360;
+export const TRIP_IMAGE_QUALITY = 0.68;
+export const TRIP_IMAGE_MAX_BYTES = 260 * 1024;
+export const PROFILE_IMAGE_SIZE = 256;
+export const PROFILE_IMAGE_QUALITY = 0.82;
+
+// --- Financial precision ---
+
+export const MONEY_EPSILON = 0.01;
+
+// --- Form defaults ---
+
+export const EMPTY_EXPENSE_FORM = {
+  date: "",
+  time: "",
+  categoryId: "",
+  description: "",
+  originalAmount: "",
+  originalCurrency: "EUR",
+  paymentMethod: "card",
+  notes: "",
+  expenseType: "personal",
+  splitType: "equal",
+  paidByMemberId: "",
+  splitMemberIds: [],
+  customSplitShares: {},
+  includeInGroupTotal: true
+};
+
+export const EMPTY_BUDGET_FORM = {
+  categoryId: "",
+  title: "",
+  estimatedEur: "",
+  scope: "group",
+  visibleMemberIds: []
+};
+
+export const EMPTY_TASK_FORM = {
+  title: "",
+  type: "general",
+  scope: "group",
+  assignedTo: [],
+  selectedMemberIds: [],
+  dueDate: "",
+  notes: ""
+};
+
+// --- UI option lists ---
+
+export const CATEGORY_EMOJI_OPTIONS = [
+  "📌", "✈️", "🚆", "🚕", "🚌", "⛽", "🏨", "🏠",
+  "🍽️", "☕", "🍕", "🛒", "🛍️", "🎟️", "🎡", "🏖️",
+  "💸", "💳", "🧾", "🎁", "💊", "📱", "🧳", "✨",
+  "🍔", "🍜", "🥐", "🥤", "🍷", "🚗", "🚲", "🚇",
+  "⛴️", "🛫", "🛬", "🛌", "🏕️", "🎭", "🎮", "📷",
+  "🧴", "👕", "👶", "🐾", "🗺️", "🧡", "⭐", "🔖"
+];
+
+export const BUDGET_SCOPE_OPTIONS = [
+  { value: "group", label: "Whole group" },
+  { value: "selected", label: "Selected people" },
+  { value: "me", label: "Only me" }
+];
+
+export const TASK_TYPE_OPTIONS = [
+  { value: "general", label: "General" },
+  { value: "booking", label: "Booking" },
+  { value: "payment", label: "Payment" },
+  { value: "receipt", label: "Receipt" },
+  { value: "packing", label: "Packing" },
+  { value: "document", label: "Document" }
+];
+
+export const TASK_SCOPE_OPTIONS = [
+  { value: "group", label: "Whole group" },
+  { value: "selected_members", label: "Selected people" },
+  { value: "personal", label: "Only me" }
+];

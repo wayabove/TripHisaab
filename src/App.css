@@ -8854,3 +8854,33 @@ p {
 
 /* ---- Margin zero utility ---- */
 .mb-0 { margin-bottom: 0; }
+
+/* ================================================================
+   App toast (replaces browser alert() for user feedback)
+   ================================================================ */
+
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 270;
+  max-width: min(400px, calc(100vw - 32px));
+  padding: 11px 20px;
+  border-radius: 999px;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.18);
+  pointer-events: none;
+  animation: toastIn 0.18s ease;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.app-toast--error   { background: #ef4444; color: #fff; }
+.app-toast--success { background: var(--positive); color: #fff; }
+.app-toast--info    { background: #1d4ed8; color: #fff; }
+.app-toast--warning { background: var(--warning); color: #fff; }
