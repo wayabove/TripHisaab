@@ -7192,6 +7192,79 @@ function App() {
         s.fromMemberId === currentUserMemberId ||
         s.toMemberId === currentUserMemberId
       );
+
+    // ── Per-member holistic spending: group paid + personal paid + net balance ──
+    const memberSpending = balances.map(b => {
+      const personalPaid = roundMoney(
+        expenses
+          .filter(e => e.isActive !== false && e.expenseType !== "shared" && e.paidByMemberId === b.memberId)
+          .reduce((s, e) => s + Number(e.amountEur || 0), 0)
+      );
+      return { ...b, personalPaid, totalPaid: roundMoney(b.paid + personalPaid) };
+    });
+
+    // Sort: current user first, then by totalPaid desc
+    memberSpending.sort((a, b) => {
+      if (a.memberId === currentUserMemberId) return -1;
+      if (b.memberId === currentUserMemberId) return 1;
+      return b.totalPaid - a.totalPaid;
+    });
+
+    // Unit-level spending (only when settlement groups exist)
+    const activeUnitGroups = settlementGroups.filter(g => g.isActive !== false);
+    const unitSpendingData = activeUnitGroups.map(group => {
+      const unitMembers = group.memberIds
+        .map(id => memberSpending.find(m => m.memberId === id))
+        .filter(Boolean)
+        .sort((a, b) => (a.memberId === currentUserMemberId ? -1 : b.memberId === currentUserMemberId ? 1 : 0));
+      return {
+        ...group,
+        members: unitMembers,
+        totalPaid: roundMoney(unitMembers.reduce((s, m) => s + m.totalPaid, 0)),
+        unitNet: roundMoney(unitMembers.reduce((s, m) => s + m.net, 0))
+      };
+    });
+
+    const groupedMemberIds = new Set(activeUnitGroups.flatMap(g => g.memberIds));
+    const ungroupedMemberSpending = memberSpending.filter(m => !groupedMemberIds.has(m.memberId));
+
+    // Helper: render one member spending row
+    function renderSpendingRow(m, compact = false) {
+      const isMe = m.memberId === currentUserMemberId;
+      const img = memberImageOf(m);
+      const initial = (cleanDisplayName(m.name) || "?")[0].toUpperCase();
+      const netPos = m.net >= MONEY_EPSILON;
+      const netNeg = m.net <= -MONEY_EPSILON;
+      return (
+        <div
+          key={m.memberId}
+          className={`spending-row${compact ? " spending-row--compact" : ""}${isMe ? " spending-row--me" : ""}`}
+        >
+          <div
+            className={`spending-row-avatar${img ? " has-image" : ""}`}
+            style={img ? { backgroundImage: `url(${img})` } : undefined}
+          >
+            {!img ? initial : null}
+          </div>
+          <div className="spending-row-info">
+            <div className="spending-row-name">
+              {cleanDisplayName(m.name)}
+              {isMe && <span className="spending-you-tag">You</span>}
+            </div>
+            <div className="spending-row-meta">paid {formatMoney(m.totalPaid)}</div>
+          </div>
+          <div className={`spending-row-balance${netPos ? " positive" : netNeg ? " negative" : ""}`}>
+            <div className="spending-row-amount">
+              {netPos ? "+" : netNeg ? "–" : ""}{formatMoney(Math.abs(m.net))}
+            </div>
+            <div className="spending-row-blabel">
+              {netPos ? "owed" : netNeg ? "owes" : "settled"}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const spendingBreakdown = categories
       .map((category, index) => {
         const actual = actualByCategoryId.get(category.id) || 0;
@@ -7754,31 +7827,60 @@ function App() {
               <div className={`dash-row dash-section-activity${userHasFinancialInvolvement ? " dash-row-2col" : ""}`}>
                 {userHasFinancialInvolvement && (
                 <div className="dash-card">
-                  <h3>Settlement snapshot</h3>
-                  <p className="dash-card-sub">Shared settlement only. Private personal spending is excluded.</p>
-                  {balances.length === 0 ? (
+                  <div className="dash-card-header">
+                    <div>
+                      <h3>Member spending</h3>
+                      <p className="dash-card-sub">
+                        {unitSpendingData.length > 0
+                          ? "Group + personal totals · unit balances combined"
+                          : "Group + personal totals and net balance"}
+                      </p>
+                    </div>
+                    <button
+                      className="link-button"
+                      style={{ fontSize: "13px", whiteSpace: "nowrap" }}
+                      type="button"
+                      onClick={() => setActiveTab("settlements")}
+                    >
+                      Settle →
+                    </button>
+                  </div>
+
+                  {memberSpending.length === 0 ? (
                     <p className="muted small">No members yet.</p>
                   ) : (
                     <>
-                      {balances.slice(0, 4).map(b => (
-                        <div className="dash-balance-item" key={b.memberId}>
-                          <div
-                            className={`dash-balance-avatar${memberImageOf(b) ? " has-image" : ""}`}
-                            style={memberImageOf(b) ? { backgroundImage: `url(${memberImageOf(b)})` } : undefined}
-                          >
-                            {!memberImageOf(b) ? memberInitialOf(b) : null}
-                          </div>
-                          <div className="dash-balance-info">
-                            <div className="dash-balance-name">{b.name}</div>
-                            <div className="dash-balance-label">
-                              {b.net >= 0.01 ? "Should receive" : b.net <= -0.01 ? "Owes" : "Settled up"}
+                      {/* Unit blocks (family / couple mode) */}
+                      {unitSpendingData.map(unit => {
+                        const unitNetPos = unit.unitNet >= MONEY_EPSILON;
+                        const unitNetNeg = unit.unitNet <= -MONEY_EPSILON;
+                        const isMyUnit = unit.members.some(m => m.memberId === currentUserMemberId);
+                        return (
+                          <div key={unit.id} className={`spending-unit-block${isMyUnit ? " spending-unit-block--me" : ""}`}>
+                            <div className="spending-unit-header">
+                              <div className="spending-unit-info">
+                                <div className="spending-unit-name">{unit.name || "Unit"}</div>
+                                <div className="spending-unit-meta">
+                                  {unit.members.map(m => cleanDisplayName(m.name)).join(" & ")}
+                                </div>
+                              </div>
+                              <div className="spending-unit-totals">
+                                <div className="spending-unit-paid">paid {formatMoney(unit.totalPaid)}</div>
+                                <div className={`spending-unit-net${unitNetPos ? " positive" : unitNetNeg ? " negative" : ""}`}>
+                                  {unitNetPos ? "+" : unitNetNeg ? "–" : ""}{formatMoney(Math.abs(unit.unitNet))}
+                                  <span className="spending-row-blabel">{unitNetPos ? " owed" : unitNetNeg ? " owes" : " settled"}</span>
+                                </div>
+                              </div>
                             </div>
+                            {unit.members.map(m => renderSpendingRow(m, true))}
                           </div>
-                          <div className={`dash-balance-amount ${b.net >= 0.01 ? "positive" : b.net <= -0.01 ? "negative" : ""}`}>
-                            {b.net >= 0 ? "+" : "–"}{formatMoney(Math.abs(b.net))}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
+
+                      {/* Ungrouped / solo members */}
+                      {ungroupedMemberSpending.map(m => renderSpendingRow(m, false))}
+
+                      {/* Suggested settlement strip */}
                       {suggestedSettlements.length > 0 && (
                         <div className="settle-snapshot-strip">
                           <div className="settle-snapshot-strip-icon">✨</div>
@@ -7793,7 +7895,7 @@ function App() {
                             type="button"
                             onClick={() => setActiveTab("settlements")}
                           >
-                            Open Smart Settle
+                            Settle
                           </button>
                         </div>
                       )}

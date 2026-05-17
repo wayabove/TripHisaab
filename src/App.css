@@ -5400,6 +5400,156 @@ p {
   border-radius: 12px;
 }
 
+/* ---- Member spending rows ---- */
+.spending-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+.spending-row:last-child { border-bottom: none; }
+
+.spending-row--compact {
+  padding: 7px 0 7px 10px;
+}
+
+.spending-row--me {
+  background: transparent;
+}
+
+.spending-row-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  background-position: center;
+  background-size: cover;
+  color: var(--primary-dark);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.spending-row--compact .spending-row-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+.spending-row-avatar.has-image { color: transparent; }
+
+.spending-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.spending-row-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.spending-row--compact .spending-row-name { font-size: 13px; }
+
+.spending-you-tag {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.02em;
+}
+
+.spending-row-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.spending-row-balance {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.spending-row-amount {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--muted);
+}
+.spending-row-balance.positive .spending-row-amount { color: var(--positive); }
+.spending-row-balance.negative .spending-row-amount { color: var(--negative); }
+
+.spending-row-blabel {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ---- Spending unit blocks (family / couple mode) ---- */
+.spending-unit-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.spending-unit-block--me {
+  border-color: var(--primary-soft);
+}
+.spending-unit-block:last-of-type { margin-bottom: 0; }
+
+.spending-unit-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-alt, var(--bg-card));
+  border-bottom: 1px solid var(--border);
+}
+.spending-unit-block--me .spending-unit-header {
+  background: var(--primary-muted);
+}
+
+.spending-unit-info { flex: 1; min-width: 0; }
+
+.spending-unit-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.spending-unit-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.spending-unit-totals { text-align: right; flex-shrink: 0; }
+
+.spending-unit-paid {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.spending-unit-net {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--muted);
+}
+.spending-unit-net.positive { color: var(--positive); }
+.spending-unit-net.negative { color: var(--negative); }
+
+/* rows inside a unit block get a left indent via compact */
+.spending-unit-block .spending-row {
+  padding-left: 12px;
+  padding-right: 12px;
+  border-bottom: 1px solid var(--border);
+  margin: 0;
+}
+.spending-unit-block .spending-row:last-child { border-bottom: none; }
+
 /* ---- Settlement snapshot strip ---- */
 .settle-snapshot-strip {
   display: flex;
