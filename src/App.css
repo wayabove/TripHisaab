@@ -5169,44 +5169,68 @@ p {
 .dash-stat-panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
   gap: 0;
   padding: 0;
   overflow: hidden;
 }
 
+/* 6-stat variant: 3 columns on desktop */
+.dash-stat-panel--6 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .dash-stat-panel-item {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 18px 16px;
+  gap: 2px;
+  padding: 12px 14px;
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 
-.dash-stat-panel-item:nth-child(2n) {
+/* 6-stat: no right border on every 3rd item */
+.dash-stat-panel--6 .dash-stat-panel-item:nth-child(3n) {
   border-right: none;
 }
+.dash-stat-panel--6 .dash-stat-panel-item:nth-child(2n) {
+  border-right: 1px solid var(--border);
+}
+/* last row: no bottom border */
+.dash-stat-panel--6 .dash-stat-panel-item:nth-child(n+4) {
+  border-bottom: none;
+}
 
-.dash-stat-panel-item:nth-child(n+3) {
+/* original 4-stat borders */
+.dash-stat-panel:not(.dash-stat-panel--6) .dash-stat-panel-item:nth-child(2n) {
+  border-right: none;
+}
+.dash-stat-panel:not(.dash-stat-panel--6) .dash-stat-panel-item:nth-child(n+3) {
   border-bottom: none;
 }
 
 .dash-stat-panel-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .dash-stat-panel-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 900;
   letter-spacing: -0.025em;
   color: var(--text);
   overflow-wrap: anywhere;
-  line-height: 1.1;
+  line-height: 1.15;
+}
+.dash-stat-panel-value.positive { color: var(--positive); }
+.dash-stat-panel-value.negative { color: var(--negative); }
+
+.dash-stat-panel-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
 }
 
 /* ---- Quick Add card (legacy, kept for demo mode) ---- */
@@ -8455,12 +8479,29 @@ p {
   }
 
   .dash-stat-panel-item {
-    padding: 14px 12px;
+    padding: 10px 10px;
     min-width: 0;
   }
 
+  /* On mobile, 6-stat panel collapses to 2 columns (3 rows) */
+  .dash-stat-panel--6 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .dash-stat-panel--6 .dash-stat-panel-item:nth-child(3n) {
+    border-right: 1px solid var(--border);
+  }
+  .dash-stat-panel--6 .dash-stat-panel-item:nth-child(2n) {
+    border-right: none;
+  }
+  .dash-stat-panel--6 .dash-stat-panel-item:nth-child(n+4) {
+    border-bottom: 1px solid var(--border);
+  }
+  .dash-stat-panel--6 .dash-stat-panel-item:nth-child(n+5) {
+    border-bottom: none;
+  }
+
   .dash-stat-panel-value {
-    font-size: 18px;
+    font-size: 16px;
     letter-spacing: 0;
   }
 
@@ -8709,13 +8750,12 @@ p {
     padding-inline: 5px;
   }
 
-  .budget-inline-value,
-  .dash-stat-panel-value {
+  .budget-inline-value {
     font-size: 13px;
   }
 
   .dash-stat-panel-value {
-    font-size: 17px;
+    font-size: 15px;
   }
 
   .expense-date-cell,

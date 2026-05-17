@@ -7617,11 +7617,7 @@ function App() {
                   )}
                 </div>
 
-                <div className="dash-card dash-stat-panel">
-                  <div className="dash-stat-panel-item">
-                    <span className="dash-stat-panel-label">Visible expenses</span>
-                    <strong className="dash-stat-panel-value">{groupExpenseCount}</strong>
-                  </div>
+                <div className="dash-card dash-stat-panel dash-stat-panel--6">
                   <div className="dash-stat-panel-item">
                     <span className="dash-stat-panel-label">Trip total</span>
                     <strong className="dash-stat-panel-value">{formatMoney(totals.actual)}</strong>
@@ -7631,8 +7627,37 @@ function App() {
                     <strong className="dash-stat-panel-value">{formatMoney(totals.shared)}</strong>
                   </div>
                   <div className="dash-stat-panel-item">
-                    <span className="dash-stat-panel-label">Trip Duration</span>
-                    <strong className="dash-stat-panel-value">{totalDays} days</strong>
+                    <span className="dash-stat-panel-label">Avg / day</span>
+                    <strong className="dash-stat-panel-value">
+                      {daysIn > 0 && totals.actual > 0 ? formatMoney(roundMoney(totals.actual / daysIn)) : "—"}
+                    </strong>
+                  </div>
+                  {currentUserMemberId && (() => {
+                    const myBal = balances.find(b => b.memberId === currentUserMemberId);
+                    const net = myBal ? myBal.net : 0;
+                    const netPos = net >= MONEY_EPSILON;
+                    const netNeg = net <= -MONEY_EPSILON;
+                    return (
+                      <div className="dash-stat-panel-item">
+                        <span className="dash-stat-panel-label">Your balance</span>
+                        <strong className={`dash-stat-panel-value${netPos ? " positive" : netNeg ? " negative" : ""}`}>
+                          {netPos ? "+" : netNeg ? "–" : ""}{formatMoney(Math.abs(net))}
+                        </strong>
+                        <span className="dash-stat-panel-sub">{netPos ? "you're owed" : netNeg ? "you owe" : "settled"}</span>
+                      </div>
+                    );
+                  })()}
+                  <div className="dash-stat-panel-item">
+                    <span className="dash-stat-panel-label">Expenses</span>
+                    <strong className="dash-stat-panel-value">{groupExpenseCount}</strong>
+                    <span className="dash-stat-panel-sub">{expenseFilterOptions[1].count} shared · {expenseFilterOptions[2].count} personal</span>
+                  </div>
+                  <div className="dash-stat-panel-item">
+                    <span className="dash-stat-panel-label">Trip status</span>
+                    <strong className="dash-stat-panel-value">
+                      {daysLeft > 0 ? `${daysLeft}d left` : "Ended"}
+                    </strong>
+                    <span className="dash-stat-panel-sub">{totalDays} days total</span>
                   </div>
                 </div>
               </div>
