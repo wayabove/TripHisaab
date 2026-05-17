@@ -4706,7 +4706,9 @@ p {
   font-weight: 850;
   cursor: pointer;
   transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 280ms cubic-bezier(0.4, 0, 0.2, 1);
+              opacity 280ms cubic-bezier(0.4, 0, 0.2, 1),
+              width 200ms ease,
+              padding 200ms ease;
 }
 
 .floating-add-expense:hover {
@@ -4902,6 +4904,14 @@ p {
   gap: 16px;
 }
 
+.dash-section-priority { order: 1; }
+.dash-section-actions { order: 2; }
+.dash-section-next { order: 3; }
+.dash-section-activity { order: 4; }
+.dash-section-personal { order: 5; }
+.dash-section-breakdown { order: 6; }
+.dash-section-context { order: 7; }
+
 .dash-row {
   display: grid;
   gap: 16px;
@@ -4925,6 +4935,7 @@ p {
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   padding: 22px;
+  cursor: default;
 }
 
 .dash-card h3 {
@@ -5087,7 +5098,7 @@ p {
   font-size: 11px;
   font-weight: var(--weight-bold);
   color: var(--text-secondary);
-  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
   text-align: center;
 }
 
@@ -5095,6 +5106,19 @@ p {
   border-color: var(--primary);
   background: var(--primary-muted);
   color: var(--primary-dark);
+  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.12);
+  transform: translateY(-1px);
+}
+
+.dash-action-btn:focus-visible,
+.link-button:focus-visible,
+.overview-task-main:focus-visible,
+.task-status-button:focus-visible,
+.expense-row-actions button:focus-visible,
+.category-menu-actions button:focus-visible,
+.settlement-actions button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  outline-offset: 2px;
 }
 
 .dash-action-icon {
@@ -7750,3 +7774,462 @@ p {
 .include-in-group-toggle-row input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--primary, #0f766e); cursor: pointer; flex-shrink: 0; }
 .include-in-group-label { font-size: 0.88rem; font-weight: 600; color: var(--text); }
 .include-in-group-hint { font-size: 0.78rem; color: var(--text-muted); margin: 0; padding-left: 25px; line-height: 1.4; }
+
+/* ============================================================
+   Mobile-first polish: iPhone 13 mini floor (375px)
+   ============================================================ */
+
+@media (max-width: 430px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    background: #f4f6f8;
+  }
+
+  .app-layout,
+  .main-content,
+  .dashboard-content,
+  .tab-page-content,
+  .expenses-page,
+  .categories-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .mobile-topbar {
+    min-height: 58px;
+    padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
+    gap: 8px;
+  }
+
+  .mobile-logo-img {
+    width: min(118px, 34vw);
+  }
+
+  .hamburger-btn,
+  .notification-bell {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+
+  .mobile-topbar > .primary-button {
+    min-height: 42px;
+    padding: 0 14px;
+    border-radius: 14px;
+    font-size: 14px;
+  }
+
+  .mobile-topbar-add,
+  .dash-action-expense,
+  .expense-summary-card.mobile-optional {
+    display: none;
+  }
+
+  .main-content {
+    padding-top: calc(58px + env(safe-area-inset-top));
+    padding-bottom: calc(126px + env(safe-area-inset-bottom));
+  }
+
+  .tab-page-content {
+    padding: 12px;
+  }
+
+  .trip-hero {
+    min-height: 132px;
+    padding: 18px 12px 14px;
+  }
+
+  .trip-hero-topright {
+    margin-bottom: 10px;
+  }
+
+  .trip-hero-title {
+    font-size: 25px;
+    line-height: 1.08;
+  }
+
+  .trip-hero-dates {
+    max-width: 100%;
+    padding: 6px 10px;
+    font-size: 12px;
+    white-space: normal;
+  }
+
+  .dashboard-content {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .dash-row,
+  .dash-row-2col,
+  .dash-row-3col,
+  .dash-row-budget {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .dash-row-3col > .dash-card:last-child {
+    grid-column: auto;
+  }
+
+  .dash-card,
+  .card,
+  .categories-list-panel,
+  .category-editor-panel,
+  .expense-summary-card,
+  .expense-table-row {
+    border-radius: 14px;
+  }
+
+  .dash-card {
+    padding: 14px;
+  }
+
+  .dash-card-header,
+  .personal-budget-header,
+  .budget-card-top {
+    gap: 8px;
+  }
+
+  .dash-card-header .link-button,
+  .personal-budget-header .link-button,
+  .budget-card-top .link-button {
+    flex: 0 0 auto;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .dash-action-bar {
+    display: flex;
+    gap: 8px;
+    margin-inline: -10px;
+    padding: 0 10px 2px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .dash-action-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dash-action-btn {
+    flex: 0 0 72px;
+    min-height: 80px;
+    padding: 9px 6px;
+    scroll-snap-align: start;
+  }
+
+  .dash-action-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .budget-donut-wrap {
+    width: 104px;
+    height: 104px;
+  }
+
+  .budget-inline-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .budget-inline-stat {
+    padding: 8px 7px;
+  }
+
+  .budget-inline-label {
+    font-size: 9px;
+  }
+
+  .budget-inline-value {
+    font-size: 13px;
+    letter-spacing: 0;
+  }
+
+  .budget-message {
+    padding: 9px 10px;
+    font-size: 12px;
+  }
+
+  .dash-stat-panel-item {
+    padding: 14px 12px;
+    min-width: 0;
+  }
+
+  .dash-stat-panel-value {
+    font-size: 18px;
+    letter-spacing: 0;
+  }
+
+  .personal-budget-stats {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .personal-budget-no-budget {
+    grid-column: auto;
+  }
+
+  .personal-budget-form-row,
+  .personal-budget-form-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .personal-budget-currency-select {
+    width: 100%;
+  }
+
+  .expenses-header,
+  .expense-control-row {
+    gap: 10px;
+  }
+
+  .expenses-title h2 {
+    font-size: 28px;
+  }
+
+  .expenses-title p {
+    font-size: 13px;
+  }
+
+  .expenses-toolbar {
+    gap: 8px;
+  }
+
+  .expenses-toolbar .primary-button,
+  .expenses-toolbar .secondary-button {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  .expense-filter-tabs {
+    margin-inline: -12px;
+    padding-inline: 12px;
+  }
+
+  .expense-filter-chip {
+    min-height: 34px;
+    padding: 7px 11px;
+    font-size: 12px;
+  }
+
+  .expense-summary-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .expense-summary-card {
+    min-height: 82px;
+    padding: 13px;
+    gap: 12px;
+  }
+
+  .expense-summary-icon {
+    flex-basis: 46px;
+    width: 46px;
+    height: 46px;
+    font-size: 18px;
+  }
+
+  .expense-summary-card strong {
+    font-size: 19px;
+  }
+
+  .expense-table-card {
+    gap: 10px;
+  }
+
+  .expense-table-row {
+    padding: 13px;
+    gap: 10px;
+  }
+
+  .expense-category-mark {
+    flex-basis: 36px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .expense-date-cell,
+  .expense-paid-cell,
+  .expense-participants-cell,
+  .expense-muted-cell,
+  .expense-table-row > [data-label="Type"] {
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .expense-amount-cell strong {
+    font-size: 21px;
+  }
+
+  .expense-table-footer {
+    padding: 12px;
+  }
+
+  .expense-pagination {
+    width: 100%;
+  }
+
+  .expense-pagination button {
+    min-width: 38px;
+    min-height: 38px;
+  }
+
+  .bottom-nav {
+    min-height: calc(64px + env(safe-area-inset-bottom));
+    padding: 5px 2px env(safe-area-inset-bottom);
+  }
+
+  .bottom-nav-item {
+    min-width: 0;
+    padding: 4px 1px 6px;
+  }
+
+  .bottom-nav-icon {
+    width: 38px;
+    height: 26px;
+    font-size: 18px;
+  }
+
+  .bottom-nav-label {
+    max-width: 68px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 9px;
+  }
+
+  .floating-add-expense {
+    right: 12px;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    width: 52px;
+    min-width: 52px;
+    height: 52px;
+    min-height: 52px;
+    max-width: 52px;
+    justify-content: center;
+    padding: 0;
+    font-size: 18px;
+  }
+
+  .floating-add-expense--hidden-mobile {
+    display: none;
+  }
+
+  .floating-add-label {
+    display: none;
+  }
+
+  .floating-add-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 24px;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .feedback-widget {
+    right: 12px;
+  }
+
+  .feedback-widget--above-fab {
+    bottom: calc(82px + env(safe-area-inset-bottom) + 52px + 8px);
+  }
+
+  .modal {
+    width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top));
+  }
+
+  .modal-header {
+    padding: 14px 16px;
+  }
+
+  .modal-body {
+    padding: 14px;
+  }
+
+  .modal-footer {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .modal-footer .primary-button,
+  .modal-footer .secondary-button,
+  .modal-footer .danger-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .exp-tab-nav {
+    justify-content: flex-start;
+  }
+
+  .exp-tab-btn {
+    min-width: 64px;
+    padding: 9px 6px 8px;
+  }
+
+  .exp-tab-label {
+    font-size: 9px;
+  }
+
+  .member-tile-grid,
+  .category-editor-grid,
+  .category-stat-grid,
+  .grid-2,
+  .home-stats-row,
+  .home-trip-grid,
+  .invite-share-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 375px) {
+  .mobile-logo-img {
+    width: 108px;
+  }
+
+  .mobile-topbar > .primary-button {
+    padding-inline: 12px;
+  }
+
+  .dash-card,
+  .tab-page-content,
+  .categories-page {
+    padding-inline: 10px;
+  }
+
+  .budget-inline-stat {
+    padding-inline: 5px;
+  }
+
+  .budget-inline-value,
+  .dash-stat-panel-value {
+    font-size: 13px;
+  }
+
+  .dash-stat-panel-value {
+    font-size: 17px;
+  }
+
+  .expense-date-cell,
+  .expense-paid-cell,
+  .expense-participants-cell,
+  .expense-muted-cell,
+  .expense-table-row > [data-label="Type"] {
+    grid-template-columns: 74px minmax(0, 1fr);
+  }
+}

@@ -1806,6 +1806,18 @@ function App() {
   }, [activeTab]);
 
   useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      document.querySelectorAll(".main-content").forEach(container => {
+        container.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      });
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      document.documentElement.classList.remove("fabs-hidden");
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab, selectedTrip?.id, showLanding]);
+
+  useEffect(() => {
     if (!user || !userProfile.loaded || pendingInvite) return;
     if (!userProfile.tutorialCompletedAt) setIsTutorialOpen(true);
   }, [pendingInvite, user, userProfile.loaded, userProfile.tutorialCompletedAt]);
@@ -6005,12 +6017,12 @@ function App() {
                       checked={formData.includeInGroupTotal !== false}
                       onChange={e => setFormData({ ...formData, includeInGroupTotal: e.target.checked })}
                     />
-                    <span className="include-in-group-label">Count toward group total</span>
+                    <span className="include-in-group-label">Count amount in trip total</span>
                   </div>
                   <p className="include-in-group-hint">
                     {formData.includeInGroupTotal !== false
-                      ? "Amount added to trip's Total Spent visible to all members. Details stay private."
-                      : "Fully private — only visible in your Personal Spending card."}
+                      ? "Details stay private. This amount is included in the group budget total."
+                      : "Fully private. This amount stays out of the group budget total."}
                   </p>
                 </label>
               )}
@@ -7109,28 +7121,28 @@ function App() {
       : "#e5e7eb 0% 100%";
 
     const expenseFilterOptions = [
-      { key: "all", label: "All", count: expenses.length },
+      { key: "all", label: "Visible", count: expenses.length },
       { key: "shared", label: "Shared", count: expenses.filter(e => e.expenseType === "shared").length },
-      { key: "personal", label: "Personal", count: expenses.filter(e => e.expenseType !== "shared").length },
+      { key: "personal", label: "My personal", count: expenses.filter(e => e.expenseType !== "shared").length },
       { key: "pending", label: "Pending split", count: expenseStats.pendingSplit }
     ];
     const expenseSummaryCards = [
       {
-        label: "Total spent",
+        label: "Trip total",
         value: formatMoney(totals.actual),
-        sub: `${expenses.length} expense${expenses.length === 1 ? "" : "s"}`,
+        sub: "Shared plus included personal totals",
         icon: "€",
         tone: "mint"
       },
       {
-        label: "Shared expenses",
+        label: "Shared",
         value: formatMoney(totals.shared),
         sub: `${expenseFilterOptions[1].count} expense${expenseFilterOptions[1].count === 1 ? "" : "s"}`,
         icon: "S",
         tone: "blue"
       },
       {
-        label: "Personal expenses",
+        label: "My personal",
         value: formatMoney(expenseStats.personal),
         sub: `${expenseFilterOptions[2].count} expense${expenseFilterOptions[2].count === 1 ? "" : "s"}`,
         icon: "P",
@@ -7141,7 +7153,8 @@ function App() {
         value: formatMoney(expenseStats.thisWeek),
         sub: `${expenseStats.thisWeekCount} expense${expenseStats.thisWeekCount === 1 ? "" : "s"}`,
         icon: "W",
-        tone: "amber"
+        tone: "amber",
+        mobileOptional: true
       }
     ];
     const expensePageStart = expenseRows.length === 0 ? 0 : (expensePage - 1) * 5 + 1;
@@ -7282,7 +7295,7 @@ function App() {
             {!demoMode ? renderNotificationBell() : null}
             {!demoMode ? (
             <button
-              className="primary-button small-button"
+              className="primary-button small-button mobile-topbar-add"
               type="button"
               onClick={() => openFastExpenseModal()}
             >
@@ -7326,9 +7339,9 @@ function App() {
             <div className="dashboard-content">
 
               {/* ── Quick action bar ── */}
-              <div className="dash-action-bar">
+              <div className="dash-action-bar dash-section-actions" aria-label="Primary trip actions">
                 {!demoMode ? (
-                  <button className="dash-action-btn" type="button" onClick={() => openFastExpenseModal()}>
+                  <button className="dash-action-btn dash-action-expense" type="button" onClick={() => openFastExpenseModal()}>
                     <div className="dash-action-icon" style={{ background: "#fff7ed", color: "#ea580c" }}>➕</div>
                     <span>Add Expense</span>
                   </button>
@@ -7354,7 +7367,7 @@ function App() {
               </div>
 
               {/* ── Row 1: Budget overview + Stat panel ── */}
-              <div className="dash-row dash-row-budget">
+              <div className="dash-row dash-row-budget dash-section-priority">
                 <div className="dash-card budget-card">
                   <div className="budget-card-top">
                     <div>
@@ -7409,7 +7422,7 @@ function App() {
                     <>
                       <div className="budget-no-budget-total">
                         <span className="budget-donut-pct">{formatMoney(totals.actual)}</span>
-                        <span className="budget-donut-sub">total spent</span>
+                        <span className="budget-donut-sub">trip total</span>
                       </div>
                       <div className="budget-inline-stats">
                         <div className="budget-inline-stat">
@@ -7421,7 +7434,7 @@ function App() {
                           <strong className="budget-inline-value">{formatMoney(totals.shared)}</strong>
                         </div>
                         <div className="budget-inline-stat">
-                          <span className="budget-inline-label">Personal</span>
+                          <span className="budget-inline-label">My personal</span>
                           <strong className="budget-inline-value">{formatMoney(expenseStats.personal)}</strong>
                         </div>
                       </div>
@@ -7431,11 +7444,11 @@ function App() {
 
                 <div className="dash-card dash-stat-panel">
                   <div className="dash-stat-panel-item">
-                    <span className="dash-stat-panel-label">Expenses</span>
+                    <span className="dash-stat-panel-label">Visible expenses</span>
                     <strong className="dash-stat-panel-value">{groupExpenseCount}</strong>
                   </div>
                   <div className="dash-stat-panel-item">
-                    <span className="dash-stat-panel-label">Total Spent</span>
+                    <span className="dash-stat-panel-label">Trip total</span>
                     <strong className="dash-stat-panel-value">{formatMoney(totals.actual)}</strong>
                   </div>
                   <div className="dash-stat-panel-item">
@@ -7450,12 +7463,12 @@ function App() {
               </div>
 
               {currentUserMemberId && (
-                <div className="dash-row">
+                <div className="dash-row dash-section-personal">
                   <div className="dash-card personal-budget-card">
                     <div className="personal-budget-header">
                       <div>
                         <h3>My Personal Spending</h3>
-                        <p className="dash-card-sub">Only visible to you · not shared with anyone</p>
+                        <p className="dash-card-sub">Expense details stay private. Included amounts may count toward the trip total.</p>
                       </div>
                       {!showPersonalBudgetForm && (
                         <button
@@ -7596,7 +7609,7 @@ function App() {
               )}
 
               {overviewTasks.length > 0 && (
-              <div className="dash-row">
+              <div className="dash-row dash-section-next">
                 <div className="dash-card next-actions-card">
                   <div className="dash-card-header">
                     <div>
@@ -7637,11 +7650,11 @@ function App() {
               )}
 
               {/* ── Row 2: Settlement snapshot + Recent expenses ── */}
-              <div className={`dash-row${userHasFinancialInvolvement ? " dash-row-2col" : ""}`}>
+              <div className={`dash-row dash-section-activity${userHasFinancialInvolvement ? " dash-row-2col" : ""}`}>
                 {userHasFinancialInvolvement && (
                 <div className="dash-card">
                   <h3>Settlement snapshot</h3>
-                  <p className="dash-card-sub">Who owes whom?</p>
+                  <p className="dash-card-sub">Shared settlement only. Private personal spending is excluded.</p>
                   {balances.length === 0 ? (
                     <p className="muted small">No members yet.</p>
                   ) : (
@@ -7692,7 +7705,7 @@ function App() {
                   <div className="dash-card-header">
                     <div>
                       <h3>Recent expenses</h3>
-                      <p className="dash-card-sub">Latest transactions</p>
+                      <p className="dash-card-sub">Latest visible transactions</p>
                     </div>
                     <button className="link-button" style={{ fontSize: "13px", whiteSpace: "nowrap" }} type="button" onClick={() => setActiveTab("actual")}>
                       View all →
@@ -7718,7 +7731,7 @@ function App() {
               </div>
 
               {/* ── Row 3: Trip progress + Group snapshot + At a glance ── */}
-              <div className="dash-row dash-row-3col">
+              <div className="dash-row dash-row-3col dash-section-context">
 
                 <div className="dash-card">
                   <h3>Trip progress</h3>
@@ -7821,7 +7834,7 @@ function App() {
 
               {/* ── Row 4: Spending by category ── */}
               {spendingBreakdown.length > 0 && (
-                <div className="dash-card breakdown-card">
+                <div className="dash-card breakdown-card dash-section-breakdown">
                   <h3>Spending by category</h3>
                   <p className="dash-card-sub">Where your money goes</p>
                   <div className="breakdown-ring-layout">
@@ -8069,7 +8082,7 @@ function App() {
             <div className="expenses-header">
               <div className="expenses-title">
                 <h2>Expenses</h2>
-                <p className="muted">Track, filter, and manage trip spending.</p>
+                <p className="muted">Track expenses visible to you. Trip totals can include private aggregates.</p>
               </div>
               <div className="expenses-toolbar">
                 <label className="expense-search">
@@ -8082,12 +8095,9 @@ function App() {
                     aria-label="Search expenses"
                   />
                 </label>
-                <button className="secondary-button expense-filter-button" type="button">
-                  Filter
-                </button>
                 {!demoMode ? (
                   <button
-                    className="primary-button"
+                    className="primary-button expense-toolbar-add"
                     type="button"
                     onClick={() => openFastExpenseModal()}
                   >
@@ -8125,7 +8135,10 @@ function App() {
 
             <div className="expense-summary-grid">
               {expenseSummaryCards.map(card => (
-                <article className="expense-summary-card" key={card.label}>
+                <article
+                  className={`expense-summary-card${card.mobileOptional ? " mobile-optional" : ""}`}
+                  key={card.label}
+                >
                   <div className={`expense-summary-icon ${card.tone}`}>{card.icon}</div>
                   <div>
                     <p>{card.label}</p>
@@ -9336,12 +9349,13 @@ function App() {
 
         {!demoMode ? (
         <button
-          className="floating-add-expense"
+          className={`floating-add-expense${activeTab === "actual" ? " floating-add-expense--hidden-mobile" : ""}`}
           type="button"
+          aria-label="Add expense"
           onClick={() => openFastExpenseModal()}
         >
           <span className="floating-add-icon">+</span>
-          <span>Add Expense</span>
+          <span className="floating-add-label">Add Expense</span>
         </button>
         ) : null}
 
