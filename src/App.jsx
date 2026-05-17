@@ -5646,187 +5646,285 @@ function App() {
   // -------------------- CSV export --------------------
   function exportTripSummaryCsv() {
     if (!selectedTrip) return;
-    const remaining = totals.predicted - totals.actual;
+    const cur = selectedTrip.defaultCurrency || "EUR";
     const rows = [];
+    const blank = () => rows.push("");
+    const section = title => {
+      blank();
+      rows.push(csvRow([`=== ${title} ===`]));
+    };
 
-    rows.push(csvRow(["Trip Summary"]));
-    rows.push(csvRow(["Trip name", selectedTrip.name]));
-    rows.push(csvRow(["Start date", selectedTrip.startDate]));
-    rows.push(csvRow(["End date", selectedTrip.endDate]));
-    rows.push(csvRow(["Default currency", selectedTrip.defaultCurrency]));
-    rows.push(csvRow(["Status", selectedTrip.status]));
-    rows.push(csvRow(["Owner email", selectedTrip.ownerEmail || ""]));
-    rows.push(csvRow(["Exported at", new Date().toLocaleString()]));
-    rows.push("");
-
-    rows.push(csvRow(["Plan Budget vs Expenses"]));
-    rows.push(csvRow(["Metric", "Amount EUR"]));
-    rows.push(csvRow(["Plan Budget total", totals.predicted.toFixed(2)]));
-    rows.push(csvRow(["Expenses total", totals.actual.toFixed(2)]));
-    rows.push(csvRow(["Shared expenses total", totals.shared.toFixed(2)]));
-    rows.push(csvRow(["Settled total", totals.settled.toFixed(2)]));
-    rows.push(csvRow(["Remaining / Over plan budget", remaining.toFixed(2)]));
-    rows.push("");
-
-    rows.push(csvRow(["Category Breakdown"]));
-    rows.push(csvRow(["Category", "Type", "Plan Budget EUR", "Expenses EUR", "Difference EUR"]));
-    categories.forEach(c => {
-      const predicted = Number(groupBudgetByCategoryId.get(c.id) || 0);
-      const actual = actualByCategoryId.get(c.id) || 0;
-      rows.push(
-        csvRow([
-          c.name,
-          c.type || "",
-          predicted.toFixed(2),
-          actual.toFixed(2),
-          (predicted - actual).toFixed(2)
-        ])
-      );
-    });
-    rows.push("");
-
-    rows.push(csvRow(["All Expenses"]));
-    rows.push(
-      csvRow([
-        "Date", "Time", "Description", "Category", "Expense type", "Split type",
-        "Paid by", "Amount EUR", "Original amount", "Original currency",
-        "Payment method", "Rate source", "Scope", "Visible to", "Split details", "Notes"
-      ])
+    // Dynamic flags
+    const hasBudget = totals.predicted > 0;
+    const activeTasks = tasks.filter(t => t.isActive !== false);
+    const hasTasks = activeTasks.length > 0;
+    const hasMultiCurrency = expenses.some(
+      e => e.originalCurrency && e.originalCurrency !== cur
     );
-    expenses.forEach(e => {
-      const splitDetails =
-        e.expenseType === "shared" && e.splitType === "custom"
-          ? Object.entries(e.customSplitSharesEur || {})
-              .map(([id, amount]) => `${memberNameOf(id)}: €${Number(amount || 0).toFixed(2)}`)
-              .join(" | ")
-          : e.expenseType === "shared"
-          ? `Equal split between ${(e.splitMemberIds || []).map(memberNameOf).join(" | ")}`
-          : "Personal";
+    const activeGroups = settlementGroups.filter(g => g.isActive !== false);
+    const hasFamilyGroups = activeGroups.length > 0;
 
-      rows.push(
-        csvRow([
+    // Helpers
+    const money = v => Number(v || 0).toFixed(2);
+    const pct = (v, total) => total > 0 ? `${Math.round((v / total) * 100)}%` : "0%";
+    const exportedAt = new Date().toLocaleString();
+
+    // ── 1. TRIP SUMMARY ──────────────────────────────────────────
+    rows.push(csvRow(["TRIP SUMMARY"]));
+    rows.push(csvRow(["Trip name", selectedTrip.name]));
+    rows.push(csvRow(["Destination / description", selectedTrip.description || ""]));
+    rows.push(csvRow(["Start date", selectedTrip.startDate || ""]));
+    rows.push(csvRow(["End date", selectedTrip.endDate || ""]));
+    rows.push(csvRow(["Duration", selectedTrip.startDate && selectedTrip.endDate
+      ? (() => {
+          const s = new Date(selectedTrip.startDate);
+          const e = new Date(selectedTrip.endDate);
+          const days = Math.max(1, Math.round((e - s) / 86400000) + 1);
+          return `${days} day${days !== 1 ? "s" : ""}`;
+        })()
+      : ""]));
+    rows.push(csvRow(["Currency", cur]));
+    rows.push(csvRow(["Members", activeMembers.map(m => m.name || m.email || m.id).join(", ")]));
+    rows.push(csvRow(["Total expenses", expenses.filter(e => e.isActive !== false).length]));
+    rows.push(csvRow(["Exported at", exportedAt]));
+
+    // ── 2. FINANCIAL OVERVIEW ─────────────────────────────────────
+    section("FINANCIAL OVERVIEW");
+    rows.push(csvRow(["Metric", `Amount (${cur})`]));
+    rows.push(csvRow(["Trip total (shared + included personal)", money(totals.actual)]));
+    rows.push(csvRow(["Shared expenses", money(totals.shared)]));
+    rows.push(csvRow(["Personal expenses (included in total)", money(totals.actual - totals.shared)]));
+    if (expenses.filter(e => e.isActive !== false).length > 0) {
+      const tripStart = selectedTrip.startDate ? new Date(selectedTrip.startDate) : null;
+      const tripEnd = selectedTrip.endDate ? new Date(selectedTrip.endDate) : null;
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (tripStart) {
+        const endForCalc = tripEnd && tripEnd < today ? tripEnd : today;
+        const daysElapsed = Math.max(1, Math.round((endForCalc - tripStart) / 86400000) + 1);
+        rows.push(csvRow(["Average spend per day", money(totals.actual / daysElapsed)]));
+      }
+    }
+    rows.push(csvRow(["Already settled", money(totals.settled)]));
+    if (hasBudget) {
+      rows.push(csvRow(["Planned budget", money(totals.predicted)]));
+      rows.push(csvRow([
+        totals.predicted >= totals.actual ? "Under budget by" : "Over budget by",
+        money(Math.abs(totals.predicted - totals.actual))
+      ]));
+    }
+
+    // ── 3. MEMBER SNAPSHOT ────────────────────────────────────────
+    section("MEMBER SNAPSHOT");
+    rows.push(csvRow(["Who paid what and what they owe / are owed"]));
+    blank();
+
+    if (hasFamilyGroups) {
+      // Unit-grouped view
+      const memberSpendingMap = new Map(
+        balances.map(b => {
+          const personalPaid = roundMoney(
+            expenses.filter(e => e.isActive !== false && e.expenseType !== "shared" && e.paidByMemberId === b.memberId)
+              .reduce((s, e) => s + Number(e.amountEur || 0), 0)
+          );
+          return [b.memberId, { ...b, personalPaid, totalPaid: roundMoney(b.paid + personalPaid) }];
+        })
+      );
+
+      activeGroups.forEach(group => {
+        rows.push(csvRow([`Unit: ${group.name || "Group"}`, "", "", "", ""]));
+        rows.push(csvRow(["  Member", `Total paid (${cur})`, `Group paid (${cur})`, `Personal paid (${cur})`, `Net balance (${cur})`, "Status"]));
+        group.memberIds.forEach(id => {
+          const m = memberSpendingMap.get(id);
+          if (!m) return;
+          rows.push(csvRow([
+            `  ${m.name}`,
+            money(m.totalPaid),
+            money(m.paid),
+            money(m.personalPaid),
+            money(Math.abs(m.net)),
+            m.net >= MONEY_EPSILON ? `Owed ${money(m.net)}` : m.net <= -MONEY_EPSILON ? `Owes ${money(-m.net)}` : "Settled"
+          ]));
+        });
+        const unitMembers = group.memberIds.map(id => memberSpendingMap.get(id)).filter(Boolean);
+        const unitTotalPaid = roundMoney(unitMembers.reduce((s, m) => s + m.totalPaid, 0));
+        const unitNet = roundMoney(unitMembers.reduce((s, m) => s + m.net, 0));
+        rows.push(csvRow([
+          `  Unit total`,
+          money(unitTotalPaid),
+          "",
+          "",
+          money(Math.abs(unitNet)),
+          unitNet >= MONEY_EPSILON ? `Owed ${money(unitNet)}` : unitNet <= -MONEY_EPSILON ? `Owes ${money(-unitNet)}` : "Settled"
+        ]));
+        blank();
+      });
+
+      // Ungrouped members
+      const groupedIds = new Set(activeGroups.flatMap(g => g.memberIds));
+      const ungrouped = balances.filter(b => !groupedIds.has(b.memberId));
+      if (ungrouped.length > 0) {
+        rows.push(csvRow(["Individual members", "", "", "", ""]));
+        rows.push(csvRow(["Member", `Total paid (${cur})`, `Group paid (${cur})`, `Personal paid (${cur})`, `Net balance (${cur})`, "Status"]));
+        ungrouped.forEach(b => {
+          const personalPaid = roundMoney(
+            expenses.filter(e => e.isActive !== false && e.expenseType !== "shared" && e.paidByMemberId === b.memberId)
+              .reduce((s, e) => s + Number(e.amountEur || 0), 0)
+          );
+          rows.push(csvRow([
+            b.name,
+            money(b.paid + personalPaid),
+            money(b.paid),
+            money(personalPaid),
+            money(Math.abs(b.net)),
+            b.net >= MONEY_EPSILON ? `Owed ${money(b.net)}` : b.net <= -MONEY_EPSILON ? `Owes ${money(-b.net)}` : "Settled"
+          ]));
+        });
+      }
+    } else {
+      // Simple flat view
+      rows.push(csvRow(["Member", `Total paid (${cur})`, `Group paid (${cur})`, `Personal paid (${cur})`, `Net balance (${cur})`, "Status"]));
+      balances.forEach(b => {
+        const personalPaid = roundMoney(
+          expenses.filter(e => e.isActive !== false && e.expenseType !== "shared" && e.paidByMemberId === b.memberId)
+            .reduce((s, e) => s + Number(e.amountEur || 0), 0)
+        );
+        rows.push(csvRow([
+          b.name,
+          money(b.paid + personalPaid),
+          money(b.paid),
+          money(personalPaid),
+          money(Math.abs(b.net)),
+          b.net >= MONEY_EPSILON ? `Owed ${money(b.net)}` : b.net <= -MONEY_EPSILON ? `Owes ${money(-b.net)}` : "Settled"
+        ]));
+      });
+    }
+
+    // ── 4. SPENDING BY CATEGORY ───────────────────────────────────
+    section("SPENDING BY CATEGORY");
+    const catHeaders = ["Category", `Spent (${cur})`, "% of total"];
+    if (hasBudget) catHeaders.push(`Budgeted (${cur})`, `Difference (${cur})`);
+    rows.push(csvRow(catHeaders));
+
+    const activeBreakdown = categories
+      .map(c => ({
+        name: c.name,
+        actual: actualByCategoryId.get(c.id) || 0,
+        predicted: Number(groupBudgetByCategoryId.get(c.id) || 0)
+      }))
+      .filter(c => c.actual > 0)
+      .sort((a, b) => b.actual - a.actual);
+
+    activeBreakdown.forEach(c => {
+      const row = [c.name, money(c.actual), pct(c.actual, totals.actual)];
+      if (hasBudget) row.push(money(c.predicted), money(c.predicted - c.actual));
+      rows.push(csvRow(row));
+    });
+
+    // ── 5. EXPENSES ───────────────────────────────────────────────
+    section("EXPENSES");
+    const expHeaders = ["Date", "Time", "Description", "Category", "Type", "Paid by", `Amount (${cur})`];
+    if (hasMultiCurrency) expHeaders.push("Original amount", "Original currency");
+    expHeaders.push("Split among", "Notes");
+    rows.push(csvRow(expHeaders));
+
+    expenses
+      .filter(e => e.isActive !== false)
+      .forEach(e => {
+        const splitAmong =
+          e.expenseType === "shared" && e.splitType === "custom"
+            ? Object.entries(e.customSplitSharesEur || {})
+                .map(([id, amt]) => `${memberNameOf(id)}: ${money(amt)}`)
+                .join(" | ")
+            : e.expenseType === "shared"
+            ? (e.splitMemberIds || []).map(memberNameOf).join(" | ")
+            : memberNameOf(e.paidByMemberId);
+
+        const row = [
           e.date || "",
           e.time || "",
           e.description || "",
           e.categoryName || "",
-          e.expenseType || "",
-          e.splitType || "",
+          e.expenseType === "shared" ? "Shared" : "Personal",
           memberNameOf(e.paidByMemberId),
-          Number(e.amountEur || 0).toFixed(2),
-          Number(e.originalAmount || e.amountEur || 0).toFixed(2),
-          e.originalCurrency || "EUR",
-          e.paymentMethod || "",
-          e.ratesSource || "",
-          normalizeExpenseScope(e),
-          e.visibleTo === "all"
-            ? "All"
-            : Array.isArray(e.visibleTo)
-            ? e.visibleTo.map(memberNameOf).join(" | ")
-            : "",
-          splitDetails,
-          e.notes || ""
-        ])
-      );
-    });
-    rows.push("");
+          money(e.amountEur)
+        ];
+        if (hasMultiCurrency) {
+          row.push(
+            e.originalCurrency && e.originalCurrency !== cur
+              ? money(e.originalAmount || e.amountEur)
+              : "",
+            e.originalCurrency && e.originalCurrency !== cur
+              ? e.originalCurrency
+              : ""
+          );
+        }
+        row.push(splitAmong, e.notes || "");
+        rows.push(csvRow(row));
+      });
 
-    rows.push(csvRow(["Member Balances"]));
-    rows.push(
-      csvRow([
-        "Member", "Paid EUR", "Owes EUR", "Settled paid EUR",
-        "Settled received EUR", "Net EUR"
-      ])
-    );
-    balances.forEach(b => {
-      rows.push(
-        csvRow([
-          b.name,
-          b.paid.toFixed(2),
-          b.owes.toFixed(2),
-          b.settledPaid.toFixed(2),
-          b.settledReceived.toFixed(2),
-          b.net.toFixed(2)
-        ])
-      );
-    });
-    rows.push("");
+    // ── 6. SETTLEMENT PLAN & HISTORY ─────────────────────────────
+    section("SETTLEMENT PLAN");
+    rows.push(csvRow(["Who needs to pay whom to settle the trip"]));
+    blank();
 
-    rows.push(csvRow(["Smart Settle Suggestions"]));
-    rows.push(csvRow(["Layer", "Private group", "From", "To", "Amount EUR", "Status"]));
-    if (smartSettleSummary.groupSettlement.suggestions.length === 0) {
-      rows.push(csvRow(["Group", "", "Everyone is settled", "", "", ""]));
+    const allGroupSuggestions = smartSettleSummary.groupSettlement.suggestions || [];
+    const allPrivateSuggestions = smartSettleSummary.privateSettlements || [];
+
+    if (allGroupSuggestions.length === 0 && allPrivateSuggestions.every(g => g.suggestions.length === 0)) {
+      rows.push(csvRow(["All members are settled — no payments needed"]));
     } else {
-      smartSettleSummary.groupSettlement.suggestions.forEach(s => {
-        rows.push(csvRow(["Group", "", s.fromName, s.toName, s.amount.toFixed(2), s.status]));
+      if (allGroupSuggestions.length > 0) {
+        rows.push(csvRow(["Group settlements"]));
+        rows.push(csvRow(["From", "To", `Amount (${cur})`, "Status"]));
+        allGroupSuggestions.forEach(s => {
+          rows.push(csvRow([s.fromName, s.toName, money(s.amount), s.status || "pending"]));
+        });
+        blank();
+      }
+      allPrivateSuggestions.forEach(group => {
+        if (group.suggestions.length === 0) return;
+        rows.push(csvRow([`Private: ${group.memberNames.join(" & ")}`]));
+        rows.push(csvRow(["From", "To", `Amount (${cur})`, "Status"]));
+        group.suggestions.forEach(s => {
+          rows.push(csvRow([s.fromName, s.toName, money(s.amount), s.status || "pending"]));
+        });
+        blank();
       });
     }
-    smartSettleSummary.privateSettlements.forEach(group => {
-      group.suggestions.forEach(s => {
+
+    if (settlements.length > 0) {
+      rows.push(csvRow(["Settlement history"]));
+      rows.push(csvRow(["Date", "From", "To", `Amount (${cur})`, "Currency", "Status", "Notes"]));
+      settlements.forEach(s => {
         rows.push(csvRow([
-          "Private",
-          group.memberNames.join(" + "),
-          s.fromName,
-          s.toName,
-          s.amount.toFixed(2),
-          s.status
-        ]));
-      });
-    });
-    rows.push("");
-
-    rows.push(csvRow(["Tasks"]));
-    rows.push(csvRow([
-      "Task ID", "Trip ID", "Title", "Type", "Scope", "Visible To", "Assigned To",
-      "Status", "Due Date", "Notes", "Created By", "Completed By", "Completed At",
-      "Created At", "Updated At", "Is Active"
-    ]));
-    tasks.forEach(task => {
-      const visibleTo = task.visibleTo === "all"
-        ? "All"
-        : Array.isArray(task.visibleTo)
-        ? task.visibleTo.map(memberNameOf).join(" | ")
-        : "";
-      rows.push(csvRow([
-        task.id,
-        task.tripId || selectedTrip.id,
-        task.title || "",
-        taskTypeLabel(task.type),
-        TASK_SCOPE_OPTIONS.find(option => option.value === task.scope)?.label || task.scope || "",
-        visibleTo,
-        (task.assignedTo || []).map(memberNameOf).join(" | "),
-        task.status === "done" ? "Done" : "Todo",
-        task.dueDate || "",
-        task.notes || "",
-        task.createdBy ? memberNameOf(task.createdBy) : "",
-        task.completedBy ? memberNameOf(task.completedBy) : "",
-        task.completedAt?.toDate?.()?.toLocaleString?.() || "",
-        task.createdAt?.toDate?.()?.toLocaleString?.() || "",
-        task.updatedAt?.toDate?.()?.toLocaleString?.() || "",
-        task.isActive === false ? "No" : "Yes"
-      ]));
-    });
-    rows.push("");
-
-    rows.push(csvRow(["Settlement History"]));
-    rows.push(csvRow(["Date", "Layer", "Private group", "From", "To", "Amount EUR", "Currency", "Status", "Paid At", "Notes"]));
-    settlements.forEach(s => {
-      rows.push(
-        csvRow([
-          s.date || "",
-          s.settlementLayer === "private" ? "Private" : "Group",
-          s.settlementGroupId || "",
+          s.date || s.paidAt?.toDate?.()?.toLocaleDateString?.() || "",
           s.fromMemberName || memberNameOf(s.fromMemberId),
           s.toMemberName || memberNameOf(s.toMemberId),
-          Number(s.amountEur || 0).toFixed(2),
-          s.currency || selectedTrip.defaultCurrency || "EUR",
+          money(s.amountEur),
+          s.currency || cur,
           s.status || "paid",
-          s.paidAt?.toDate?.()?.toLocaleString?.() || "",
           s.notes || ""
-        ])
-      );
-    });
+        ]));
+      });
+    }
 
-    downloadCsv(`${slugify(selectedTrip.name) || "trip"}-summary.csv`, rows.join("\n"));
+    // ── 7. TASKS (only if any exist) ─────────────────────────────
+    if (hasTasks) {
+      section("TASKS");
+      rows.push(csvRow(["Title", "Type", "Assigned to", "Status", "Due date", "Notes"]));
+      activeTasks.forEach(task => {
+        rows.push(csvRow([
+          task.title || "",
+          taskTypeLabel(task.type),
+          (task.assignedTo || []).map(memberNameOf).join(", "),
+          task.status === "done" ? "Done" : "To do",
+          task.dueDate || "",
+          task.notes || ""
+        ]));
+      });
+    }
+
+    downloadCsv(`${slugify(selectedTrip.name) || "trip"}-export.csv`, rows.join("\n"));
   }
 
   // -------------------- Render: expense form --------------------
