@@ -940,11 +940,10 @@ function Modal({ isOpen, onClose, title, children, className }) {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    document.body.classList.add("body-scroll-locked");
     return () => {
       document.removeEventListener("keydown", handleKey);
-      document.body.style.overflow = prevOverflow;
+      document.body.classList.remove("body-scroll-locked");
     };
   }, [isOpen, onClose]);
 
@@ -1790,8 +1789,8 @@ function App() {
     date: todayIso(),
     time: nowTimeIso()
   });
-  const [expenseFormTab, setExpenseFormTab] = useState("basic");
-  const expenseTouchStartXRef = useRef(null);
+  const [expenseNoteOpen, setExpenseNoteOpen] = useState(false);
+  const expenseSharedSectionRef = useRef(null);
   const crossUnitExpandedTripsRef = useRef(new Set());
   const pullRefreshRef = useRef({ startY: 0, pulling: false, eligible: false });
   const deliveredBrowserNotificationIdsRef = useRef(new Set());
@@ -4986,11 +4985,10 @@ function App() {
       time: nowTimeIso(),
       categoryId: defaultExpenseCategoryId,
       originalCurrency: selectedTrip?.defaultCurrency || "EUR",
-      paymentMethod: "card",
-      expenseType: "personal",
+      expenseType: "shared",
       splitType: "equal",
       paidByMemberId: payerId,
-      splitMemberIds: payerId ? [payerId] : [],
+      splitMemberIds: activeMembers.map(m => m.id),
       ...overrides
     };
   }
@@ -5002,7 +5000,7 @@ function App() {
     }
     setExpenseFeedback(null);
     setExpenseForm(buildFastExpenseForm(overrides));
-    setExpenseFormTab("basic");
+    setExpenseNoteOpen(false);
     setIsAddExpenseModalOpen(true);
   }
 
@@ -5025,8 +5023,7 @@ function App() {
         activeMembers[0]?.id ||
         "",
       expenseType: expenseForm.expenseType || "personal",
-      splitType: expenseForm.splitType || "equal",
-      paymentMethod: expenseForm.paymentMethod || "card"
+      splitType: expenseForm.splitType || "equal"
     };
 
     const originalAmount = Number(normalizedExpenseForm.originalAmount);
@@ -5076,7 +5073,6 @@ function App() {
         ratesSource: ratesMeta.source,
         ratesStatus: ratesMeta.status,
         ratesUpdatedAt: ratesMeta.updatedAt,
-        paymentMethod: normalizedExpenseForm.paymentMethod,
         notes: normalizedExpenseForm.notes.trim(),
         expenseType: normalizedExpenseForm.expenseType,
         splitType:
@@ -5194,7 +5190,7 @@ function App() {
         ? activeMembers.map(m => m.id)
         : [defaultPayerId];
 
-    setExpenseFormTab("basic");
+    setExpenseNoteOpen(!!(expense.notes));
     setEditingExpenseId(expense.id);
     setExpenseEditForm({
       date: expense.date || todayIso(),
@@ -5203,7 +5199,6 @@ function App() {
       description: expense.description || "",
       originalAmount: String(expense.originalAmount || expense.amountEur || ""),
       originalCurrency: expense.originalCurrency || "EUR",
-      paymentMethod: expense.paymentMethod || "card",
       notes: expense.notes || "",
       expenseType: expense.expenseType || "personal",
       splitType: expense.splitType || "equal",
@@ -5284,7 +5279,6 @@ function App() {
         ratesSource: ratesMeta.source,
         ratesStatus: ratesMeta.status,
         ratesUpdatedAt: ratesMeta.updatedAt,
-        paymentMethod: expenseEditForm.paymentMethod,
         notes: expenseEditForm.notes.trim(),
         expenseType: expenseEditForm.expenseType,
         splitType:
@@ -7359,7 +7353,6 @@ function App() {
     const previewEur = convertToEur(totalAmount, formData.originalCurrency || "EUR");
     const customTotal = getCustomSplitTotal(formData);
     const percentTotal = getPercentageSplitTotal(formData);
-    const isShared = formData.expenseType === "shared";
 
     const AVATAR_COLORS = [
       "#0f766e","#2563eb","#d97706","#7c3aed","#be185d","#0891b2","#15803d","#dc2626"
@@ -7391,9 +7384,6 @@ function App() {
     }
 
     function handleExpenseTypeChange(nextType) {
-      if (nextType === "personal" && expenseFormTab === "paidby") {
-        setExpenseFormTab("basic");
-      }
       setFormData({
         ...formData,
         expenseType: nextType,
@@ -7403,6 +7393,11 @@ function App() {
           : formData.paidByMemberId ? [formData.paidByMemberId] : [],
         customSplitShares: nextType === "shared" ? formData.customSplitShares || {} : {}
       });
+      if (nextType === "shared") {
+        setTimeout(() => {
+          expenseSharedSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }, 60);
+      }
     }
 
     function handleSplitTypeChange(nextSplit) {
@@ -7414,179 +7409,141 @@ function App() {
       });
     }
 
-    // Tabs vary by expense type
-    const EXP_TABS = isShared
-      ? [
-          { id: "basic",  label: "Details", icon: <Icon name="receipt" /> },
-          { id: "paidby", label: "Split",   icon: <Icon name="users" /> },
-          { id: "notes",  label: "More",    icon: <Icon name="note" /> },
-        ]
-      : [
-          { id: "basic", label: "Details", icon: <Icon name="receipt" /> },
-          { id: "notes", label: "More", icon: <Icon name="note" /> },
-        ];
-
-    // Clamp active tab to valid tabs for current type
-    const validTabIds = EXP_TABS.map(t => t.id);
-    const activeTab = validTabIds.includes(expenseFormTab) ? expenseFormTab : "basic";
-
-    // Swipe handlers
-    function onTouchStart(e) {
-      expenseTouchStartXRef.current = e.touches[0].clientX;
-    }
-    function onTouchEnd(e) {
-      if (expenseTouchStartXRef.current === null) return;
-      const dx = e.changedTouches[0].clientX - expenseTouchStartXRef.current;
-      expenseTouchStartXRef.current = null;
-      if (Math.abs(dx) < 50) return;
-      const idx = EXP_TABS.findIndex(t => t.id === activeTab);
-      if (dx < 0 && idx < EXP_TABS.length - 1) setExpenseFormTab(EXP_TABS[idx + 1].id);
-      else if (dx > 0 && idx > 0) setExpenseFormTab(EXP_TABS[idx - 1].id);
+    function autoGrow(el) {
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = el.scrollHeight + "px";
     }
 
     return (
-      <form className="modal-form exp-tabbed-form" onSubmit={onSubmit}>
+      <form className="modal-form exp-single-form" onSubmit={onSubmit}>
+        <div className="modal-body exp-form-body">
 
-        {/* Tab navigation */}
-        <div className="exp-tab-nav">
-          {EXP_TABS.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`exp-tab-btn${activeTab === tab.id ? " active" : ""}`}
-              onClick={() => setExpenseFormTab(tab.id)}
-            >
-              <span className="exp-tab-icon">{tab.icon}</span>
-              <span className="exp-tab-label">{tab.label}</span>
-            </button>
-          ))}
-        </div>
+          {/* Amount + Currency */}
+          <div className="expense-form-priority">
+            <label>
+              Amount
+              <input
+                className="expense-amount-input"
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.originalAmount}
+                placeholder="0.00"
+                autoFocus
+                onChange={e => setFormData({ ...formData, originalAmount: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Currency
+              <select
+                value={formData.originalCurrency}
+                onChange={e => setFormData({ ...formData, originalCurrency: e.target.value })}
+              >
+                {SUPPORTED_CURRENCIES.map(c => (
+                  <option value={c} key={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+          </div>
 
-        <div
-          className="modal-body exp-tab-body"
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
-        >
-
-          {/* ── Basic ── */}
-          {activeTab === "basic" && (
-            <div className="exp-tab-content">
-
-              <div className="expense-form-priority">
-                <label>
-                  Amount
-                  <input
-                    className="expense-amount-input"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formData.originalAmount}
-                    placeholder="0.00"
-                    autoFocus
-                    onChange={e => setFormData({ ...formData, originalAmount: e.target.value })}
-                    required
-                  />
-                </label>
-                <label>
-                  Currency
-                  <select
-                    value={formData.originalCurrency}
-                    onChange={e => setFormData({ ...formData, originalCurrency: e.target.value })}
-                  >
-                    {SUPPORTED_CURRENCIES.map(c => (
-                      <option value={c} key={c}>{c}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {/* EUR rate preview */}
-              {totalAmount > 0 && (
-                <div className="exp-rate-preview">
-                  <span>≈ <strong>{formatMoney(previewEur)}</strong></span>
-                  <span className="exp-rate-note">
-                    1 EUR = {getCurrencyRate(formData.originalCurrency).toFixed(4)} {formData.originalCurrency}
-                  </span>
-                </div>
-              )}
-
-              <label>
-                What was it?
-                <input
-                  type="text"
-                  value={formData.description}
-                  placeholder="e.g. Lunch, taxi, hotel"
-                  onChange={e => setFormData({ ...formData, description: e.target.value })}
-                />
-              </label>
-
-              <div className="grid-2 expense-form-meta-grid">
-                <label>
-                  Category
-                  <select
-                    value={formData.categoryId}
-                    onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-                    required
-                  >
-                    <option value="">Choose category</option>
-                    {activeCategories.map(c => (
-                      <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Date & time
-                  <input
-                    type="datetime-local"
-                    value={expenseDateTimeValue}
-                    onClick={openDatePicker}
-                    onChange={e => handleDateTimeChange(e.target.value)}
-                    required
-                  />
-                </label>
-              </div>
-
-              <div className="exp-section-header">Expense type</div>
-              <div className="exp-type-toggle">
-                <button
-                  type="button"
-                  className={`exp-type-btn${formData.expenseType === "personal" ? " active" : ""}`}
-                  onClick={() => handleExpenseTypeChange("personal")}
-                >
-                  <Icon name="receipt" /> Personal
-                </button>
-                <button
-                  type="button"
-                  className={`exp-type-btn${formData.expenseType === "shared" ? " active" : ""}`}
-                  onClick={() => handleExpenseTypeChange("shared")}
-                >
-                  <Icon name="users" /> Shared
-                </button>
-              </div>
-
-              {formData.expenseType === "personal" && (
-                <label className="include-in-group-toggle">
-                  <div className="include-in-group-toggle-row">
-                    <input
-                      type="checkbox"
-                      checked={formData.includeInGroupTotal !== false}
-                      onChange={e => setFormData({ ...formData, includeInGroupTotal: e.target.checked })}
-                    />
-                    <span className="include-in-group-label">Count amount in trip total</span>
-                  </div>
-                  <p className="include-in-group-hint">
-                    {formData.includeInGroupTotal !== false
-                      ? "Details stay private. This amount is included in the group budget total."
-                      : "Fully private. This amount stays out of the group budget total."}
-                  </p>
-                </label>
-              )}
+          {/* EUR rate preview */}
+          {totalAmount > 0 && (
+            <div className="exp-rate-preview">
+              <span>≈ <strong>{formatMoney(previewEur)}</strong></span>
+              <span className="exp-rate-note">
+                1 EUR = {getCurrencyRate(formData.originalCurrency).toFixed(4)} {formData.originalCurrency}
+              </span>
             </div>
           )}
 
-          {/* ── Paid by + Split (shared only) ── */}
-          {activeTab === "paidby" && (
-            <div className="exp-tab-content">
+          {/* What was it? — auto-grow textarea */}
+          <label>
+            What was it?
+            <textarea
+              className="exp-description-textarea"
+              value={formData.description}
+              placeholder="e.g. Dinner at the harbour, taxi to hotel…"
+              rows={2}
+              onChange={e => {
+                setFormData({ ...formData, description: e.target.value });
+                autoGrow(e.target);
+              }}
+              onFocus={e => autoGrow(e.target)}
+            />
+          </label>
+
+          {/* Category + Date & time */}
+          <div className="grid-2 expense-form-meta-grid">
+            <label>
+              Category
+              <select
+                value={formData.categoryId}
+                onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+                required
+              >
+                <option value="">Choose category</option>
+                {activeCategories.map(c => (
+                  <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Date & time
+              <input
+                type="datetime-local"
+                value={expenseDateTimeValue}
+                onClick={openDatePicker}
+                onChange={e => handleDateTimeChange(e.target.value)}
+                required
+              />
+            </label>
+          </div>
+
+          {/* Expense type toggle */}
+          <div className="exp-type-row">
+            <span className="exp-section-header">Expense type</span>
+            <div className="exp-type-toggle">
+              <button
+                type="button"
+                className={`exp-type-btn${formData.expenseType === "personal" ? " active" : ""}`}
+                onClick={() => handleExpenseTypeChange("personal")}
+              >
+                <Icon name="receipt" /> Personal
+              </button>
+              <button
+                type="button"
+                className={`exp-type-btn${formData.expenseType === "shared" ? " active" : ""}`}
+                onClick={() => handleExpenseTypeChange("shared")}
+              >
+                <Icon name="users" /> Shared
+              </button>
+            </div>
+          </div>
+
+          {/* Personal only: include in group total */}
+          {formData.expenseType === "personal" && (
+            <label className="include-in-group-toggle">
+              <div className="include-in-group-toggle-row">
+                <input
+                  type="checkbox"
+                  checked={formData.includeInGroupTotal !== false}
+                  onChange={e => setFormData({ ...formData, includeInGroupTotal: e.target.checked })}
+                />
+                <span className="include-in-group-label">Count amount in trip total</span>
+              </div>
+              <p className="include-in-group-hint">
+                {formData.includeInGroupTotal !== false
+                  ? "Details stay private. This amount is included in the group budget total."
+                  : "Fully private. This amount stays out of the group budget total."}
+              </p>
+            </label>
+          )}
+
+          {/* Shared: inline split section */}
+          {formData.expenseType === "shared" && (
+            <div className="exp-shared-section" ref={expenseSharedSectionRef}>
 
               <label>
                 Who paid?
@@ -7621,7 +7578,7 @@ function App() {
                 ))}
               </div>
 
-              {/* ---- Equal split: tap-to-toggle member tiles ---- */}
+              {/* Equal split: tap-to-toggle member tiles */}
               {formData.splitType === "equal" && (
                 <>
                   <div className="member-tile-grid">
@@ -7655,7 +7612,7 @@ function App() {
                 </>
               )}
 
-              {/* ---- Custom exact amounts: tiles with amount input ---- */}
+              {/* Custom exact amounts */}
               {formData.splitType === "custom" && (
                 <>
                   <p className="exp-split-hint">
@@ -7692,7 +7649,7 @@ function App() {
                 </>
               )}
 
-              {/* ---- Percentage split: tiles with % input ---- */}
+              {/* Percentage split */}
               {formData.splitType === "percent" && (
                 <>
                   <p className="exp-split-hint">Enter each person's share as a percentage. Must total 100%.</p>
@@ -7732,37 +7689,29 @@ function App() {
                   </div>
                 </>
               )}
+
             </div>
           )}
 
-          {/* ── Notes ── */}
-          {activeTab === "notes" && (
-            <div className="exp-tab-content">
-              <label>
-                Payment method
-                <select
-                  value={formData.paymentMethod}
-                  onChange={e => setFormData({ ...formData, paymentMethod: e.target.value })}
-                >
-                  <option value="card">Card</option>
-                  <option value="cash">Cash</option>
-                  <option value="bank">Bank transfer</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
-
-              <label>
-                Notes
-                <textarea
-                  value={formData.notes}
-                  placeholder="Any additional notes… (optional)"
-                  rows={5}
-                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                  style={{ resize: "vertical" }}
-                />
-              </label>
-            </div>
-          )}
+          {/* Add a note — progressive disclosure */}
+          <div className="exp-note-section">
+            <button
+              type="button"
+              className="exp-note-toggle-btn"
+              onClick={() => setExpenseNoteOpen(!expenseNoteOpen)}
+            >
+              {expenseNoteOpen ? "✕ Remove note" : "+ Add a note"}
+            </button>
+            {expenseNoteOpen && (
+              <textarea
+                className="exp-note-textarea"
+                value={formData.notes}
+                placeholder="Any extra detail… (optional)"
+                rows={3}
+                onChange={e => setFormData({ ...formData, notes: e.target.value })}
+              />
+            )}
+          </div>
 
         </div>
 

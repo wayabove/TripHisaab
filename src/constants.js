@@ -61,7 +61,6 @@ export const EMPTY_EXPENSE_FORM = {
   description: "",
   originalAmount: "",
   originalCurrency: "EUR",
-  paymentMethod: "card",
   notes: "",
   expenseType: "personal",
   splitType: "equal",

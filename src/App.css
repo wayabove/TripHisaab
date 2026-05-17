@@ -3542,6 +3542,15 @@ p {
   transform: translateY(-1px);
 }
 
+/* ---------- Scroll lock (applied when any modal is open) ---------- */
+body.body-scroll-locked {
+  overflow: hidden;
+  touch-action: none;
+}
+body.body-scroll-locked .main-content {
+  overflow-y: hidden;
+}
+
 /* ---------- Modal ---------- */
 .modal-backdrop {
   position: fixed;
@@ -7578,50 +7587,23 @@ p {
 }
 
 /* ============================================================
-   Expense form — tabbed redesign
+   Expense form — single-scroll redesign
    ============================================================ */
 
-/* --- Tab navigation bar --- */
-.exp-tab-nav {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  overflow-x: auto;
-  scrollbar-width: none;
-  flex-shrink: 0;
-}
-.exp-tab-nav::-webkit-scrollbar { display: none; }
-
-.exp-tab-btn {
-  flex: 1;
+/* --- Single-scroll form body --- */
+.exp-single-form {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 10px 6px 9px;
-  border: none;
-  border-bottom: 3px solid transparent;
-  background: transparent;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: var(--weight-bold);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
-  min-width: 56px;
-}
-.exp-tab-btn:hover { color: var(--text); }
-.exp-tab-btn.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  min-height: 0;
 }
 
-.exp-tab-icon { font-size: 16px; line-height: 1; }
-.exp-tab-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
-
-/* --- Tab content area --- */
-.exp-tab-body { padding: 18px 22px; }
-.exp-tab-content { display: grid; gap: 14px; }
+.exp-form-body {
+  display: grid;
+  gap: 14px;
+  padding: 20px 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 
 .expense-form-priority {
   display: grid;
@@ -7641,7 +7623,7 @@ p {
   grid-template-columns: minmax(0, 1fr) minmax(180px, 0.95fr);
 }
 
-.exp-tabbed-form input[type="datetime-local"] {
+.exp-single-form input[type="datetime-local"] {
   min-height: 46px;
 }
 
@@ -7861,24 +7843,80 @@ p {
 }
 .exp-rate-note { font-size: 12px; opacity: 0.8; }
 
-/* --- Footer: tab nav + submit --- */
-.exp-form-footer {
-  align-items: center;
-}
-.exp-footer-nav {
+/* --- Expense type row (label + toggle inline) --- */
+.exp-type-row {
   display: flex;
-  gap: 8px;
   align-items: center;
-  margin-left: auto;
+  justify-content: space-between;
+  gap: 12px;
 }
-.exp-footer-nav .primary-button { min-width: 120px; }
+.exp-type-row .exp-section-header {
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+/* --- Auto-grow description textarea --- */
+.exp-description-textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: none;
+  overflow: hidden;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.5;
+}
+
+/* --- Shared expense section (inline expand) --- */
+.exp-shared-section {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  animation: exp-section-in 200ms ease;
+}
+
+@keyframes exp-section-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Add a note section --- */
+.exp-note-section {
+  display: grid;
+  gap: 10px;
+}
+
+.exp-note-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  text-align: left;
+  transition: opacity var(--transition-fast);
+}
+.exp-note-toggle-btn:hover { opacity: 0.75; }
+
+.exp-note-textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 72px;
+  animation: exp-section-in 180ms ease;
+}
 
 /* --- Responsive --- */
 @media (max-width: 480px) {
-  .exp-tab-label  { display: none; }
-  .exp-tab-btn    { min-width: 44px; padding: 10px 4px 9px; }
-  .exp-tab-icon   { font-size: 18px; }
-  .exp-tab-body   { padding: 14px 16px; }
+  .exp-form-body { padding: 14px 16px; }
   .expense-form-priority,
   .expense-form-meta-grid {
     grid-template-columns: 1fr;
@@ -7886,6 +7924,11 @@ p {
   .expense-amount-input {
     min-height: 54px;
     font-size: 26px;
+  }
+  .exp-type-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
   }
   .split-type-btn { font-size: 12px; padding: 8px 8px; }
   .member-tile-grid { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 8px; }
@@ -9177,20 +9220,11 @@ p {
     padding: 14px;
   }
 
-  .expense-modal .exp-tab-nav {
-    flex: 0 0 auto;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-  }
-
-  .expense-modal .exp-tab-body {
+  .expense-modal .exp-form-body {
     flex: 1 1 auto;
     padding: 12px;
     overflow-y: auto;
-  }
-
-  .expense-modal .exp-tab-content {
+    overscroll-behavior: contain;
     gap: 12px;
   }
 
@@ -9221,19 +9255,6 @@ p {
   .modal-footer .danger-button {
     width: 100%;
     min-width: 0;
-  }
-
-  .exp-tab-nav {
-    justify-content: flex-start;
-  }
-
-  .exp-tab-btn {
-    min-width: 64px;
-    padding: 9px 6px 8px;
-  }
-
-  .exp-tab-label {
-    font-size: 9px;
   }
 
   .member-tile-grid,
@@ -9286,20 +9307,6 @@ p {
   .expense-modal .grid-2,
   .expense-modal .expense-form-meta-grid {
     grid-template-columns: 1fr;
-  }
-
-  /* Compact tab bar so all tabs fit at 375px */
-  .expense-modal .exp-tab-nav {
-    gap: 0;
-  }
-  .expense-modal .exp-tab-btn {
-    min-width: 0;
-    flex: 1 1 0;
-    padding: 9px 4px 8px;
-  }
-  .expense-modal .exp-tab-label {
-    font-size: 8px;
-    letter-spacing: 0;
   }
 
   /* Amount input headline size */
