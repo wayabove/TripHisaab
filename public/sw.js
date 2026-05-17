@@ -76,3 +76,27 @@ self.addEventListener("notificationclick", event => {
     })
   );
 });
+
+self.addEventListener("push", event => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+
+  const notification = payload.notification || {};
+  const data = payload.data || {};
+  const title = notification.title || data.title || "TripHisaab";
+  const body = notification.body || data.body || "You have a new trip update.";
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: "/appIcon-192.png",
+      badge: "/appIcon-192.png",
+      tag: data.notificationId || data.entityId || undefined,
+      data
+    })
+  );
+});

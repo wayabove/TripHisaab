@@ -228,6 +228,14 @@ service cloud.firestore {
     match /users/{userId} {
       allow get, create, update, delete: if isSelfUser(userId);
       allow list: if signedIn();
+
+      match /notificationTokens/{tokenId} {
+        allow get, list, delete: if isSelfUser(userId);
+        allow create, update: if isSelfUser(userId)
+          && request.resource.data.token is string
+          && request.resource.data.platform == "web"
+          && request.resource.data.status in ["active", "disabled"];
+      }
     }
 
     match /emailAccess/{email}/trips/{tripId} {

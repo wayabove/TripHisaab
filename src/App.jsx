@@ -24,6 +24,10 @@ import {
 
 import { auth, googleProvider, db } from "./firebase";
 import {
+  registerPushTokenForUser,
+  subscribeToForegroundPushMessages
+} from "./pushNotifications";
+import {
   DEFAULT_CATEGORIES,
   SUPPORTED_CURRENCIES,
   FALLBACK_EXCHANGE_RATES_FROM_EUR,
@@ -2470,6 +2474,49 @@ function App() {
       new Notification(title, { body, icon: "/appIcon-192.png" });
     }
   }, [browserNotificationPermission, selectedTrip, visibleNotifications]);
+
+  useEffect(() => {
+    if (!user || browserNotificationPermission !== "granted") return;
+    registerPushTokenForUser(user).catch(error => {
+      console.warn("Could not register push token:", error);
+    });
+  }, [browserNotificationPermission, user]);
+
+  useEffect(() => {
+    let unsubscribe = () => {};
+    subscribeToForegroundPushMessages(payload => {
+      const title =
+        payload.notification?.title ||
+        payload.data?.title ||
+        "TripHisaab";
+      const body =
+        payload.notification?.body ||
+        payload.data?.body ||
+        "You have a new trip update.";
+      const notificationId = payload.data?.notificationId || payload.messageId;
+      if (notificationId && deliveredBrowserNotificationIdsRef.current.has(notificationId)) return;
+      if (notificationId) deliveredBrowserNotificationIdsRef.current.add(notificationId);
+
+      if (browserNotificationPermission === "granted" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.ready
+          .then(registration =>
+            registration.showNotification(title, {
+              body,
+              icon: "/appIcon-192.png",
+              badge: "/appIcon-192.png",
+              tag: notificationId || undefined,
+              data: payload.data || {}
+            })
+          )
+          .catch(() => showToast(body, "info"));
+      } else {
+        showToast(body, "info");
+      }
+    }).then(cleanup => {
+      unsubscribe = cleanup;
+    });
+    return () => unsubscribe();
+  }, [browserNotificationPermission]);
 
   const memberSuggestions = useMemo(() => {
     const currentTripEmails = new Set(members.map(m => getEmailLower(m.email)));
@@ -6059,7 +6106,12 @@ function App() {
       const permission = await Notification.requestPermission();
       setBrowserNotificationPermission(permission);
       if (permission === "granted") {
-        showToast("Device notifications enabled for this app.", "success");
+        const result = await registerPushTokenForUser(user);
+        if (result.status === "registered") {
+          showToast("Device notifications enabled for this app.", "success");
+        } else {
+          showToast("Notifications enabled, but this device could not be registered yet.", "info");
+        }
       } else {
         showToast("Notifications were not enabled.", "info");
       }
