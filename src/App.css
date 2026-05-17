@@ -3921,26 +3921,55 @@ p {
   }
 
   .expense-search {
+    flex: none;
     min-width: 0;
     width: 100%;
   }
 
   .expense-filter-tabs {
-    margin-inline: -14px;
-    padding-inline: 14px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .expense-filter-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .expense-sort-control {
     width: 100%;
+    min-width: 0;
   }
 
   .expense-summary-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
   }
 
   .expense-summary-card {
-    min-height: 92px;
-    padding: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    min-height: 0;
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .expense-summary-icon {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .expense-summary-card strong {
+    font-size: 15px;
+    margin: 0;
+  }
+
+  .expense-summary-card span {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
   }
 
   .expense-table-row {
@@ -8377,8 +8406,7 @@ p {
   }
 
   .mobile-topbar-add,
-  .dash-action-expense,
-  .expense-summary-card.mobile-optional {
+  .dash-action-expense {
     display: none;
   }
 
@@ -8388,7 +8416,15 @@ p {
   }
 
   .tab-page-content {
-    padding: 12px;
+    padding: 10px 12px;
+  }
+
+  .expenses-page {
+    gap: 10px;
+  }
+
+  .expenses-header {
+    gap: 8px;
   }
 
   .trip-hero {
@@ -8561,11 +8597,11 @@ p {
   }
 
   .expenses-title h2 {
-    font-size: 28px;
+    font-size: 22px;
   }
 
   .expenses-title p {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .expenses-toolbar {
@@ -8579,37 +8615,34 @@ p {
     min-height: 44px;
   }
 
-  .expense-filter-tabs {
-    margin-inline: -12px;
-    padding-inline: 12px;
-  }
-
   .expense-filter-chip {
     min-height: 34px;
     padding: 7px 11px;
     font-size: 12px;
   }
 
+  /* Keep compact 2-column grid on small phones */
   .expense-summary-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
   }
 
   .expense-summary-card {
-    min-height: 82px;
-    padding: 13px;
-    gap: 12px;
+    min-height: 0;
+    padding: 9px 10px;
+    gap: 5px;
   }
 
   .expense-summary-icon {
-    flex-basis: 46px;
-    width: 46px;
-    height: 46px;
-    font-size: 18px;
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
   }
 
   .expense-summary-card strong {
-    font-size: 19px;
+    font-size: 14px;
+    margin: 0;
   }
 
   .expense-table-card {
