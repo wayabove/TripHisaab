@@ -1821,6 +1821,7 @@ function App() {
   const [quickCategoryName, setQuickCategoryName] = useState("");
   const [showQuickCategory, setShowQuickCategory] = useState(false);
   const [savingQuickCategory, setSavingQuickCategory] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -5892,6 +5893,63 @@ function App() {
   }
 
   // ── Feedback modal ──────────────────────────────────────────────
+  function renderAccountModal() {
+    if (!user) return null;
+    const acctInitial = (user?.displayName || user?.email || "?")[0].toUpperCase();
+    return (
+      <Modal isOpen={showAccountModal} onClose={() => setShowAccountModal(false)} title="My account" className="account-modal">
+        <div className="account-modal-body">
+          <div className="account-avatar-row">
+            <div
+              className={`sidebar-avatar sidebar-avatar--lg${userProfile.profileImageDataUrl ? " has-image" : ""}`}
+              style={userProfile.profileImageDataUrl ? { backgroundImage: `url(${userProfile.profileImageDataUrl})` } : undefined}
+            >
+              {!userProfile.profileImageDataUrl ? acctInitial : null}
+            </div>
+            <div className="account-identity">
+              <div className="account-name">{user?.displayName || user?.email?.split("@")[0]}</div>
+              <div className="account-email">{user?.email}</div>
+            </div>
+          </div>
+          <div className="account-photo-actions">
+            <label className="secondary-button small-button" style={{ cursor: "pointer" }}>
+              {userProfile.profileImageDataUrl ? "Change photo" : "Add photo"}
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleProfilePictureChange} />
+            </label>
+            {userProfile.profileImageDataUrl ? (
+              <button className="link-button" type="button" disabled={savingProfilePicture} onClick={removeProfilePicture}>
+                Remove
+              </button>
+            ) : null}
+            {savingProfilePicture ? <span className="small muted">Saving…</span> : null}
+          </div>
+          <div className="account-divider" />
+          <p className="account-section-title">Display preferences</p>
+          <label className="preferences-row">
+            <span className="preferences-label">
+              My currency
+              <span className="small muted"> · amounts show in EUR + your currency</span>
+            </span>
+            <select
+              className="preferences-select"
+              value={personalCurrency}
+              onChange={e => {
+                const val = e.target.value;
+                setPersonalCurrency(val);
+                try { localStorage.setItem("triphisaab-personal-currency", val); } catch {}
+              }}
+            >
+              <option value="">None (EUR only)</option>
+              {SUPPORTED_CURRENCIES.filter(c => c !== "EUR").map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </Modal>
+    );
+  }
+
   function renderFeedbackModal() {
     if (!user) return null;
     const screenLabel = selectedTrip
@@ -8846,8 +8904,8 @@ function App() {
             <button
               className="sidebar-profile-btn"
               type="button"
-              onClick={() => { setActiveTab("settings"); setIsSidebarOpen(false); }}
-              title="Open settings"
+              onClick={() => { setShowAccountModal(true); setIsSidebarOpen(false); }}
+              title="My account"
             >
               <div
                 className={`sidebar-avatar${userProfile.profileImageDataUrl ? " has-image" : ""}`}
@@ -12010,6 +12068,7 @@ function App() {
         {renderTutorialModal()}
         {renderBetaWelcome()}
         {renderFeedbackModal()}
+        {renderAccountModal()}
       </div>
     );
   }
@@ -12376,7 +12435,12 @@ function App() {
           </button>
           <DonateButton />
           <div className="sidebar-footer">
-            <div className="sidebar-profile-btn sidebar-profile-btn--static">
+            <button
+              className="sidebar-profile-btn"
+              type="button"
+              onClick={() => setShowAccountModal(true)}
+              title="My account"
+            >
               <div
                 className={`sidebar-avatar${userProfile.profileImageDataUrl ? " has-image" : ""}`}
                 style={
@@ -12394,7 +12458,7 @@ function App() {
               {personalCurrency && (
                 <span className="sidebar-currency-badge">{personalCurrency}</span>
               )}
-            </div>
+            </button>
             <button className="link-button sidebar-logout" type="button" onClick={handleLogout}>Out</button>
           </div>
         </aside>
@@ -12743,6 +12807,7 @@ function App() {
       {renderTutorialModal()}
       {renderBetaWelcome()}
       {renderFeedbackModal()}
+      {renderAccountModal()}
     </div>
   );
   }
