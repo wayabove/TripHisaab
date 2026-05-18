@@ -1801,6 +1801,7 @@ function App() {
   const crossUnitExpandedTripsRef = useRef(new Set());
   const pullRefreshRef = useRef({ startY: 0, pulling: false, eligible: false });
   const deliveredBrowserNotificationIdsRef = useRef(new Set());
+  const pexelsDebounceRef = useRef(null);
 
   const [categoryForm, setCategoryForm] = useState({
     name: "",
@@ -1831,6 +1832,11 @@ function App() {
   const [defaultTab, setDefaultTab] = useState(() => {
     try { return localStorage.getItem("triphisaab-pref-defaultTab") || ""; } catch { return ""; }
   });
+  const [pexelsApiKey, setPexelsApiKey] = useState(() => {
+    try { return localStorage.getItem("triphisaab-pref-pexelsApiKey") || ""; } catch { return ""; }
+  });
+  const [pexelsPhotos, setPexelsPhotos] = useState([]);
+  const [pexelsFetching, setPexelsFetching] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -5901,6 +5907,85 @@ function App() {
   }
 
   // ── Feedback modal ──────────────────────────────────────────────
+  function extractLocationKeyword(name) {
+    const stops = new Set([
+      "trip","tour","travel","vacation","holiday","journey",
+      "day","days","week","weekend","night","nights",
+      "family","group","team","summer","winter","spring","autumn","fall",
+      "my","our","the","a","an","to","in","at","for","and","with",
+      "new","demo","test","plan","budget"
+    ]);
+    const words = String(name || "")
+      .replace(/\d+/g, "")
+      .split(/[\s\-_,]+/)
+      .map(w => w.trim().toLowerCase())
+      .filter(w => w.length > 1 && !stops.has(w));
+    return words.slice(0, 2).join(" ");
+  }
+
+  function triggerPexelsSearch(tripName) {
+    clearTimeout(pexelsDebounceRef.current);
+    const keyword = extractLocationKeyword(tripName);
+    if (!keyword || !pexelsApiKey) {
+      setPexelsPhotos([]);
+      return;
+    }
+    pexelsDebounceRef.current = setTimeout(async () => {
+      setPexelsFetching(true);
+      try {
+        const res = await fetch(
+          `https://api.pexels.com/v1/search?query=${encodeURIComponent(keyword)}&per_page=6&orientation=landscape`,
+          { headers: { Authorization: pexelsApiKey } }
+        );
+        if (!res.ok) { setPexelsPhotos([]); return; }
+        const data = await res.json();
+        setPexelsPhotos(data.photos || []);
+      } catch {
+        setPexelsPhotos([]);
+      } finally {
+        setPexelsFetching(false);
+      }
+    }, 700);
+  }
+
+  async function applyPexelsPhoto(photoUrl, setFormFn) {
+    try {
+      const res = await fetch(photoUrl);
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const typed = blob.type.startsWith("image/") ? blob : new Blob([blob], { type: "image/jpeg" });
+      const dataUrl = await readTripImage(typed);
+      setFormFn(f => ({ ...f, imageDataUrl: dataUrl }));
+    } catch {
+      showToast("Could not apply photo. Try again.", "error");
+    }
+  }
+
+  function renderPexelsStrip(setFormFn) {
+    if (!pexelsApiKey) return null;
+    if (pexelsFetching) {
+      return <div className="pexels-strip"><span className="pexels-loading">Finding photos…</span></div>;
+    }
+    if (pexelsPhotos.length === 0) return null;
+    return (
+      <div className="pexels-strip">
+        <div className="pexels-label">Suggested covers</div>
+        <div className="pexels-thumbs">
+          {pexelsPhotos.map(photo => (
+            <button
+              key={photo.id}
+              type="button"
+              className="pexels-thumb"
+              onClick={() => applyPexelsPhoto(photo.src.medium, setFormFn)}
+              style={{ backgroundImage: `url(${photo.src.small})` }}
+              title="Use this photo"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   function renderAccountModal() {
     if (!user) return null;
     const acctInitial = (user?.displayName || user?.email || "?")[0].toUpperCase();
@@ -6010,6 +6095,26 @@ function App() {
               <option value="me">Always me</option>
             </select>
           </label>
+          <div className="account-divider" />
+          <p className="account-section-title">Cover photos</p>
+          <p className="small muted" style={{ margin: 0 }}>
+            Paste a free Pexels API key to get suggested covers when naming a trip.{" "}
+            <a href="https://www.pexels.com/api/" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)" }}>Get a key →</a>
+          </p>
+          <div className="pexels-key-row">
+            <input
+              className="form-input"
+              type="text"
+              placeholder="Paste API key here…"
+              value={pexelsApiKey}
+              onChange={e => {
+                const val = e.target.value.trim();
+                setPexelsApiKey(val);
+                try { localStorage.setItem("triphisaab-pref-pexelsApiKey", val); } catch {}
+              }}
+            />
+            {pexelsApiKey && <span className="pexels-key-ok">Active</span>}
+          </div>
         </div>
       </Modal>
     );
@@ -12699,7 +12804,10 @@ function App() {
                 type="text"
                 value={form.name}
                 placeholder="e.g. Norway 2026"
-                onChange={e => setForm({ ...form, name: e.target.value })}
+                onChange={e => {
+                  setForm({ ...form, name: e.target.value });
+                  triggerPexelsSearch(e.target.value);
+                }}
                 autoFocus
                 required
               />
@@ -12754,6 +12862,7 @@ function App() {
                   )}
                 </div>
               </div>
+              {renderPexelsStrip(setForm)}
             </div>
           </div>
           <FormActions asFooter onCancel={() => setIsCreateModalOpen(false)} saving={creatingTrip} saveLabel="Create trip" />
@@ -12773,7 +12882,10 @@ function App() {
               <input
                 type="text"
                 value={editForm.name}
-                onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                onChange={e => {
+                  setEditForm({ ...editForm, name: e.target.value });
+                  triggerPexelsSearch(e.target.value);
+                }}
                 autoFocus
                 required
               />
@@ -12841,6 +12953,7 @@ function App() {
                   )}
                 </div>
               </div>
+              {renderPexelsStrip(setEditForm)}
             </div>
           </div>
           <footer className="modal-footer">
