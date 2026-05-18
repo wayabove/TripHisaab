@@ -3660,6 +3660,49 @@ p {
   margin-bottom: 0;
 }
 
+.preferences-section {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.preferences-section h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.preferences-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.preferences-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.preferences-select {
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--text);
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.preferences-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
 .trip-image-setting {
   display: grid;
   grid-template-columns: minmax(160px, 240px) 1fr;
@@ -5074,25 +5117,40 @@ body.body-scroll-locked .main-content {
   color: var(--muted);
 }
 
-.sidebar-currency-select {
-  appearance: none;
-  background: var(--surface-soft);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 6px;
-  cursor: pointer;
-  flex-shrink: 0;
+.sidebar-profile-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
   min-width: 0;
-  width: 52px;
-  text-align: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  margin: -4px -6px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms;
 }
 
-.sidebar-currency-select:hover {
-  border-color: var(--primary);
+.sidebar-profile-btn:hover {
+  background: var(--surface-soft);
+}
+
+.sidebar-profile-btn--static {
+  cursor: default;
+  pointer-events: none;
+}
+
+.sidebar-currency-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 800;
   color: var(--primary);
+  background: var(--primary-muted);
+  border-radius: 999px;
+  padding: 2px 6px;
+  letter-spacing: 0.03em;
 }
 
 .notification-bell {

@@ -8843,41 +8843,34 @@ function App() {
           </button>
           <DonateButton />
           <div className="sidebar-footer">
-            <div
-              className={`sidebar-avatar${userProfile.profileImageDataUrl ? " has-image" : ""}`}
-              style={
-                userProfile.profileImageDataUrl
-                  ? { backgroundImage: `url(${userProfile.profileImageDataUrl})` }
-                  : undefined
-              }
+            <button
+              className="sidebar-profile-btn"
+              type="button"
+              onClick={() => { setActiveTab("settings"); setIsSidebarOpen(false); }}
+              title="Open settings"
             >
-              {!userProfile.profileImageDataUrl ? userInitial : null}
-            </div>
-            <div className="sidebar-user-info">
-              <div className="sidebar-user-name">
-                {demoMode ? "Norway Demo" : user?.displayName || user?.email?.split("@")[0]}
-              </div>
-              <div className="sidebar-user-role">
-                {demoMode ? "Demo mode" : selectedTrip.accessRole === "owner" ? "Trip admin" : "Member"}
-              </div>
-            </div>
-            {!demoMode && (
-              <select
-                className="sidebar-currency-select"
-                value={personalCurrency}
-                onChange={e => {
-                  const val = e.target.value;
-                  setPersonalCurrency(val);
-                  try { localStorage.setItem("triphisaab-personal-currency", val); } catch {}
-                }}
-                title="My currency"
+              <div
+                className={`sidebar-avatar${userProfile.profileImageDataUrl ? " has-image" : ""}`}
+                style={
+                  userProfile.profileImageDataUrl
+                    ? { backgroundImage: `url(${userProfile.profileImageDataUrl})` }
+                    : undefined
+                }
               >
-                <option value="">EUR</option>
-                {SUPPORTED_CURRENCIES.filter(c => c !== "EUR").map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            )}
+                {!userProfile.profileImageDataUrl ? userInitial : null}
+              </div>
+              <div className="sidebar-user-info">
+                <div className="sidebar-user-name">
+                  {demoMode ? "Norway Demo" : user?.displayName || user?.email?.split("@")[0]}
+                </div>
+                <div className="sidebar-user-role">
+                  {demoMode ? "Demo mode" : selectedTrip.accessRole === "owner" ? "Trip admin" : "Member"}
+                </div>
+              </div>
+              {personalCurrency && (
+                <span className="sidebar-currency-badge">{personalCurrency}</span>
+              )}
+            </button>
             {!demoMode ? renderNotificationBell() : null}
             {demoMode ? (
               <button className="link-button sidebar-logout" type="button" onClick={closeTrip}>
@@ -8885,9 +8878,9 @@ function App() {
               </button>
             ) : null}
             {!demoMode ? (
-            <button className="link-button sidebar-logout" type="button" onClick={handleLogout}>
-              Out
-            </button>
+              <button className="link-button sidebar-logout" type="button" onClick={handleLogout}>
+                Out
+              </button>
             ) : null}
           </div>
         </aside>
@@ -11064,6 +11057,31 @@ function App() {
               </div>
             </section>
 
+            <section className="preferences-section">
+              <h3>My preferences</h3>
+              <p className="small muted">Applies to you across all trips — not visible to other members.</p>
+              <label className="preferences-row">
+                <span className="preferences-label">
+                  My currency
+                  <span className="small muted"> · amounts show in EUR plus your currency</span>
+                </span>
+                <select
+                  className="preferences-select"
+                  value={personalCurrency}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPersonalCurrency(val);
+                    try { localStorage.setItem("triphisaab-personal-currency", val); } catch {}
+                  }}
+                >
+                  <option value="">None (EUR only)</option>
+                  {SUPPORTED_CURRENCIES.filter(c => c !== "EUR").map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </label>
+            </section>
+
             <form onSubmit={handleSaveTripSettings}>
               {!canManageSelectedTrip() ? (
                 <p className="small muted">
@@ -12358,19 +12376,24 @@ function App() {
           </button>
           <DonateButton />
           <div className="sidebar-footer">
-            <div
-              className={`sidebar-avatar${userProfile.profileImageDataUrl ? " has-image" : ""}`}
-              style={
-                userProfile.profileImageDataUrl
-                  ? { backgroundImage: `url(${userProfile.profileImageDataUrl})` }
-                  : undefined
-              }
-            >
-              {!userProfile.profileImageDataUrl ? userInitial : null}
-            </div>
-            <div className="sidebar-user-info">
-              <div className="sidebar-user-name">{userName}</div>
-              <div className="sidebar-user-role">Trip admin</div>
+            <div className="sidebar-profile-btn sidebar-profile-btn--static">
+              <div
+                className={`sidebar-avatar${userProfile.profileImageDataUrl ? " has-image" : ""}`}
+                style={
+                  userProfile.profileImageDataUrl
+                    ? { backgroundImage: `url(${userProfile.profileImageDataUrl})` }
+                    : undefined
+                }
+              >
+                {!userProfile.profileImageDataUrl ? userInitial : null}
+              </div>
+              <div className="sidebar-user-info">
+                <div className="sidebar-user-name">{userName}</div>
+                <div className="sidebar-user-role">Account</div>
+              </div>
+              {personalCurrency && (
+                <span className="sidebar-currency-badge">{personalCurrency}</span>
+              )}
             </div>
             <button className="link-button sidebar-logout" type="button" onClick={handleLogout}>Out</button>
           </div>
