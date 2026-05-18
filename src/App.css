@@ -2563,6 +2563,38 @@ p {
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
+.scope-option.intent-option {
+  min-height: 54px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  text-align: left;
+}
+
+.scope-option.intent-option strong {
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.scope-option.intent-option span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.scope-option.intent-option.selected span {
+  color: var(--primary-dark);
+}
+
+.intent-helper-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .scope-option.selected,
 .member-chip.selected {
   border-color: var(--primary);
@@ -3936,7 +3968,6 @@ p {
 /* ---------- Scroll lock (applied when any modal is open) ---------- */
 body.body-scroll-locked {
   overflow: hidden;
-  touch-action: none;
 }
 body.body-scroll-locked .main-content {
   overflow-y: hidden;
@@ -3954,6 +3985,9 @@ body.body-scroll-locked .main-content {
   background: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   animation: modal-fade 160ms ease;
 }
 
@@ -3962,6 +3996,7 @@ body.body-scroll-locked .main-content {
   max-height: calc(100dvh - 32px);
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   background: var(--surface);
   border-radius: var(--radius);
@@ -4007,16 +4042,20 @@ body.body-scroll-locked .main-content {
 .modal-form {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
 }
 
 .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   gap: 14px;
   padding: 22px;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .modal-footer {
@@ -6539,6 +6578,107 @@ body.body-scroll-locked .main-content {
 .trip-health-note--near { color: #d97706; }
 .trip-health-note--over { color: var(--negative); }
 
+.trip-health-legacy {
+  display: none;
+}
+
+/* ---- Budget vs spent overview ---- */
+.budget-compare-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.budget-compare-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.budget-compare-kicker {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.budget-compare-head h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.budget-compare-percent {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: var(--primary-muted);
+  color: var(--primary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.budget-compare-track {
+  height: 11px;
+  border-radius: 999px;
+  background: #eef2f7;
+  overflow: hidden;
+}
+
+.budget-compare-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
+.budget-compare-card--near .budget-compare-fill,
+.budget-compare-card--near .budget-compare-percent {
+  background: #f59e0b;
+  color: #fff;
+}
+
+.budget-compare-card--over .budget-compare-fill,
+.budget-compare-card--over .budget-compare-percent {
+  background: var(--negative);
+  color: #fff;
+}
+
+.budget-compare-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.budget-compare-values > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.budget-compare-values span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.budget-compare-values strong {
+  display: block;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
 /* ---- At a glance ---- */
 .dash-glance-list {
   display: flex;
@@ -8284,11 +8424,15 @@ body.body-scroll-locked .main-content {
   margin: 0;
 }
 
-/* --- Expense type cards (Personal / Shared) --- */
+/* --- Expense intent cards --- */
 .exp-type-cards {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.exp-intent-cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .exp-type-card {
@@ -8329,6 +8473,41 @@ body.body-scroll-locked .main-content {
 }
 .exp-type-card.active .exp-type-label { color: var(--primary-dark); }
 .exp-type-card.active .exp-type-sub   { color: var(--primary); }
+
+.expense-impact-card {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+}
+
+.expense-impact-card strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.expense-impact-card span,
+.expense-impact-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.expense-impact-card--group {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: rgba(204, 251, 241, 0.42);
+}
+
+.expense-impact-card--personal,
+.expense-impact-card--selected,
+.expense-impact-card--unit {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(255, 251, 235, 0.55);
+}
 
 /* --- "Paid by" member selector --- */
 .member-select-list { display: grid; gap: 8px; }
@@ -8902,6 +9081,28 @@ body.body-scroll-locked .main-content {
 .dash-stat-panel-value .money-multi,
 .hero-stat-value .money-multi {
   align-items: flex-end;
+}
+
+.trip-hero .money-multi {
+  align-items: inherit;
+}
+
+.trip-hero .money-conv,
+.trip-hero .money-conv--personal {
+  color: rgba(255, 255, 255, 0.88);
+  font-weight: 700;
+  opacity: 1;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.34);
+}
+
+.trip-hero .hero-stat-value.negative .money-conv,
+.trip-hero .hero-stat-value.negative .money-conv--personal {
+  color: #fee2e2;
+}
+
+.trip-hero .hero-stat-value.positive .money-conv,
+.trip-hero .hero-stat-value.positive .money-conv--personal {
+  color: #dcfce7;
 }
 
 /* ============================================================
@@ -10834,6 +11035,46 @@ body.body-scroll-locked .main-content {
     font-weight: 800;
     color: var(--primary);
     white-space: nowrap;
+  }
+
+  .budget-compare-card {
+    padding: 14px;
+    gap: 12px;
+    border-radius: 18px;
+  }
+
+  .budget-compare-head {
+    align-items: center;
+    gap: 10px;
+  }
+
+  .budget-compare-head h3 {
+    font-size: 16px;
+    overflow-wrap: anywhere;
+  }
+
+  .budget-compare-percent {
+    padding: 6px 9px;
+    font-size: 12px;
+  }
+
+  .budget-compare-values {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .budget-compare-values > div {
+    padding: 8px 7px;
+    border-radius: 12px;
+  }
+
+  .budget-compare-values span {
+    font-size: 9px;
+    letter-spacing: 0.03em;
+  }
+
+  .budget-compare-values strong {
+    font-size: 12px;
   }
 
   .trip-health-row {

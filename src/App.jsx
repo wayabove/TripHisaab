@@ -2272,6 +2272,18 @@ function App() {
     );
   }
 
+  function fmxText(amountEur) {
+    const groupCurrency = selectedTrip?.defaultCurrency || "EUR";
+    const parts = [formatMoney(amountEur)];
+    if (groupCurrency !== "EUR") {
+      parts.push(formatCurrency(convertFromEur(exchangeRates, amountEur, groupCurrency), groupCurrency));
+    }
+    if (personalCurrency && personalCurrency !== "EUR" && personalCurrency !== groupCurrency) {
+      parts.push(formatCurrency(convertFromEur(exchangeRates, amountEur, personalCurrency), personalCurrency));
+    }
+    return parts.join(" / ");
+  }
+
   const activeCategories = useMemo(
     () => categories.filter(c => c.isActive),
     [categories]
@@ -2917,6 +2929,102 @@ function App() {
     if (scope === "me") return "Only me";
     if (scope === "unit") return ids.map(memberNameOf).join(" · ") || "Our unit";
     return ids.map(memberNameOf).join(", ") || "Selected people";
+  }
+
+  function getCurrentUserUnit() {
+    if (!currentUserMemberId) return null;
+    return settlementGroups.find(group =>
+      group.isActive !== false
+      && Array.isArray(group.memberIds)
+      && group.memberIds.includes(currentUserMemberId)
+    ) || null;
+  }
+
+  function getBudgetScopeMeta(scope) {
+    if (scope === "me") {
+      return {
+        title: "Only me",
+        detail: "Private planning. It stays out of the group budget.",
+        impact: "Private"
+      };
+    }
+    if (scope === "unit") {
+      return {
+        title: "Our unit",
+        detail: "Shared with your unit for couples, families, or room groups.",
+        impact: "Unit budget"
+      };
+    }
+    if (scope === "selected") {
+      return {
+        title: "Selected people",
+        detail: "Useful when only part of the group is planning this cost.",
+        impact: "Private group"
+      };
+    }
+    return {
+      title: "Whole trip",
+      detail: "Visible to everyone and counted in the main trip budget.",
+      impact: "Group total"
+    };
+  }
+
+  function getExpenseImpactMeta(formData) {
+    const isShared = formData.expenseType === "shared";
+    const selectedIds = Array.isArray(formData.splitMemberIds) ? formData.splitMemberIds : [];
+    const allMembersSelected =
+      isShared
+      && activeMembers.length > 0
+      && selectedIds.length >= activeMembers.length
+      && activeMembers.every(member => selectedIds.includes(member.id));
+    const unit = getCurrentUserUnit();
+    const unitIds = unit?.memberIds?.filter(id => activeMembers.some(member => member.id === id)) || [];
+    const isUnit =
+      isShared
+      && unitIds.length > 0
+      && selectedIds.length === unitIds.length
+      && unitIds.every(id => selectedIds.includes(id));
+
+    if (!isShared) {
+      return {
+        mode: "personal",
+        title: "Just me",
+        detail: formData.includeInGroupTotal !== false
+          ? "Private details, included in trip spending."
+          : "Fully private and excluded from trip totals.",
+        settlement: "No split",
+        countsInTrip: formData.includeInGroupTotal !== false
+      };
+    }
+    if (allMembersSelected) {
+      return {
+        mode: "group",
+        title: "Everyone",
+        detail: "Visible to the group and included in group settlement.",
+        settlement: "Group settlement",
+        countsInTrip: true
+      };
+    }
+    if (isUnit) {
+      return {
+        mode: "unit",
+        title: "Our unit",
+        detail: formData.includeInGroupTotal !== false
+          ? "Settles inside your unit and still appears in trip totals."
+          : "Settles privately inside your unit.",
+        settlement: "Unit/private settlement",
+        countsInTrip: formData.includeInGroupTotal !== false
+      };
+    }
+    return {
+      mode: "selected",
+      title: "Selected people",
+      detail: formData.includeInGroupTotal !== false
+        ? "Only selected people see details; amount can still count in trip totals."
+        : "Only selected people see and settle it.",
+      settlement: "Private settlement",
+      countsInTrip: formData.includeInGroupTotal !== false
+    };
   }
 
   async function createUserProfileIfNeeded(currentUser) {
@@ -5224,9 +5332,9 @@ function App() {
         scope: expenseScope,
         visibleTo,
         countsTowardGroupSettlement: expenseScope === "group",
-        includeInGroupTotal: expenseScope === "personal"
-          ? normalizedExpenseForm.includeInGroupTotal !== false
-          : true,
+        includeInGroupTotal: expenseScope === "group"
+          ? true
+          : normalizedExpenseForm.includeInGroupTotal !== false,
         isActive: true,
         createdBy: user.uid,
         updatedBy: user.uid,
@@ -5432,9 +5540,9 @@ function App() {
         scope: expenseScope,
         visibleTo,
         countsTowardGroupSettlement: expenseScope === "group",
-        includeInGroupTotal: expenseScope === "personal"
-          ? expenseEditForm.includeInGroupTotal !== false
-          : true,
+        includeInGroupTotal: expenseScope === "group"
+          ? true
+          : expenseEditForm.includeInGroupTotal !== false,
         isActive: true,
         updatedBy: user.uid,
         updatedAt: serverTimestamp()
@@ -7778,6 +7886,67 @@ function App() {
       });
     }
 
+    const currentUnit = getCurrentUserUnit();
+    const currentUnitMemberIds = currentUnit?.memberIds?.filter(id => activeMembers.some(member => member.id === id)) || [];
+    const expenseImpact = getExpenseImpactMeta(formData);
+
+    function setExpenseAudience(mode) {
+      if (mode === "personal") {
+        setFormData({
+          ...formData,
+          expenseType: "personal",
+          splitType: "equal",
+          splitMemberIds: formData.paidByMemberId ? [formData.paidByMemberId] : [],
+          customSplitShares: {}
+        });
+        return;
+      }
+      if (mode === "unit" && currentUnitMemberIds.length > 0) {
+        setFormData({
+          ...formData,
+          expenseType: "shared",
+          splitType: "equal",
+          splitMemberIds: currentUnitMemberIds,
+          customSplitShares: {}
+        });
+        return;
+      }
+      if (mode === "selected") {
+        const currentSelected = Array.isArray(formData.splitMemberIds) ? formData.splitMemberIds : [];
+        const currentIsEveryone =
+          activeMembers.length > 0
+          && currentSelected.length >= activeMembers.length
+          && activeMembers.every(member => currentSelected.includes(member.id));
+        const selected = currentSelected.length > 0 && !currentIsEveryone
+          ? currentSelected
+          : currentUserMemberId
+          ? [currentUserMemberId]
+          : activeMembers.slice(0, 1).map(member => member.id);
+        setFormData({
+          ...formData,
+          expenseType: "shared",
+          splitType: formData.splitType || "equal",
+          splitMemberIds: selected,
+          customSplitShares: formData.customSplitShares || {}
+        });
+        setTimeout(() => {
+          expenseSharedSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }, 60);
+        return;
+      }
+      setFormData({
+        ...formData,
+        expenseType: "shared",
+        splitType: formData.splitType || "equal",
+        splitMemberIds: activeMembers.map(member => member.id),
+        customSplitShares: formData.customSplitShares || {},
+        includeInGroupTotal: true
+      });
+      setTimeout(() => {
+        expenseSharedSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 60);
+    }
+
     function handleExpenseTypeChange(nextType) {
       setFormData({
         ...formData,
@@ -7956,31 +8125,56 @@ function App() {
 
           {/* Expense type cards */}
           <div>
-            <div className="exp-section-header" style={{ marginBottom: "10px" }}>Expense type</div>
-            <div className="exp-type-cards">
+            <div className="exp-section-header" style={{ marginBottom: "10px" }}>Who is this for?</div>
+            <div className="exp-type-cards exp-intent-cards">
               <button
                 type="button"
-                className={`exp-type-card${formData.expenseType === "personal" ? " active" : ""}`}
-                onClick={() => handleExpenseTypeChange("personal")}
+                className={`exp-type-card${expenseImpact.mode === "personal" ? " active" : ""}`}
+                onClick={() => setExpenseAudience("personal")}
               >
                 <span className="exp-type-emoji">🙋</span>
-                <span className="exp-type-label">Personal</span>
-                <span className="exp-type-sub">Just me</span>
+                <span className="exp-type-label">Just me</span>
+                <span className="exp-type-sub">No split</span>
               </button>
               <button
                 type="button"
-                className={`exp-type-card${formData.expenseType === "shared" ? " active" : ""}`}
-                onClick={() => handleExpenseTypeChange("shared")}
+                className={`exp-type-card${expenseImpact.mode === "group" ? " active" : ""}`}
+                onClick={() => setExpenseAudience("group")}
               >
                 <span className="exp-type-emoji">👥</span>
-                <span className="exp-type-label">Shared</span>
-                <span className="exp-type-sub">Split the cost</span>
+                <span className="exp-type-label">Everyone</span>
+                <span className="exp-type-sub">Group total</span>
               </button>
+              {currentUnitMemberIds.length > 0 && (
+                <button
+                  type="button"
+                  className={`exp-type-card${expenseImpact.mode === "unit" ? " active" : ""}`}
+                  onClick={() => setExpenseAudience("unit")}
+                >
+                  <span className="exp-type-emoji">ðŸ </span>
+                  <span className="exp-type-label">Our unit</span>
+                  <span className="exp-type-sub">{currentUnit?.name || "Private unit"}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className={`exp-type-card${expenseImpact.mode === "selected" ? " active" : ""}`}
+                onClick={() => setExpenseAudience("selected")}
+              >
+                <span className="exp-type-emoji">ðŸŽ¯</span>
+                <span className="exp-type-label">Selected</span>
+                <span className="exp-type-sub">Private split</span>
+              </button>
+            </div>
+            <div className={`expense-impact-card expense-impact-card--${expenseImpact.mode}`}>
+              <strong>{expenseImpact.title}</strong>
+              <span>{expenseImpact.detail}</span>
+              <small>{expenseImpact.settlement}</small>
             </div>
           </div>
 
-          {/* Personal only: include in group total */}
-          {formData.expenseType === "personal" && (
+          {/* Limited expenses: include in group total */}
+          {expenseImpact.mode !== "group" && (
             <label className="include-in-group-toggle">
               <div className="include-in-group-toggle-row">
                 <input
@@ -7992,8 +8186,8 @@ function App() {
               </div>
               <p className="include-in-group-hint">
                 {formData.includeInGroupTotal !== false
-                  ? "Details stay private. This amount is included in the group budget total."
-                  : "Fully private. This amount stays out of the group budget total."}
+                  ? "The amount appears in trip totals, but details stay limited."
+                  : "This stays private and out of group totals."}
               </p>
             </label>
           )}
@@ -8847,9 +9041,10 @@ function App() {
   // -------------------- Render: trip screen --------------------
   function renderTripScreen() {
     const remaining = totals.predicted - totals.actual;
-    const budgetPct = totals.predicted > 0
-      ? Math.min(100, Math.round((totals.actual / totals.predicted) * 100))
+    const budgetPctRaw = totals.predicted > 0
+      ? Math.round((totals.actual / totals.predicted) * 100)
       : 0;
+    const budgetPct = Math.min(100, budgetPctRaw);
     const r = 68;
     const circ = 2 * Math.PI * r;
     const dashFill = (budgetPct / 100) * circ;
@@ -9040,8 +9235,20 @@ function App() {
     const budgetStatusText = totals.predicted <= 0
       ? "No budget yet"
       : budgetRemaining < -MONEY_EPSILON
-      ? `${fmx(Math.abs(budgetRemaining))} over`
-      : `${fmx(budgetRemaining)} left`;
+      ? `${fmxText(Math.abs(budgetRemaining))} over`
+      : `${fmxText(budgetRemaining)} left`;
+    const budgetComparison = totals.predicted > MONEY_EPSILON
+      ? {
+          spentLabel: fmx(totals.actual),
+          budgetLabel: fmx(totals.predicted),
+          remainingLabel: fmx(Math.abs(budgetRemaining)),
+          remainingTitle: budgetRemaining < -MONEY_EPSILON ? "Over" : "Left",
+          statusText: budgetStatusText,
+          pct: budgetPctRaw,
+          pctCapped: budgetPct,
+          tone: budgetTone
+        }
+      : null;
     const nextAction = suggestedSettlements.length > 0
       ? {
           title: `${suggestedSettlements.length} settlement${suggestedSettlements.length === 1 ? "" : "s"} ready`,
@@ -9277,13 +9484,9 @@ function App() {
                   );
                 })()}
                 {totals.predicted > 0 && (
-                  <div className="hero-stat">
+                  <div className={`hero-stat hero-stat--budget hero-stat--${budgetTone}`}>
                     <span className="hero-stat-label">Budget</span>
-                    <strong
-                      className={`hero-stat-value${budgetPct >= 100 ? " negative" : budgetPct >= 80 ? " warning-text" : ""}`}
-                    >
-                      {budgetPct}%
-                    </strong>
+                    <strong className="hero-stat-value">{budgetPctRaw}%</strong>
                   </div>
                 )}
                 <div className="hero-stat">
@@ -9328,7 +9531,40 @@ function App() {
               </div>
 
               {/* ── Trip health row (compact single-line summary) ── */}
-              <div className="dash-row dash-section-priority">
+              {budgetComparison ? (
+                <div className="dash-row dash-section-priority">
+                  <div className={`dash-card budget-compare-card budget-compare-card--${budgetComparison.tone}`}>
+                    <div className="budget-compare-head">
+                      <div>
+                        <span className="budget-compare-kicker">Budget vs spent</span>
+                        <h3>{budgetComparison.statusText}</h3>
+                      </div>
+                      <strong className="budget-compare-percent">{budgetComparison.pct}% used</strong>
+                    </div>
+                    <div className="budget-compare-track" aria-hidden="true">
+                      <div
+                        className="budget-compare-fill"
+                        style={{ width: `${budgetComparison.pctCapped}%` }}
+                      />
+                    </div>
+                    <div className="budget-compare-values">
+                      <div>
+                        <span>Spent</span>
+                        <strong>{budgetComparison.spentLabel}</strong>
+                      </div>
+                      <div>
+                        <span>Budget</span>
+                        <strong>{budgetComparison.budgetLabel}</strong>
+                      </div>
+                      <div>
+                        <span>{budgetComparison.remainingTitle}</span>
+                        <strong>{budgetComparison.remainingLabel}</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <div className="dash-row dash-section-priority trip-health-legacy">
                 <div className="dash-card trip-health-row">
                   <div className="trip-health-item">
                     <span className="trip-health-label">Total</span>
@@ -9889,11 +10125,11 @@ function App() {
                   </label>
 
                   <div className="budget-scope-field">
-                    <span className="emoji-field-label">Who can see this?</span>
+                    <span className="emoji-field-label">Budget applies to</span>
                     <div className="budget-scope-options">
                       {BUDGET_SCOPE_OPTIONS.map(option => (
                         <button
-                          className={`scope-option${budgetForm.scope === option.value ? " selected" : ""}`}
+                          className={`scope-option intent-option${budgetForm.scope === option.value ? " selected" : ""}`}
                           type="button"
                           key={option.value}
                           onClick={() =>
@@ -9907,15 +10143,16 @@ function App() {
                             }))
                           }
                         >
-                          {option.label}
+                          <strong>{getBudgetScopeMeta(option.value).title}</strong>
+                          <span>{getBudgetScopeMeta(option.value).impact}</span>
                         </button>
                       ))}
                       {(() => {
-                        const myUnit = settlementGroups.find(g => g.isActive !== false && currentUserMemberId && g.memberIds.includes(currentUserMemberId));
+                        const myUnit = getCurrentUserUnit();
                         if (!myUnit) return null;
                         return (
                           <button
-                            className={`scope-option${budgetForm.scope === "unit" ? " selected" : ""}`}
+                            className={`scope-option intent-option${budgetForm.scope === "unit" ? " selected" : ""}`}
                             type="button"
                             onClick={() => setBudgetForm(current => ({
                               ...current,
@@ -9923,11 +10160,15 @@ function App() {
                               visibleMemberIds: myUnit.memberIds
                             }))}
                           >
-                            Our unit
+                            <strong>Our unit</strong>
+                            <span>{myUnit.name || "Unit budget"}</span>
                           </button>
                         );
                       })()}
                     </div>
+                    <p className="intent-helper-text">
+                      {getBudgetScopeMeta(budgetForm.scope).detail}
+                    </p>
                   </div>
 
                   {budgetForm.scope === "selected" && (
@@ -10007,7 +10248,7 @@ function App() {
                                   </span>
                                 : null}
                               {" "}
-                              <span className={isGroup ? "" : "muted"}>{budgetScopeLabel(entry)}</span>
+                              <span className={isGroup ? "" : "muted"}>{budgetScopeLabel(entry)} · {budgetVisibleNames(entry)}</span>
                             </p>
                           </div>
                         </div>
