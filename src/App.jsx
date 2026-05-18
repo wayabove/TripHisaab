@@ -2235,10 +2235,14 @@ function App() {
   const isSolo = useMemo(() => activeMembers.length <= 1, [activeMembers]);
 
   const fairShare = useMemo(() => {
-    const lumpsum = groupBudget?.amountEur || 0;
-    if (!lumpsum || activeMembers.length === 0) return 0;
-    return roundMoney(lumpsum / activeMembers.length);
-  }, [groupBudget, activeMembers]);
+    if (activeMembers.length === 0) return 0;
+    const allocated = predictions
+      .filter(p => normalizeBudgetScope(p) === "group")
+      .reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0);
+    const budget = allocated > 0 ? allocated : (groupBudget?.amountEur || 0);
+    if (!budget) return 0;
+    return roundMoney(budget / activeMembers.length);
+  }, [predictions, groupBudget, activeMembers]);
 
   // fmx: format EUR amount with optional trip-currency + personal-currency conversions inline
   function fmx(amountEur) {
@@ -2314,7 +2318,8 @@ function App() {
       .filter(p => normalizeBudgetScope(p) === "group")
       .reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0);
     const lumpsum = groupBudget?.amountEur || 0;
-    const predicted = lumpsum > 0 ? lumpsum : groupAllocated;
+    // Category allocations are the canonical budget; lump-sum is a legacy fallback only
+    const predicted = groupAllocated > 0 ? groupAllocated : lumpsum;
     const settled = settlements.reduce(
       (sum, s) => sum + Number(s.amountEur || 0),
       0
@@ -9756,325 +9761,272 @@ function App() {
         {activeTab !== "dashboard" ? (
           <div className="tab-page-content">
         {activeTab === "prediction" ? (() => {
-          const gbLumpsum = groupBudget?.amountEur || 0;
           const gbAllocated = totals.groupAllocated || 0;
-          const gbRemaining = roundMoney(gbLumpsum - totals.actual);
-          const gbPct = gbLumpsum > 0 ? Math.min(100, Math.round((totals.actual / gbLumpsum) * 100)) : 0;
-          const gbUnallocated = roundMoney(Math.max(0, gbLumpsum - gbAllocated));
-          const gbAllocatedPct = gbLumpsum > 0 ? Math.min(100, Math.round((gbAllocated / gbLumpsum) * 100)) : 0;
+          const remaining = roundMoney(gbAllocated - totals.actual);
+          const pct = gbAllocated > 0 ? Math.min(100, Math.round((totals.actual / gbAllocated) * 100)) : 0;
+          const groupAllocationCount = predictions.filter(p => normalizeBudgetScope(p) === "group").length;
+          // Categories with actual spending but no planned allocation
+          const budgetedCategoryIds = new Set(predictions.map(p => p.categoryId).filter(Boolean));
+          const unbudgetedCategories = categories.filter(c =>
+            !budgetedCategoryIds.has(c.id) && (actualByCategoryId.get(c.id) || 0) > 0
+          );
           return (
           <section className="plan-budget-page">
 
-            {/* ── Card 1: Total Trip Budget (lumpsum) ── */}
+            {/* ── Budget summary — derived from category allocations ── */}
             <section className="card group-budget-card">
               <div className="group-budget-header">
                 <div>
                   <h2>{isSolo ? "Trip Budget" : "Group Budget"}</h2>
                   <p className="small muted">
-                    {isSolo ? "Your total for this trip." : "Total the group plans to spend."}
+                    {gbAllocated > 0
+                      ? `Total from ${groupAllocationCount} category allocation${groupAllocationCount !== 1 ? "s" : ""} below`
+                      : isSolo ? "Add allocations below to set your trip budget." : "Add allocations below to set the group budget."}
                   </p>
                 </div>
-                {groupBudget && !showGroupBudgetForm && !demoMode && (
-                  <button
-                    className="link-button"
-                    type="button"
-                    onClick={() => {
-                      setGroupBudgetForm({ amount: String(groupBudget.originalAmount), currency: groupBudget.originalCurrency || groupCurrency });
-                      setShowGroupBudgetForm(true);
-                    }}
-                  >
-                    Edit
-                  </button>
-                )}
               </div>
-
-              {showGroupBudgetForm ? (
-                <div className="group-budget-form">
-                  <div className="group-budget-form-row">
-                    <input
-                      className="form-input"
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="Total amount"
-                      value={groupBudgetForm.amount}
-                      onChange={e => setGroupBudgetForm(f => ({ ...f, amount: e.target.value.replace(/[^\d.,]/g, "") }))}
-                      onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setGroupBudgetForm(f => ({ ...f, amount: n })); }}
-                      autoFocus
-                    />
-                    <select
-                      className="form-input"
-                      value={groupBudgetForm.currency}
-                      onChange={e => setGroupBudgetForm(f => ({ ...f, currency: e.target.value }))}
-                    >
-                      {SUPPORTED_CURRENCIES.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="group-budget-form-actions">
-                    <button className="primary-button small-button" type="button" disabled={savingGroupBudget} onClick={handleSaveGroupBudget}>
-                      {savingGroupBudget ? "Saving…" : "Save budget"}
-                    </button>
-                    {groupBudget && (
-                      <button className="danger-button small-button" type="button" onClick={handleDeleteGroupBudget}>Remove</button>
-                    )}
-                    <button className="secondary-button small-button" type="button" onClick={() => setShowGroupBudgetForm(false)}>Cancel</button>
-                  </div>
-                </div>
-              ) : groupBudget ? (
+              {gbAllocated > 0 ? (
                 <div className="group-budget-display">
                   <div className="group-budget-amount-row">
-                    <strong className="group-budget-amount">{formatMoney(gbLumpsum, groupCurrency)}</strong>
-                    {groupBudget.originalCurrency && groupBudget.originalCurrency !== "EUR" && (
-                      <span className="small muted">{groupBudget.originalCurrency} {groupBudget.originalAmount}</span>
-                    )}
+                    <strong className="group-budget-amount">{fmx(gbAllocated)}</strong>
+                    <span className="small muted">planned</span>
                   </div>
                   <div className="group-budget-bar-row">
                     <div className="group-budget-bar">
                       <div
-                        className={`group-budget-bar-fill${gbPct >= 100 ? " over" : gbPct >= 80 ? " near" : ""}`}
-                        style={{ width: `${Math.min(100, gbPct)}%` }}
+                        className={`group-budget-bar-fill${pct >= 100 ? " over" : pct >= 80 ? " near" : ""}`}
+                        style={{ width: `${Math.min(100, pct)}%` }}
                       />
                     </div>
-                    <span className={`group-budget-pct${gbPct >= 100 ? " over" : gbPct >= 80 ? " near" : ""}`}>{gbPct}%</span>
+                    <span className={`group-budget-pct${pct >= 100 ? " over" : pct >= 80 ? " near" : ""}`}>{pct}%</span>
                   </div>
                   <div className="group-budget-stats">
                     <span><strong>{fmx(totals.actual)}</strong> spent</span>
-                    <span className={gbRemaining < 0 ? "over-budget" : ""}><strong>{fmx(Math.abs(gbRemaining))}</strong> {gbRemaining < 0 ? "over" : "remaining"}</span>
+                    <span className={remaining < 0 ? "over-budget" : ""}>
+                      <strong>{fmx(Math.abs(remaining))}</strong> {remaining < 0 ? "over" : "remaining"}
+                    </span>
                   </div>
                   {!isSolo && activeMembers.length > 0 && (
                     <p className="group-budget-share-hint small muted">
-                      ~{formatMoney(fairShare, groupCurrency)} per person · {activeMembers.length} members
+                      ~{formatMoney(fairShare)} per person · {activeMembers.length} members
                     </p>
                   )}
                 </div>
-              ) : !demoMode ? (
-                <button
-                  className="group-budget-set-btn secondary-button"
-                  type="button"
-                  onClick={() => {
-                    setGroupBudgetForm({ amount: "", currency: groupCurrency });
-                    setShowGroupBudgetForm(true);
-                  }}
-                >
-                  + Set total budget
-                </button>
               ) : (
-                <p className="muted small">No total budget set for this demo trip.</p>
+                <p className="muted small" style={{ marginTop: 4 }}>
+                  {demoMode ? "Budget is the sum of category allocations below." : "No budget set yet — add category allocations below."}
+                </p>
               )}
             </section>
 
-            {/* ── Card 2: Category Allocations (optional, collapsible) ── */}
+            {/* ── Category Allocations — always expanded, primary UI ── */}
             <section className="card plan-budget-editor">
-              <button
-                className="category-allocations-toggle"
-                type="button"
-                onClick={() => setShowCategoryAllocations(v => !v)}
-              >
-                <div className="category-allocations-toggle-left">
-                  <span className="category-allocations-title">Category allocations</span>
-                  <span className="small muted category-allocations-sub">
-                    {gbAllocated > 0
-                      ? `${formatMoney(gbAllocated, groupCurrency)} allocated${gbLumpsum > 0 ? ` · ${formatMoney(gbUnallocated, groupCurrency)} free` : ""}`
-                      : "Optionally break down your budget"}
-                  </span>
-                </div>
-                <span className="category-allocations-chevron">{showCategoryAllocations ? "▲" : "▼"}</span>
-              </button>
+              <div className="plan-budget-editor-header">
+                <span className="category-allocations-title">Category allocations</span>
+                {!demoMode && (
+                  <button className="secondary-button small-button" type="button" onClick={openCreateCategory}>
+                    + Category
+                  </button>
+                )}
+              </div>
 
-              {showCategoryAllocations && (
-                <>
-                  {/* Allocation progress bar — only shown when lumpsum is set */}
-                  {gbLumpsum > 0 && gbAllocated > 0 && (
-                    <div className="budget-allocation-track">
-                      <div className="budget-allocation-bar">
-                        <div
-                          className={`budget-allocation-fill${gbAllocatedPct >= 100 ? " over" : ""}`}
-                          style={{ width: `${Math.min(100, gbAllocatedPct)}%` }}
-                        />
+              {/* Allocation form */}
+              {!demoMode && (
+                <form className="budget-form" onSubmit={handleSavePredictions}>
+                  <div className="section-header compact-header" style={{ marginBottom: 0, paddingBottom: 0 }}>
+                    <span className="emoji-field-label" style={{ fontWeight: 700 }}>
+                      {editingBudgetId ? "Edit allocation" : "Add allocation"}
+                    </span>
+                  </div>
+
+                  <label>
+                    Category <span className="optional-label">(optional)</span>
+                    <select
+                      value={budgetForm.categoryId}
+                      onChange={e => setBudgetForm({ ...budgetForm, categoryId: e.target.value })}
+                    >
+                      <option value="">No category</option>
+                      {activeCategories.map(c => (
+                        <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Label
+                    <input
+                      type="text"
+                      value={budgetForm.title}
+                      placeholder="e.g. Group groceries"
+                      onChange={e => setBudgetForm({ ...budgetForm, title: e.target.value })}
+                    />
+                  </label>
+
+                  <label>
+                    Amount in EUR
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={budgetForm.estimatedEur}
+                      placeholder="0.00"
+                      onChange={e => setBudgetForm({ ...budgetForm, estimatedEur: e.target.value.replace(/[^\d.,]/g, "") })}
+                      onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setBudgetForm(f => ({ ...f, estimatedEur: n })); }}
+                      required
+                    />
+                  </label>
+
+                  <div className="budget-scope-field">
+                    <span className="emoji-field-label">Who can see this?</span>
+                    <div className="budget-scope-options">
+                      {BUDGET_SCOPE_OPTIONS.map(option => (
+                        <button
+                          className={`scope-option${budgetForm.scope === option.value ? " selected" : ""}`}
+                          type="button"
+                          key={option.value}
+                          onClick={() =>
+                            setBudgetForm(current => ({
+                              ...current,
+                              scope: option.value,
+                              visibleMemberIds:
+                                option.value === "me" && currentUserMemberId
+                                  ? [currentUserMemberId]
+                                  : current.visibleMemberIds
+                            }))
+                          }
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                      {(() => {
+                        const myUnit = settlementGroups.find(g => g.isActive !== false && currentUserMemberId && g.memberIds.includes(currentUserMemberId));
+                        if (!myUnit) return null;
+                        return (
+                          <button
+                            className={`scope-option${budgetForm.scope === "unit" ? " selected" : ""}`}
+                            type="button"
+                            onClick={() => setBudgetForm(current => ({
+                              ...current,
+                              scope: "unit",
+                              visibleMemberIds: myUnit.memberIds
+                            }))}
+                          >
+                            Our unit
+                          </button>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {budgetForm.scope === "selected" && (
+                    <div className="budget-member-picker">
+                      <span className="emoji-field-label">Choose people</span>
+                      <div className="member-chip-list">
+                        {activeMembers.map(member => (
+                          <button
+                            className={`member-chip${(budgetForm.visibleMemberIds || []).includes(member.id) ? " selected" : ""}`}
+                            type="button"
+                            key={member.id}
+                            onClick={() => toggleBudgetMember(member.id)}
+                          >
+                            {memberNameOf(member.id)}
+                          </button>
+                        ))}
                       </div>
-                      <span className="small muted">{gbAllocatedPct}% of budget allocated</span>
                     </div>
                   )}
 
-                  {/* Allocation form */}
-                  {!demoMode && (
-                    <form className="budget-form" onSubmit={handleSavePredictions} style={{ marginTop: 16 }}>
-                      <div className="section-header compact-header" style={{ marginBottom: 0, paddingBottom: 0 }}>
-                        <span className="emoji-field-label" style={{ fontWeight: 700 }}>
-                          {editingBudgetId ? "Edit allocation" : "Add allocation"}
-                        </span>
-                        <button className="secondary-button small-button" type="button" onClick={openCreateCategory}>
-                          + Category
-                        </button>
-                      </div>
+                  <div className="budget-form-actions">
+                    <button className="primary-button" type="submit" disabled={savingPredictions}>
+                      {savingPredictions ? "Saving…" : editingBudgetId ? "Save allocation" : "Add allocation"}
+                    </button>
+                    {editingBudgetId && (
+                      <button className="secondary-button" type="button" onClick={() => resetBudgetForm()}>
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </form>
+              )}
 
-                      <label>
-                        Category <span className="optional-label">(optional)</span>
-                        <select
-                          value={budgetForm.categoryId}
-                          onChange={e => setBudgetForm({ ...budgetForm, categoryId: e.target.value })}
-                        >
-                          <option value="">No category</option>
-                          {activeCategories.map(c => (
-                            <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label>
-                        Label
-                        <input
-                          type="text"
-                          value={budgetForm.title}
-                          placeholder="e.g. Group groceries"
-                          onChange={e => setBudgetForm({ ...budgetForm, title: e.target.value })}
-                        />
-                      </label>
-
-                      <label>
-                        Amount in EUR
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={budgetForm.estimatedEur}
-                          placeholder="0.00"
-                          onChange={e => setBudgetForm({ ...budgetForm, estimatedEur: e.target.value.replace(/[^\d.,]/g, "") })}
-                          onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setBudgetForm(f => ({ ...f, estimatedEur: n })); }}
-                          required
-                        />
-                      </label>
-
-                      <div className="budget-scope-field">
-                        <span className="emoji-field-label">Who can see this?</span>
-                        <div className="budget-scope-options">
-                          {BUDGET_SCOPE_OPTIONS.map(option => (
-                            <button
-                              className={`scope-option${budgetForm.scope === option.value ? " selected" : ""}`}
-                              type="button"
-                              key={option.value}
-                              onClick={() =>
-                                setBudgetForm(current => ({
-                                  ...current,
-                                  scope: option.value,
-                                  visibleMemberIds:
-                                    option.value === "me" && currentUserMemberId
-                                      ? [currentUserMemberId]
-                                      : current.visibleMemberIds
-                                }))
-                              }
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                          {(() => {
-                            const myUnit = settlementGroups.find(g => g.isActive !== false && currentUserMemberId && g.memberIds.includes(currentUserMemberId));
-                            if (!myUnit) return null;
-                            return (
-                              <button
-                                className={`scope-option${budgetForm.scope === "unit" ? " selected" : ""}`}
-                                type="button"
-                                onClick={() => setBudgetForm(current => ({
-                                  ...current,
-                                  scope: "unit",
-                                  visibleMemberIds: myUnit.memberIds
-                                }))}
-                              >
-                                Our unit
-                              </button>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      {budgetForm.scope === "selected" && (
-                        <div className="budget-member-picker">
-                          <span className="emoji-field-label">Choose people</span>
-                          <div className="member-chip-list">
-                            {activeMembers.map(member => (
-                              <button
-                                className={`member-chip${(budgetForm.visibleMemberIds || []).includes(member.id) ? " selected" : ""}`}
-                                type="button"
-                                key={member.id}
-                                onClick={() => toggleBudgetMember(member.id)}
-                              >
-                                {memberNameOf(member.id)}
-                              </button>
-                            ))}
+              {/* Allocation list with per-category progress bars */}
+              {predictions.length === 0 ? (
+                <div className="empty-card" style={{ marginTop: 14 }}>
+                  <p className="muted">No allocations yet. Add one above to start tracking your budget by category.</p>
+                </div>
+              ) : (
+                <div className="budget-entry-list" style={{ marginTop: 14 }}>
+                  {predictions.map(entry => {
+                    const category = entry.categoryId ? categoriesById.get(entry.categoryId) : null;
+                    const actualForEntry = entry.categoryId ? (actualByCategoryId.get(entry.categoryId) || 0) : 0;
+                    const entryPct = entry.estimatedEur > 0 ? Math.min(100, Math.round((actualForEntry / entry.estimatedEur) * 100)) : null;
+                    const isGroup = normalizeBudgetScope(entry) === "group";
+                    return (
+                      <article className="budget-entry-card" key={entry.id}>
+                        <div className="budget-entry-main">
+                          <span
+                            className="category-dot"
+                            style={{
+                              backgroundColor: `${category?.color || "#64748B"}22`,
+                              color: category?.color || "#64748B"
+                            }}
+                          >
+                            {category?.icon || entry.categoryIcon || "📦"}
+                          </span>
+                          <div className="budget-entry-info">
+                            <div className="budget-entry-name-row">
+                              <strong>{entry.title || category?.name || entry.categoryName || "Allocation"}</strong>
+                              <strong className="budget-entry-amount">{fmx(entry.estimatedEur)}</strong>
+                            </div>
+                            {entry.categoryId && entryPct !== null && (
+                              <div className="budget-entry-progress">
+                                <div className="budget-entry-bar">
+                                  <div
+                                    className={`budget-entry-bar-fill${entryPct >= 100 ? " over" : entryPct >= 80 ? " near" : ""}`}
+                                    style={{ width: `${Math.min(100, entryPct)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                            <p className="small muted budget-entry-meta">
+                              {entry.categoryId && entryPct !== null
+                                ? <span className={entryPct >= 100 ? "over-budget" : entryPct >= 80 ? "near-budget" : ""}>
+                                    {fmx(actualForEntry)} spent · {entryPct}%
+                                  </span>
+                                : null}
+                              {" "}
+                              <span className={isGroup ? "" : "muted"}>{budgetScopeLabel(entry)}</span>
+                            </p>
                           </div>
                         </div>
-                      )}
-
-                      <div className="budget-form-actions">
-                        <button className="primary-button" type="submit" disabled={savingPredictions}>
-                          {savingPredictions ? "Saving…" : editingBudgetId ? "Save allocation" : "Add allocation"}
-                        </button>
-                        {editingBudgetId && (
-                          <button className="secondary-button" type="button" onClick={() => resetBudgetForm()}>
-                            Cancel
-                          </button>
+                        {!demoMode && (
+                          <div className="expense-actions budget-entry-actions">
+                            <button className="secondary-button small-button" type="button" onClick={() => startEditingBudget(entry)}>Edit</button>
+                            <button className="danger-button small-button" type="button" onClick={() => handleDeleteBudget(entry)}>Delete</button>
+                          </div>
                         )}
-                      </div>
-                    </form>
-                  )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
 
-                  {/* Allocation list */}
-                  {predictions.length === 0 ? (
-                    <div className="empty-card" style={{ marginTop: 14 }}>
-                      <p className="muted">No allocations yet. Add one above to track spending by category.</p>
+              {/* Unbudgeted — spending in categories with no allocation */}
+              {unbudgetedCategories.length > 0 && (
+                <div className="unbudgeted-section">
+                  <p className="unbudgeted-label small muted">Spending without allocation</p>
+                  {unbudgetedCategories.map(c => (
+                    <div className="unbudgeted-row" key={c.id}>
+                      <span
+                        className="category-dot"
+                        style={{ backgroundColor: `${c.color || "#64748B"}22`, color: c.color || "#64748B" }}
+                      >
+                        {c.icon || "📦"}
+                      </span>
+                      <span className="unbudgeted-name">{c.name}</span>
+                      <span className="unbudgeted-amount small">{fmx(actualByCategoryId.get(c.id) || 0)}</span>
                     </div>
-                  ) : (
-                    <div className="budget-entry-list" style={{ marginTop: 14 }}>
-                      {predictions.map(entry => {
-                        const category = entry.categoryId ? categoriesById.get(entry.categoryId) : null;
-                        const isGroup = normalizeBudgetScope(entry) === "group";
-                        const actualForEntry = entry.categoryId ? (actualByCategoryId.get(entry.categoryId) || 0) : 0;
-                        const entryPct = entry.estimatedEur > 0 ? Math.min(100, Math.round((actualForEntry / entry.estimatedEur) * 100)) : null;
-                        return (
-                          <article className="budget-entry-card" key={entry.id}>
-                            <div className="budget-entry-main">
-                              <span
-                                className="category-dot"
-                                style={{
-                                  backgroundColor: `${category?.color || "#64748B"}22`,
-                                  color: category?.color || "#64748B"
-                                }}
-                              >
-                                {category?.icon || entry.categoryIcon || "📦"}
-                              </span>
-                              <div>
-                                <strong>{entry.title || entry.categoryName || category?.name || "Allocation"}</strong>
-                                <p className="small muted">
-                                  {category?.name || entry.categoryName || "No category"} · {budgetScopeLabel(entry)}
-                                </p>
-                                {entry.categoryId && entryPct !== null && (
-                                  <p className="small muted">
-                                    <span className={entryPct >= 100 ? "over-budget" : entryPct >= 80 ? "near-budget" : "under-budget"}>
-                                      {formatMoney(actualForEntry, groupCurrency)} spent · {entryPct}%
-                                    </span>
-                                  </p>
-                                )}
-                                <p className="small muted">{budgetVisibleNames(entry)}</p>
-                              </div>
-                            </div>
-                            <div className="budget-entry-side">
-                              <strong>{formatMoney(entry.estimatedEur)}</strong>
-                              <span className={isGroup ? "pill" : "pill muted-pill"}>
-                                {isGroup ? "Group" : "Personal view"}
-                              </span>
-                              {!demoMode && (
-                                <div className="expense-actions">
-                                  <button className="secondary-button small-button" type="button" onClick={() => startEditingBudget(entry)}>Edit</button>
-                                  <button className="danger-button small-button" type="button" onClick={() => handleDeleteBudget(entry)}>Delete</button>
-                                </div>
-                              )}
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
+                  ))}
+                </div>
               )}
             </section>
 

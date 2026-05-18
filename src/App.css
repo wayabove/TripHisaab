@@ -2641,6 +2641,120 @@ p {
   font-size: 18px;
 }
 
+/* ---- Plan Budget prediction tab (new layout) ---- */
+
+.plan-budget-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.plan-budget-editor-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.budget-entry-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.budget-entry-name-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.budget-entry-amount {
+  font-weight: 700;
+  font-size: 15px;
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.budget-entry-progress {
+  margin-top: 6px;
+}
+
+.budget-entry-bar {
+  height: 4px;
+  background: var(--surface-alt, #f1f5f9);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.budget-entry-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.budget-entry-bar-fill.over { background: #dc2626; }
+.budget-entry-bar-fill.near { background: #d97706; }
+
+.budget-entry-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.budget-entry-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  align-items: flex-start;
+}
+
+.unbudgeted-section {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.unbudgeted-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.unbudgeted-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.unbudgeted-row:last-child {
+  border-bottom: none;
+}
+
+.unbudgeted-name {
+  flex: 1;
+  font-size: 14px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unbudgeted-amount {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
 /* ---- Group Budget card (lumpsum) ---- */
 .group-budget-card { display: flex; flex-direction: column; gap: 14px; }
 
