@@ -1822,6 +1822,15 @@ function App() {
   const [showQuickCategory, setShowQuickCategory] = useState(false);
   const [savingQuickCategory, setSavingQuickCategory] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [defaultPayerIsMe, setDefaultPayerIsMe] = useState(() => {
+    try { return localStorage.getItem("triphisaab-pref-defaultPayerIsMe") === "true"; } catch { return false; }
+  });
+  const [defaultExpenseType, setDefaultExpenseType] = useState(() => {
+    try { return localStorage.getItem("triphisaab-pref-defaultExpenseType") || ""; } catch { return ""; }
+  });
+  const [defaultTab, setDefaultTab] = useState(() => {
+    try { return localStorage.getItem("triphisaab-pref-defaultTab") || ""; } catch { return ""; }
+  });
 
   const [form, setForm] = useState({
     name: "",
@@ -4021,12 +4030,14 @@ function App() {
         return "dashboard";
       }
     })();
-    setActiveTab(storedTab);
+    // defaultTab ("") means "last visited"; any other value overrides it
+    const tabToUse = defaultTab || storedTab;
+    setActiveTab(tabToUse);
     setShowLanding(false);
     try {
       localStorage.setItem(APP_VIEW_STORAGE_KEY, "app");
       localStorage.setItem(LAST_TRIP_STORAGE_KEY, trip.id);
-      localStorage.setItem(LAST_TAB_STORAGE_KEY, storedTab);
+      localStorage.setItem(LAST_TAB_STORAGE_KEY, tabToUse);
     } catch {
       /* localStorage unavailable */
     }
@@ -5084,18 +5095,15 @@ function App() {
   }
 
   function buildFastExpenseForm(overrides = {}) {
-    const payerId =
-      currentUserMemberId ||
-      getCurrentUserMemberIdFromList(activeMembers) ||
-      activeMembers[0]?.id ||
-      "";
+    const myId = currentUserMemberId || getCurrentUserMemberIdFromList(activeMembers) || "";
+    const payerId = defaultPayerIsMe && myId ? myId : myId || activeMembers[0]?.id || "";
     return {
       ...EMPTY_EXPENSE_FORM,
       date: todayIso(),
       time: nowTimeIso(),
       categoryId: defaultExpenseCategoryId,
       originalCurrency: selectedTrip?.defaultCurrency || "EUR",
-      expenseType: "shared",
+      expenseType: defaultExpenseType || "shared",
       splitType: "equal",
       paidByMemberId: payerId,
       splitMemberIds: activeMembers.map(m => m.id),
@@ -5924,11 +5932,11 @@ function App() {
             {savingProfilePicture ? <span className="small muted">Saving…</span> : null}
           </div>
           <div className="account-divider" />
-          <p className="account-section-title">Display preferences</p>
+          <p className="account-section-title">Display</p>
           <label className="preferences-row">
             <span className="preferences-label">
               My currency
-              <span className="small muted"> · amounts show in EUR + your currency</span>
+              <span className="small muted"> · shows in EUR + your currency</span>
             </span>
             <select
               className="preferences-select"
@@ -5943,6 +5951,63 @@ function App() {
               {SUPPORTED_CURRENCIES.filter(c => c !== "EUR").map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
+            </select>
+          </label>
+          <label className="preferences-row">
+            <span className="preferences-label">Opening tab</span>
+            <select
+              className="preferences-select"
+              value={defaultTab}
+              onChange={e => {
+                const val = e.target.value;
+                setDefaultTab(val);
+                try { localStorage.setItem("triphisaab-pref-defaultTab", val); } catch {}
+              }}
+            >
+              <option value="">Last visited</option>
+              <option value="dashboard">Overview</option>
+              <option value="actual">Expenses</option>
+              <option value="settlements">Settle up</option>
+              <option value="tasks">Tasks</option>
+            </select>
+          </label>
+          <div className="account-divider" />
+          <p className="account-section-title">Expense defaults</p>
+          <label className="preferences-row">
+            <span className="preferences-label">
+              Expense type
+              <span className="small muted"> · pre-sets when adding</span>
+            </span>
+            <select
+              className="preferences-select"
+              value={defaultExpenseType}
+              onChange={e => {
+                const val = e.target.value;
+                setDefaultExpenseType(val);
+                try { localStorage.setItem("triphisaab-pref-defaultExpenseType", val); } catch {}
+              }}
+            >
+              <option value="">Ask each time</option>
+              <option value="shared">Shared</option>
+              <option value="personal">Personal</option>
+            </select>
+          </label>
+          <label className="preferences-row">
+            <span className="preferences-label">
+              Paid by
+              <span className="small muted"> · pre-selects payer</span>
+            </span>
+            <select
+              className="preferences-select"
+              value={defaultPayerIsMe ? "me" : ""}
+              onChange={e => {
+                const val = e.target.value === "me";
+                setDefaultPayerIsMe(val);
+                try { localStorage.setItem("triphisaab-pref-defaultPayerIsMe", String(val)); } catch {}
+              }}
+            >
+              <option value="">Ask each time</option>
+              <option value="me">Always me</option>
             </select>
           </label>
         </div>
