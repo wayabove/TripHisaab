@@ -37,6 +37,9 @@ export const getCurrencyRate = (rates, currency) =>
 export const convertToEur = (rates, amount, currency) =>
   Number(amount || 0) / getCurrencyRate(rates, currency);
 
+export const convertFromEur = (rates, amountEur, targetCurrency) =>
+  Number(amountEur || 0) * getCurrencyRate(rates, targetCurrency);
+
 export function normalizeAmountInput(raw) {
   if (raw === "" || raw === null || raw === undefined) return "";
   let s = String(raw).trim().replace(/[^\d.,]/g, "");

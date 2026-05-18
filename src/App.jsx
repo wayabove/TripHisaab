@@ -62,6 +62,7 @@ import {
   buildInviteLink,
   getCurrencyRate as getRate,
   convertToEur as convertAmount,
+  convertFromEur,
   formatMoney,
   formatCurrency,
   normalizeAmountInput,
@@ -1733,6 +1734,11 @@ function App() {
   const [showCategoryBreakdown, setShowCategoryBreakdown] = useState(false);
   const [personalBudgetForm, setPersonalBudgetForm] = useState({ amount: "", currency: "EUR" });
   const [savingPersonalBudget, setSavingPersonalBudget] = useState(false);
+  const [groupBudget, setGroupBudget] = useState(null);
+  const [groupBudgetForm, setGroupBudgetForm] = useState({ amount: "", currency: "EUR" });
+  const [savingGroupBudget, setSavingGroupBudget] = useState(false);
+  const [showGroupBudgetForm, setShowGroupBudgetForm] = useState(false);
+  const [showCategoryAllocations, setShowCategoryAllocations] = useState(false);
   const [personalContributions, setPersonalContributions] = useState([]);
   const [tripTotalsSummary, setTripTotalsSummary] = useState(null);
 
@@ -1809,6 +1815,12 @@ function App() {
   const [categoryStatusFilter, setCategoryStatusFilter] = useState("all");
   const [categoryPage, setCategoryPage] = useState(1);
   const [savingProfilePicture, setSavingProfilePicture] = useState(false);
+  const [personalCurrency, setPersonalCurrency] = useState(() => {
+    try { return localStorage.getItem("triphisaab-personal-currency") || ""; } catch { return ""; }
+  });
+  const [quickCategoryName, setQuickCategoryName] = useState("");
+  const [showQuickCategory, setShowQuickCategory] = useState(false);
+  const [savingQuickCategory, setSavingQuickCategory] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -1987,6 +1999,7 @@ function App() {
       notifications,
       settlementGroups,
       personalBudget,
+      groupBudget,
       personalContributions,
       tripTotalsSummary
     });
@@ -2003,6 +2016,7 @@ function App() {
     notifications,
     settlementGroups,
     personalBudget,
+    groupBudget,
     personalContributions,
     tripTotalsSummary
   ]);
@@ -2202,6 +2216,42 @@ function App() {
     [members]
   );
 
+  const isSolo = useMemo(() => activeMembers.length <= 1, [activeMembers]);
+
+  const fairShare = useMemo(() => {
+    const lumpsum = groupBudget?.amountEur || 0;
+    if (!lumpsum || activeMembers.length === 0) return 0;
+    return roundMoney(lumpsum / activeMembers.length);
+  }, [groupBudget, activeMembers]);
+
+  // fmx: format EUR amount with optional trip-currency + personal-currency conversions inline
+  function fmx(amountEur) {
+    const groupCurrency = selectedTrip?.defaultCurrency || "EUR";
+    const primary = formatMoney(amountEur);
+    const convs = [];
+    if (groupCurrency !== "EUR") {
+      convs.push(
+        <span key="grp" className="money-conv">
+          {formatCurrency(convertFromEur(exchangeRates, amountEur, groupCurrency), groupCurrency)}
+        </span>
+      );
+    }
+    if (personalCurrency && personalCurrency !== "EUR" && personalCurrency !== groupCurrency) {
+      convs.push(
+        <span key="per" className="money-conv money-conv--personal">
+          {formatCurrency(convertFromEur(exchangeRates, amountEur, personalCurrency), personalCurrency)}
+        </span>
+      );
+    }
+    if (convs.length === 0) return primary;
+    return (
+      <span className="money-multi">
+        <span className="money-primary">{primary}</span>
+        {convs}
+      </span>
+    );
+  }
+
   const activeCategories = useMemo(
     () => categories.filter(c => c.isActive),
     [categories]
@@ -2244,18 +2294,17 @@ function App() {
     const actual = !isTripOwner && tripTotalsSummary?.totalSpentEur != null
       ? roundMoney(tripTotalsSummary.totalSpentEur)
       : roundMoney(shared + contribTotal);
-    const predicted = predictions
+    const groupAllocated = predictions
       .filter(p => normalizeBudgetScope(p) === "group")
-      .reduce(
-      (sum, p) => sum + Number(p.estimatedEur || 0),
-      0
-    );
+      .reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0);
+    const lumpsum = groupBudget?.amountEur || 0;
+    const predicted = lumpsum > 0 ? lumpsum : groupAllocated;
     const settled = settlements.reduce(
       (sum, s) => sum + Number(s.amountEur || 0),
       0
     );
-    return { predicted, actual, shared, settled };
-  }, [currentUserMemberId, expenses, personalContributions, predictions, selectedTrip?.ownerId, settlements, tripTotalsSummary, user?.uid]);
+    return { predicted, actual, shared, settled, groupAllocated };
+  }, [currentUserMemberId, expenses, groupBudget, personalContributions, predictions, selectedTrip?.ownerId, settlements, tripTotalsSummary, user?.uid]);
 
   const visiblePlanTotal = useMemo(
     () => predictions.reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0),
@@ -3605,6 +3654,7 @@ function App() {
     setNotifications(snapshot.notifications || []);
     setSettlementGroups(snapshot.settlementGroups || []);
     setPersonalBudget(snapshot.personalBudget || null);
+    setGroupBudget(snapshot.groupBudget || null);
     setPersonalContributions(snapshot.personalContributions || []);
     setTripTotalsSummary(snapshot.tripTotalsSummary || null);
     setLoadedTripDataId(snapshot.tripId || selectedTrip?.id || "");
@@ -4307,6 +4357,10 @@ function App() {
         setPersonalBudget(null);
       }
 
+      const gbSnap = await getDoc(doc(db, "trips", tripId, "groupBudget", "config")).catch(() => null);
+      const loadedGroupBudget = gbSnap?.exists() ? gbSnap.data() : null;
+      setGroupBudget(loadedGroupBudget);
+
       // Load all members' personal contribution totals (aggregate only — no expense detail exposed).
       const contribSnap = await getDocs(collection(db, "trips", tripId, "personalContributions")).catch(() => ({ docs: [] }));
       let loadedContributions = contribSnap.docs.map(d => ({ userId: d.id, ...d.data() }));
@@ -4404,6 +4458,7 @@ function App() {
         notifications: loadedNotifications,
         settlementGroups: loadedSettlementGroups,
         personalBudget: loadedPersonalBudget,
+        groupBudget: loadedGroupBudget,
         personalContributions: loadedContributions,
         tripTotalsSummary: tripContext?.ownerId === user?.uid
           ? getTripTotalsSummary(loadedExpenses)
@@ -4693,7 +4748,7 @@ function App() {
     setEditingBudgetId(null);
     setBudgetForm({
       ...EMPTY_BUDGET_FORM,
-      categoryId: activeCategories[0]?.id || categories[0]?.id || "",
+      categoryId: "",
       visibleMemberIds: currentUserMemberId ? [currentUserMemberId] : [],
       ...overrides
     });
@@ -4717,7 +4772,7 @@ function App() {
   function startEditingBudget(entry) {
     setEditingBudgetId(entry.id);
     setBudgetForm({
-      categoryId: entry.categoryId || activeCategories[0]?.id || "",
+      categoryId: entry.categoryId || "",
       title: entry.title || entry.notes || "",
       estimatedEur: entry.estimatedEur ? String(entry.estimatedEur) : "",
       scope: normalizeBudgetScope(entry),
@@ -4734,19 +4789,18 @@ function App() {
     if (!selectedTrip) return;
     if (isDemoMode()) return showToast("Demo trip is read-only. Sign in to edit trip budgets.", "info");
     const amount = parseAmount(budgetForm.estimatedEur);
-    if (!budgetForm.categoryId) return showToast("Choose a category.", "error");
-    if (!amount || amount <= 0) return showToast("Enter a budget amount above zero.", "error");
+    if (!amount || amount <= 0) return showToast("Enter an allocation amount above zero.", "error");
     if (!currentUserMemberId) return showToast("Could not find your trip member profile yet.", "error");
     const scope = budgetForm.scope || "group";
     const visibleMemberIds = buildBudgetVisibility(scope);
     if ((scope === "selected" || scope === "unit") && visibleMemberIds.length === 0) {
       return showToast("Choose at least one person for this budget entry.", "error");
     }
-    const category = categoriesById.get(budgetForm.categoryId);
+    const category = budgetForm.categoryId ? categoriesById.get(budgetForm.categoryId) : null;
     setSavingPredictions(true);
     try {
       const payload = {
-        categoryId: budgetForm.categoryId,
+        categoryId: budgetForm.categoryId || null,
         categoryName: category?.name || "",
         title: budgetForm.title.trim(),
         estimatedEur: amount,
@@ -4778,8 +4832,8 @@ function App() {
         }
       }
       if (navigator.onLine !== false) await loadTripData(selectedTrip.id);
-      resetBudgetForm({ categoryId: budgetForm.categoryId });
-      if (navigator.onLine !== false) showToast("Plan budget saved.", "success");
+      resetBudgetForm();
+      if (navigator.onLine !== false) showToast("Allocation saved.", "success");
     } catch (error) {
       console.error("Could not save plan budget:", error);
       showToast("Could not save plan budget.", "error");
@@ -4867,6 +4921,46 @@ function App() {
     } catch (err) {
       console.error("Could not remove personal budget:", err);
       showToast("Could not remove personal budget.", "error");
+    }
+  }
+
+  // -------------------- Group budget (lumpsum) --------------------
+  async function handleSaveGroupBudget() {
+    if (!selectedTrip || isDemoMode()) return;
+    const amount = parseAmount(groupBudgetForm.amount);
+    if (!amount || amount <= 0) return showToast("Enter a valid budget amount.", "error");
+    setSavingGroupBudget(true);
+    try {
+      const currency = groupBudgetForm.currency || selectedTrip.defaultCurrency || "EUR";
+      const amountEur = convertAmount(amount, currency);
+      const data = { originalAmount: amount, originalCurrency: currency, amountEur, updatedAt: new Date().toISOString() };
+      await queueFirestoreWrite(
+        setDoc(doc(db, "trips", selectedTrip.id, "groupBudget", "config"), data),
+        "Group budget"
+      );
+      setGroupBudget(data);
+      setShowGroupBudgetForm(false);
+    } catch (err) {
+      console.error("Could not save group budget:", err);
+      showToast("Could not save group budget.", "error");
+    } finally {
+      setSavingGroupBudget(false);
+    }
+  }
+
+  async function handleDeleteGroupBudget() {
+    if (!selectedTrip || isDemoMode()) return;
+    if (!window.confirm("Remove the total trip budget? Category allocations will remain.")) return;
+    try {
+      await queueFirestoreWrite(
+        deleteDoc(doc(db, "trips", selectedTrip.id, "groupBudget", "config")),
+        "Group budget removal"
+      );
+      setGroupBudget(null);
+      setShowGroupBudgetForm(false);
+    } catch (err) {
+      console.error("Could not remove group budget:", err);
+      showToast("Could not remove group budget.", "error");
     }
   }
 
@@ -5797,8 +5891,8 @@ function App() {
     );
   }
 
-  // ── Feedback widget ──────────────────────────────────────────────
-  function renderFeedbackWidget(hasExpenseFab = false) {
+  // ── Feedback modal ──────────────────────────────────────────────
+  function renderFeedbackModal() {
     if (!user) return null;
     const screenLabel = selectedTrip
       ? ({ dashboard: 'Trip Overview', prediction: 'Plan Budget', actual: 'Expenses', settlements: 'Settle', tasks: 'Tasks', categories: 'Categories', members: 'Members', settings: 'Settings' }[activeTab] || activeTab)
@@ -5833,60 +5927,42 @@ function App() {
       setFeedbackSuggestion('');
     }
     return (
-      <div className={`feedback-widget${feedbackOpen ? ' feedback-widget--open' : ''}${hasExpenseFab ? ' feedback-widget--above-fab' : ''}`}>
-        {feedbackOpen && (
-          <div className="feedback-panel" role="dialog" aria-label="Share feedback">
-            <div className="feedback-panel-header">
-              <div className="feedback-panel-title">
-                <span>Share feedback</span>
-                <span className="feedback-screen-tag">{screenLabel}</span>
-              </div>
-              <button className="feedback-close-btn" type="button" aria-label="Close" onClick={() => setFeedbackOpen(false)}>✕</button>
+      <Modal isOpen={feedbackOpen} onClose={() => setFeedbackOpen(false)} title="Share feedback" className="feedback-modal">
+        <div className="feedback-modal-body">
+          <span className="feedback-screen-tag">{screenLabel}</span>
+          <div className="feedback-rating-row">
+            <span className="feedback-field-label">Overall rating</span>
+            <div className="feedback-stars">
+              {[1,2,3,4,5].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  className={`feedback-star${feedbackRating >= n ? ' feedback-star--on' : ''}`}
+                  aria-label={`${n} star`}
+                  onClick={() => setFeedbackRating(feedbackRating === n ? 0 : n)}
+                >★</button>
+              ))}
             </div>
-            <div className="feedback-rating-row">
-              <span className="feedback-field-label">Overall rating</span>
-              <div className="feedback-stars">
-                {[1,2,3,4,5].map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`feedback-star${feedbackRating >= n ? ' feedback-star--on' : ''}`}
-                    aria-label={`${n} star`}
-                    onClick={() => setFeedbackRating(feedbackRating === n ? 0 : n)}
-                  >★</button>
-                ))}
-              </div>
-            </div>
-            <div className="feedback-fields">
-              <label className="feedback-field-label">
-                What's working well?
-                <textarea value={feedbackWorking} onChange={e => setFeedbackWorking(e.target.value)} placeholder="Anything you like so far…" rows={2} />
-              </label>
-              <label className="feedback-field-label">
-                Bugs / what could be better?
-                <textarea value={feedbackBroken} onChange={e => setFeedbackBroken(e.target.value)} placeholder="Something broken or confusing…" rows={2} />
-              </label>
-              <label className="feedback-field-label">
-                Suggestions
-                <textarea value={feedbackSuggestion} onChange={e => setFeedbackSuggestion(e.target.value)} placeholder="Feature ideas, improvements…" rows={2} />
-              </label>
-            </div>
-            <button className="primary-button feedback-send-btn" type="button" onClick={sendFeedback}>
-              Send via email
-            </button>
           </div>
-        )}
-        <button
-          className="feedback-fab"
-          type="button"
-          aria-label="Give feedback"
-          aria-expanded={feedbackOpen}
-          onClick={() => setFeedbackOpen(v => !v)}
-        >
-          <span className="feedback-fab-icon"><Icon name="message" /></span>
-          <span className="feedback-fab-label">Feedback</span>
-        </button>
-      </div>
+          <div className="feedback-fields">
+            <label className="feedback-field-label">
+              What's working well?
+              <textarea value={feedbackWorking} onChange={e => setFeedbackWorking(e.target.value)} placeholder="Anything you like so far…" rows={2} />
+            </label>
+            <label className="feedback-field-label">
+              Bugs / what could be better?
+              <textarea value={feedbackBroken} onChange={e => setFeedbackBroken(e.target.value)} placeholder="Something broken or confusing…" rows={2} />
+            </label>
+            <label className="feedback-field-label">
+              Suggestions
+              <textarea value={feedbackSuggestion} onChange={e => setFeedbackSuggestion(e.target.value)} placeholder="Feature ideas, improvements…" rows={2} />
+            </label>
+          </div>
+          <button className="primary-button" type="button" onClick={sendFeedback}>
+            Send via email
+          </button>
+        </div>
+      </Modal>
     );
   }
 
@@ -5897,6 +5973,64 @@ function App() {
   function selectCategoryEmoji(emoji) {
     setCategoryForm(current => ({ ...current, icon: emoji }));
     setIsEmojiPickerOpen(false);
+  }
+
+  function detectCategoryIcon(name) {
+    const n = name.toLowerCase();
+    if (/flight|fly|plane|air/.test(n)) return "✈️";
+    if (/train|rail|metro/.test(n)) return "🚆";
+    if (/bus|coach|shuttle/.test(n)) return "🚌";
+    if (/taxi|uber|cab|ride/.test(n)) return "🚕";
+    if (/car|drive|rent|auto/.test(n)) return "🚗";
+    if (/fuel|gas|petrol/.test(n)) return "⛽";
+    if (/hotel|hostel|stay|accommodation|room/.test(n)) return "🏨";
+    if (/camp|tent/.test(n)) return "🏕️";
+    if (/food|meal|lunch|dinner|breakfast|eat|restaurant|cafe|coffee/.test(n)) return "🍽️";
+    if (/drink|beer|wine|bar/.test(n)) return "🍷";
+    if (/shop|market|store|buy|souven/.test(n)) return "🛍️";
+    if (/ticket|entry|museum|event|tour/.test(n)) return "🎟️";
+    if (/beach|swim|pool/.test(n)) return "🏖️";
+    if (/health|pharma|medicine|doctor/.test(n)) return "💊";
+    if (/phone|sim|internet|data/.test(n)) return "📱";
+    if (/tip|misc|other/.test(n)) return "✨";
+    return "📌";
+  }
+
+  function detectCategoryType(name) {
+    const n = name.toLowerCase();
+    if (/flight|train|bus|taxi|car|fuel|transport|metro|shuttle/.test(n)) return "Travel";
+    if (/hotel|hostel|stay|accommodation|camp|airbnb/.test(n)) return "Accommodation";
+    if (/food|meal|cafe|restaurant|coffee|drink|eat/.test(n)) return "Daily";
+    if (/shop|market|store|souvenir/.test(n)) return "Shopping";
+    return "Miscellaneous";
+  }
+
+  async function handleQuickAddCategory(name, setFormData) {
+    if (!selectedTrip || !name.trim()) return;
+    if (isDemoMode()) return showToast("Demo trip is read-only.", "info");
+    setSavingQuickCategory(true);
+    try {
+      const newDoc = await addDoc(
+        collection(db, "trips", selectedTrip.id, "categories"),
+        {
+          name: name.trim(),
+          icon: detectCategoryIcon(name),
+          type: detectCategoryType(name),
+          color: "#0F766E",
+          isActive: true,
+          createdAt: serverTimestamp()
+        }
+      );
+      await loadTripData(selectedTrip.id);
+      setFormData(prev => ({ ...prev, categoryId: newDoc.id }));
+      setShowQuickCategory(false);
+      setQuickCategoryName("");
+    } catch (err) {
+      console.error("Could not create category:", err);
+      showToast("Could not create category.", "error");
+    } finally {
+      setSavingQuickCategory(false);
+    }
   }
 
   async function handleSaveCategory(event) {
@@ -7493,19 +7627,64 @@ function App() {
           </label>
 
           {/* Category */}
-          <label>
-            Category
-            <select
-              value={formData.categoryId}
-              onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-              required
-            >
-              <option value="">Choose category</option>
-              {activeCategories.map(c => (
-                <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
-              ))}
-            </select>
-          </label>
+          <div className="expense-category-field">
+            <div className="expense-category-header">
+              <span className="form-field-label">Category</span>
+              {!showQuickCategory && (
+                <button
+                  type="button"
+                  className="link-button quick-category-toggle"
+                  onClick={() => setShowQuickCategory(true)}
+                >
+                  + New
+                </button>
+              )}
+            </div>
+            {showQuickCategory ? (
+              <div className="quick-category-form">
+                <input
+                  className="form-input"
+                  type="text"
+                  placeholder="Category name"
+                  value={quickCategoryName}
+                  autoFocus
+                  onChange={e => setQuickCategoryName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { e.preventDefault(); handleQuickAddCategory(quickCategoryName, setFormData); }
+                    if (e.key === "Escape") { setShowQuickCategory(false); setQuickCategoryName(""); }
+                  }}
+                />
+                <div className="quick-category-actions">
+                  <button
+                    type="button"
+                    className="primary-button small-button"
+                    disabled={!quickCategoryName.trim() || savingQuickCategory}
+                    onClick={() => handleQuickAddCategory(quickCategoryName, setFormData)}
+                  >
+                    {savingQuickCategory ? "Saving…" : "Create"}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button small-button"
+                    onClick={() => { setShowQuickCategory(false); setQuickCategoryName(""); }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <select
+                value={formData.categoryId}
+                onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+                required
+              >
+                <option value="">Choose category</option>
+                {activeCategories.map(c => (
+                  <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
 
           {/* Date + Time chips */}
           <div className="exp-datetime-row">
@@ -8053,7 +8232,7 @@ function App() {
             )}
           </div>
           <div className="settle-pay-right">
-            <strong className="settle-pay-amount">{formatMoney(suggestion.amount)}</strong>
+            <strong className="settle-pay-amount">{fmx(suggestion.amount)}</strong>
             {!isDemoMode() && (
               <button
                 type="button"
@@ -8107,7 +8286,7 @@ function App() {
                 </div>
               </div>
               <div className="settle-pay-right">
-                <strong className="settle-pay-amount">{formatMoney(s.amount)}</strong>
+                <strong className="settle-pay-amount">{fmx(s.amount)}</strong>
               </div>
             </div>
           ))}
@@ -8305,12 +8484,12 @@ function App() {
             <span className="your-balance-label">Your balance</span>
             {myNet < -MONEY_EPSILON ? (
               <strong className="your-balance-amount owe">
-                You owe {formatMoney(Math.abs(myNet))}
+                You owe {fmx(Math.abs(myNet))}
                 {myOwedToOthers.length > 0 && ` · pay ${myOwedToOthers.length} ${myOwedToOthers.length === 1 ? "person" : "people"}`}
               </strong>
             ) : myNet > MONEY_EPSILON ? (
               <strong className="your-balance-amount receive">
-                You're owed {formatMoney(myNet)}
+                You're owed {fmx(myNet)}
                 {myPeopleOwingMe.length > 0 && ` · from ${myPeopleOwingMe.length} ${myPeopleOwingMe.length === 1 ? "person" : "people"}`}
               </strong>
             ) : (
@@ -8396,7 +8575,7 @@ function App() {
                       <div className="settle-history-body">
                         <strong>{fromName} paid {toName}</strong>
                         <p className="small muted">
-                          {formatMoney(s.amountEur)}
+                          {fmx(s.amountEur)}
                           {s.notes ? ` · ${s.notes}` : ""}
                           {paidDate ? ` · ${paidDate}` : ""}
                         </p>
@@ -8504,11 +8683,11 @@ function App() {
               {cleanDisplayName(m.name)}
               {isMe && <span className="spending-you-tag">You</span>}
             </div>
-            <div className="spending-row-meta">paid {formatMoney(m.totalPaid)}</div>
+            <div className="spending-row-meta">paid {fmx(m.totalPaid)}</div>
           </div>
           <div className={`spending-row-balance${netPos ? " positive" : netNeg ? " negative" : ""}`}>
             <div className="spending-row-amount">
-              {netPos ? "+" : netNeg ? "–" : ""}{formatMoney(Math.abs(m.net))}
+              {netPos ? "+" : netNeg ? "–" : ""}{fmx(Math.abs(m.net))}
             </div>
             <div className="spending-row-blabel">
               {netPos ? "owed" : netNeg ? "owes" : "settled"}
@@ -8539,14 +8718,14 @@ function App() {
     const expenseSummaryCards = [
       {
         label: "Trip total",
-        value: formatMoney(totals.actual),
+        value: fmx(totals.actual),
         sub: "Shared plus included personal totals",
         icon: <Icon name="euro" />,
         tone: "mint"
       },
       {
         label: "Shared",
-        value: formatMoney(totals.shared),
+        value: fmx(totals.shared),
         sub: `${expenseFilterOptions[1].count} expense${expenseFilterOptions[1].count === 1 ? "" : "s"}`,
         icon: <Icon name="users" />,
         tone: "blue"
@@ -8654,6 +8833,14 @@ function App() {
               </button>
             ))}
           </nav>
+          <button
+            className="sidebar-feedback-btn"
+            type="button"
+            onClick={() => { setFeedbackOpen(true); setIsSidebarOpen(false); }}
+          >
+            <span className="sidebar-nav-icon">💬</span>
+            Share feedback
+          </button>
           <DonateButton />
           <div className="sidebar-footer">
             <div
@@ -8674,6 +8861,23 @@ function App() {
                 {demoMode ? "Demo mode" : selectedTrip.accessRole === "owner" ? "Trip admin" : "Member"}
               </div>
             </div>
+            {!demoMode && (
+              <select
+                className="sidebar-currency-select"
+                value={personalCurrency}
+                onChange={e => {
+                  const val = e.target.value;
+                  setPersonalCurrency(val);
+                  try { localStorage.setItem("triphisaab-personal-currency", val); } catch {}
+                }}
+                title="My currency"
+              >
+                <option value="">EUR</option>
+                {SUPPORTED_CURRENCIES.filter(c => c !== "EUR").map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            )}
             {!demoMode ? renderNotificationBell() : null}
             {demoMode ? (
               <button className="link-button sidebar-logout" type="button" onClick={closeTrip}>
@@ -8758,7 +8962,7 @@ function App() {
               <div className="trip-hero-stats">
                 <div className="hero-stat">
                   <span className="hero-stat-label">Total spent</span>
-                  <strong className="hero-stat-value">{formatMoney(totals.actual)}</strong>
+                  <strong className="hero-stat-value">{fmx(totals.actual)}</strong>
                 </div>
                 {totals.predicted > 0 && (
                   <div className="hero-stat">
@@ -8775,7 +8979,7 @@ function App() {
                   return (
                     <div className="hero-stat">
                       <span className="hero-stat-label">{net > 0 ? "You're owed" : "You owe"}</span>
-                      <strong className={`hero-stat-value${net < 0 ? " negative" : " positive"}`}>{formatMoney(Math.abs(net))}</strong>
+                      <strong className={`hero-stat-value${net < 0 ? " negative" : " positive"}`}>{fmx(Math.abs(net))}</strong>
                     </div>
                   );
                 })()}
@@ -8817,16 +9021,16 @@ function App() {
                 <div className="dash-card dash-stat-panel dash-stat-panel--6">
                   <div className="dash-stat-panel-item">
                     <span className="dash-stat-panel-label">Trip total</span>
-                    <strong className="dash-stat-panel-value">{formatMoney(totals.actual)}</strong>
+                    <strong className="dash-stat-panel-value">{fmx(totals.actual)}</strong>
                   </div>
                   <div className="dash-stat-panel-item">
                     <span className="dash-stat-panel-label">Shared</span>
-                    <strong className="dash-stat-panel-value">{formatMoney(totals.shared)}</strong>
+                    <strong className="dash-stat-panel-value">{fmx(totals.shared)}</strong>
                   </div>
                   <div className="dash-stat-panel-item">
                     <span className="dash-stat-panel-label">Avg / day</span>
                     <strong className="dash-stat-panel-value">
-                      {daysIn > 0 && totals.actual > 0 ? formatMoney(roundMoney(totals.actual / daysIn)) : "—"}
+                      {daysIn > 0 && totals.actual > 0 ? fmx(roundMoney(totals.actual / daysIn)) : "—"}
                     </strong>
                   </div>
                   {currentUserMemberId && (() => {
@@ -8838,7 +9042,7 @@ function App() {
                       <div className="dash-stat-panel-item">
                         <span className="dash-stat-panel-label">Your balance</span>
                         <strong className={`dash-stat-panel-value${netPos ? " positive" : netNeg ? " negative" : ""}`}>
-                          {netPos ? "+" : netNeg ? "–" : ""}{formatMoney(Math.abs(net))}
+                          {netPos ? "+" : netNeg ? "–" : ""}{fmx(Math.abs(net))}
                         </strong>
                         <span className="dash-stat-panel-sub">{netPos ? "you're owed" : netNeg ? "you owe" : "settled"}</span>
                       </div>
@@ -8865,9 +9069,22 @@ function App() {
                     {showPersonalBudgetForm ? (
                       <>
                         <div className="personal-strip-form-header">
-                          <span className="personal-strip-label">Personal budget</span>
+                          <span className="personal-strip-label">{isSolo ? "Trip budget" : "My personal budget"}</span>
                           <button className="link-button" type="button" onClick={() => setShowPersonalBudgetForm(false)}>Cancel</button>
                         </div>
+                        {/* Fair share suggestion — shown when group budget is set and no personal budget yet */}
+                        {!isSolo && fairShare > 0 && !personalBudget && (
+                          <div className="personal-budget-hint">
+                            <span className="small muted">Group share ≈ {formatMoney(fairShare, groupCurrency)} per person</span>
+                            <button
+                              className="link-button small"
+                              type="button"
+                              onClick={() => setPersonalBudgetForm(f => ({ ...f, amount: String(fairShare), currency: "EUR" }))}
+                            >
+                              Use this
+                            </button>
+                          </div>
+                        )}
                         <div className="personal-budget-form">
                           <div className="personal-budget-form-row">
                             <input
@@ -8885,7 +9102,7 @@ function App() {
                               onChange={e => setPersonalBudgetForm(f => ({ ...f, currency: e.target.value }))}
                             >
                               {SUPPORTED_CURRENCIES.map(c => (
-                                <option key={c.code} value={c.code}>{c.code} – {c.name}</option>
+                                <option key={c} value={c}>{c}</option>
                               ))}
                             </select>
                           </div>
@@ -8903,7 +9120,7 @@ function App() {
                       <div className="personal-strip-row">
                         <div className="personal-strip-icon">🔒</div>
                         <div className="personal-strip-info">
-                          <div className="personal-strip-title">My personal spending</div>
+                          <div className="personal-strip-title">{isSolo ? "My spending" : "My personal spending"}</div>
                           <div className="personal-strip-sub">
                             {myPersonalExpenses.length} expense{myPersonalExpenses.length !== 1 ? "s" : ""}
                             {myPersonalBudgetEur > 0 && (
@@ -8922,9 +9139,15 @@ function App() {
                               </div>
                             </div>
                           )}
+                          {/* Mismatch warning: personal budget set below fair share */}
+                          {!isSolo && myPersonalBudgetEur > 0 && fairShare > 0 && myPersonalBudgetEur < fairShare && (
+                            <div className="personal-strip-warning">
+                              ⚠️ Below est. group share ({formatMoney(fairShare, groupCurrency)})
+                            </div>
+                          )}
                         </div>
                         <div className="personal-strip-right">
-                          <div className="personal-strip-amount">{formatMoney(myPersonalSpentEur, groupCurrency)}</div>
+                          <div className="personal-strip-amount">{fmx(myPersonalSpentEur)}</div>
                           <div className="personal-strip-actions">
                             <button
                               className="link-button"
@@ -9180,7 +9403,7 @@ function App() {
                         <div className="dash-glance-icon info"><Icon name="chart" /></div>
                         <div>
                           <div className="dash-glance-title">Keep it balanced</div>
-                          <div className="dash-glance-sub">Average spend per day: {formatMoney(totals.actual / daysIn)}</div>
+                          <div className="dash-glance-sub">Average spend per day: {fmx(roundMoney(totals.actual / daysIn))}</div>
                         </div>
                       </div>
                     )}
@@ -9224,7 +9447,7 @@ function App() {
                     >
                       <div className="breakdown-ring-center">
                         <span>Total</span>
-                        <strong>{formatMoney(totals.actual)}</strong>
+                        <strong>{fmx(totals.actual)}</strong>
                       </div>
                     </div>
                     <div className="breakdown-compact-right">
@@ -9270,7 +9493,7 @@ function App() {
                     >
                       <div className="breakdown-ring-center">
                         <span>Total</span>
-                        <strong>{formatMoney(totals.actual)}</strong>
+                        <strong>{fmx(totals.actual)}</strong>
                       </div>
                     </div>
                   </div>
@@ -9301,228 +9524,332 @@ function App() {
 
         {activeTab !== "dashboard" ? (
           <div className="tab-page-content">
-        {activeTab === "prediction" ? (
+        {activeTab === "prediction" ? (() => {
+          const gbLumpsum = groupBudget?.amountEur || 0;
+          const gbAllocated = totals.groupAllocated || 0;
+          const gbRemaining = roundMoney(gbLumpsum - totals.actual);
+          const gbPct = gbLumpsum > 0 ? Math.min(100, Math.round((totals.actual / gbLumpsum) * 100)) : 0;
+          const gbUnallocated = roundMoney(Math.max(0, gbLumpsum - gbAllocated));
+          const gbAllocatedPct = gbLumpsum > 0 ? Math.min(100, Math.round((gbAllocated / gbLumpsum) * 100)) : 0;
+          return (
           <section className="plan-budget-page">
-            <section className="card plan-budget-editor">
-              <div className="section-header compact-header">
+
+            {/* ── Card 1: Total Trip Budget (lumpsum) ── */}
+            <section className="card group-budget-card">
+              <div className="group-budget-header">
                 <div>
-                  <h2>Plan Budget</h2>
+                  <h2>{isSolo ? "Trip Budget" : "Group Budget"}</h2>
                   <p className="small muted">
-                    Add separate budgets for everyone, selected people, or just you.
+                    {isSolo ? "Your total for this trip." : "Total the group plans to spend."}
                   </p>
                 </div>
-                {!demoMode ? (
-                <button
-                  className="secondary-button small-button"
-                  type="button"
-                  onClick={openCreateCategory}
-                >
-                  + New category
-                </button>
-                ) : null}
-              </div>
-
-              <form className="budget-form" onSubmit={handleSavePredictions}>
-                <label>
-                  Category
-                  <select
-                    value={budgetForm.categoryId}
-                    onChange={e => setBudgetForm({ ...budgetForm, categoryId: e.target.value })}
-                    required
-                  >
-                    <option value="">Choose category</option>
-                    {activeCategories.map(c => (
-                      <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  Budget name
-                  <input
-                    type="text"
-                    value={budgetForm.title}
-                    placeholder="e.g. Group groceries"
-                    onChange={e => setBudgetForm({ ...budgetForm, title: e.target.value })}
-                  />
-                </label>
-
-                <label>
-                  Amount in EUR
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={budgetForm.estimatedEur}
-                    placeholder="0.00"
-                    onChange={e => setBudgetForm({ ...budgetForm, estimatedEur: e.target.value.replace(/[^\d.,]/g, "") })}
-                    onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setBudgetForm(f => ({ ...f, estimatedEur: n })); }}
-                    required
-                  />
-                </label>
-
-                <div className="budget-scope-field">
-                  <span className="emoji-field-label">Who can see this?</span>
-                  <div className="budget-scope-options">
-                    {BUDGET_SCOPE_OPTIONS.map(option => (
-                      <button
-                        className={`scope-option${budgetForm.scope === option.value ? " selected" : ""}`}
-                        type="button"
-                        key={option.value}
-                        onClick={() =>
-                          setBudgetForm(current => ({
-                            ...current,
-                            scope: option.value,
-                            visibleMemberIds:
-                              option.value === "me" && currentUserMemberId
-                                ? [currentUserMemberId]
-                                : current.visibleMemberIds
-                          }))
-                        }
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                    {(() => {
-                      const myUnit = settlementGroups.find(g => g.isActive !== false && currentUserMemberId && g.memberIds.includes(currentUserMemberId));
-                      if (!myUnit) return null;
-                      return (
-                        <button
-                          className={`scope-option${budgetForm.scope === "unit" ? " selected" : ""}`}
-                          type="button"
-                          onClick={() => setBudgetForm(current => ({
-                            ...current,
-                            scope: "unit",
-                            visibleMemberIds: myUnit.memberIds
-                          }))}
-                        >
-                          Our unit
-                        </button>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {budgetForm.scope === "selected" ? (
-                  <div className="budget-member-picker">
-                    <span className="emoji-field-label">Choose people</span>
-                    <div className="member-chip-list">
-                      {activeMembers.map(member => (
-                        <button
-                          className={`member-chip${(budgetForm.visibleMemberIds || []).includes(member.id) ? " selected" : ""}`}
-                          type="button"
-                          key={member.id}
-                          onClick={() => toggleBudgetMember(member.id)}
-                        >
-                          {memberNameOf(member.id)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {!demoMode ? (
-                <div className="budget-form-actions">
+                {groupBudget && !showGroupBudgetForm && !demoMode && (
                   <button
-                    className="primary-button"
-                    type="submit"
-                    disabled={savingPredictions}
+                    className="link-button"
+                    type="button"
+                    onClick={() => {
+                      setGroupBudgetForm({ amount: String(groupBudget.originalAmount), currency: groupBudget.originalCurrency || groupCurrency });
+                      setShowGroupBudgetForm(true);
+                    }}
                   >
-                    {savingPredictions
-                      ? "Saving..."
-                      : editingBudgetId
-                      ? "Save budget entry"
-                      : "Add budget entry"}
+                    Edit
                   </button>
-                  {editingBudgetId ? (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => resetBudgetForm()}
-                    >
-                      Cancel editing
-                    </button>
-                  ) : null}
-                </div>
-                ) : null}
-              </form>
-            </section>
-
-            <section className="card">
-              <div className="budget-list-header">
-                <div>
-                  <h3>Budget entries</h3>
-                  <p className="small muted">
-                    Whole group entries count toward the group total. Selected and Only me entries stay out of it.
-                  </p>
-                </div>
-                <div className="budget-total-stack">
-                  <span>Group plan</span>
-                  <strong>{formatMoney(totals.predicted)}</strong>
-                </div>
+                )}
               </div>
 
-              {predictions.length === 0 ? (
-                <div className="empty-card">
-                  <h3>No budget entries yet</h3>
-                  <p className="muted">Add your first plan above.</p>
+              {showGroupBudgetForm ? (
+                <div className="group-budget-form">
+                  <div className="group-budget-form-row">
+                    <input
+                      className="form-input"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Total amount"
+                      value={groupBudgetForm.amount}
+                      onChange={e => setGroupBudgetForm(f => ({ ...f, amount: e.target.value.replace(/[^\d.,]/g, "") }))}
+                      onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setGroupBudgetForm(f => ({ ...f, amount: n })); }}
+                      autoFocus
+                    />
+                    <select
+                      className="form-input"
+                      value={groupBudgetForm.currency}
+                      onChange={e => setGroupBudgetForm(f => ({ ...f, currency: e.target.value }))}
+                    >
+                      {SUPPORTED_CURRENCIES.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="group-budget-form-actions">
+                    <button className="primary-button small-button" type="button" disabled={savingGroupBudget} onClick={handleSaveGroupBudget}>
+                      {savingGroupBudget ? "Saving…" : "Save budget"}
+                    </button>
+                    {groupBudget && (
+                      <button className="danger-button small-button" type="button" onClick={handleDeleteGroupBudget}>Remove</button>
+                    )}
+                    <button className="secondary-button small-button" type="button" onClick={() => setShowGroupBudgetForm(false)}>Cancel</button>
+                  </div>
                 </div>
+              ) : groupBudget ? (
+                <div className="group-budget-display">
+                  <div className="group-budget-amount-row">
+                    <strong className="group-budget-amount">{formatMoney(gbLumpsum, groupCurrency)}</strong>
+                    {groupBudget.originalCurrency && groupBudget.originalCurrency !== "EUR" && (
+                      <span className="small muted">{groupBudget.originalCurrency} {groupBudget.originalAmount}</span>
+                    )}
+                  </div>
+                  <div className="group-budget-bar-row">
+                    <div className="group-budget-bar">
+                      <div
+                        className={`group-budget-bar-fill${gbPct >= 100 ? " over" : gbPct >= 80 ? " near" : ""}`}
+                        style={{ width: `${Math.min(100, gbPct)}%` }}
+                      />
+                    </div>
+                    <span className={`group-budget-pct${gbPct >= 100 ? " over" : gbPct >= 80 ? " near" : ""}`}>{gbPct}%</span>
+                  </div>
+                  <div className="group-budget-stats">
+                    <span><strong>{fmx(totals.actual)}</strong> spent</span>
+                    <span className={gbRemaining < 0 ? "over-budget" : ""}><strong>{fmx(Math.abs(gbRemaining))}</strong> {gbRemaining < 0 ? "over" : "remaining"}</span>
+                  </div>
+                  {!isSolo && activeMembers.length > 0 && (
+                    <p className="group-budget-share-hint small muted">
+                      ~{formatMoney(fairShare, groupCurrency)} per person · {activeMembers.length} members
+                    </p>
+                  )}
+                </div>
+              ) : !demoMode ? (
+                <button
+                  className="group-budget-set-btn secondary-button"
+                  type="button"
+                  onClick={() => {
+                    setGroupBudgetForm({ amount: "", currency: groupCurrency });
+                    setShowGroupBudgetForm(true);
+                  }}
+                >
+                  + Set total budget
+                </button>
               ) : (
-                <div className="budget-entry-list">
-                  {predictions.map(entry => {
-                    const category = categoriesById.get(entry.categoryId);
-                    const isGroup = normalizeBudgetScope(entry) === "group";
-                    return (
-                      <article className="budget-entry-card" key={entry.id}>
-                        <div className="budget-entry-main">
-                          <span
-                            className="category-dot"
-                            style={{
-                              backgroundColor: `${category?.color || "#0F766E"}22`,
-                              color: category?.color || "#0F766E"
-                            }}
-                          >
-                            {category?.icon || entry.categoryIcon || "📌"}
-                          </span>
-                          <div>
-                            <strong>{entry.title || entry.categoryName || category?.name || "Budget entry"}</strong>
-                            <p className="small muted">
-                              {category?.name || entry.categoryName || "Category"} · {budgetScopeLabel(entry)}
-                            </p>
-                            <p className="small muted">{budgetVisibleNames(entry)}</p>
-                          </div>
-                        </div>
-                        <div className="budget-entry-side">
-                          <strong>{formatMoney(entry.estimatedEur)}</strong>
-                          <span className={isGroup ? "pill" : "pill muted-pill"}>
-                            {isGroup ? "Group total" : "Personal view"}
-                          </span>
-                          {!demoMode ? (
-                          <div className="expense-actions">
-                            <button
-                              className="secondary-button small-button"
-                              type="button"
-                              onClick={() => startEditingBudget(entry)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              className="danger-button small-button"
-                              type="button"
-                              onClick={() => handleDeleteBudget(entry)}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                          ) : null}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
+                <p className="muted small">No total budget set for this demo trip.</p>
               )}
             </section>
+
+            {/* ── Card 2: Category Allocations (optional, collapsible) ── */}
+            <section className="card plan-budget-editor">
+              <button
+                className="category-allocations-toggle"
+                type="button"
+                onClick={() => setShowCategoryAllocations(v => !v)}
+              >
+                <div className="category-allocations-toggle-left">
+                  <span className="category-allocations-title">Category allocations</span>
+                  <span className="small muted category-allocations-sub">
+                    {gbAllocated > 0
+                      ? `${formatMoney(gbAllocated, groupCurrency)} allocated${gbLumpsum > 0 ? ` · ${formatMoney(gbUnallocated, groupCurrency)} free` : ""}`
+                      : "Optionally break down your budget"}
+                  </span>
+                </div>
+                <span className="category-allocations-chevron">{showCategoryAllocations ? "▲" : "▼"}</span>
+              </button>
+
+              {showCategoryAllocations && (
+                <>
+                  {/* Allocation progress bar — only shown when lumpsum is set */}
+                  {gbLumpsum > 0 && gbAllocated > 0 && (
+                    <div className="budget-allocation-track">
+                      <div className="budget-allocation-bar">
+                        <div
+                          className={`budget-allocation-fill${gbAllocatedPct >= 100 ? " over" : ""}`}
+                          style={{ width: `${Math.min(100, gbAllocatedPct)}%` }}
+                        />
+                      </div>
+                      <span className="small muted">{gbAllocatedPct}% of budget allocated</span>
+                    </div>
+                  )}
+
+                  {/* Allocation form */}
+                  {!demoMode && (
+                    <form className="budget-form" onSubmit={handleSavePredictions} style={{ marginTop: 16 }}>
+                      <div className="section-header compact-header" style={{ marginBottom: 0, paddingBottom: 0 }}>
+                        <span className="emoji-field-label" style={{ fontWeight: 700 }}>
+                          {editingBudgetId ? "Edit allocation" : "Add allocation"}
+                        </span>
+                        <button className="secondary-button small-button" type="button" onClick={openCreateCategory}>
+                          + Category
+                        </button>
+                      </div>
+
+                      <label>
+                        Category <span className="optional-label">(optional)</span>
+                        <select
+                          value={budgetForm.categoryId}
+                          onChange={e => setBudgetForm({ ...budgetForm, categoryId: e.target.value })}
+                        >
+                          <option value="">No category</option>
+                          {activeCategories.map(c => (
+                            <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        Label
+                        <input
+                          type="text"
+                          value={budgetForm.title}
+                          placeholder="e.g. Group groceries"
+                          onChange={e => setBudgetForm({ ...budgetForm, title: e.target.value })}
+                        />
+                      </label>
+
+                      <label>
+                        Amount in EUR
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={budgetForm.estimatedEur}
+                          placeholder="0.00"
+                          onChange={e => setBudgetForm({ ...budgetForm, estimatedEur: e.target.value.replace(/[^\d.,]/g, "") })}
+                          onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setBudgetForm(f => ({ ...f, estimatedEur: n })); }}
+                          required
+                        />
+                      </label>
+
+                      <div className="budget-scope-field">
+                        <span className="emoji-field-label">Who can see this?</span>
+                        <div className="budget-scope-options">
+                          {BUDGET_SCOPE_OPTIONS.map(option => (
+                            <button
+                              className={`scope-option${budgetForm.scope === option.value ? " selected" : ""}`}
+                              type="button"
+                              key={option.value}
+                              onClick={() =>
+                                setBudgetForm(current => ({
+                                  ...current,
+                                  scope: option.value,
+                                  visibleMemberIds:
+                                    option.value === "me" && currentUserMemberId
+                                      ? [currentUserMemberId]
+                                      : current.visibleMemberIds
+                                }))
+                              }
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                          {(() => {
+                            const myUnit = settlementGroups.find(g => g.isActive !== false && currentUserMemberId && g.memberIds.includes(currentUserMemberId));
+                            if (!myUnit) return null;
+                            return (
+                              <button
+                                className={`scope-option${budgetForm.scope === "unit" ? " selected" : ""}`}
+                                type="button"
+                                onClick={() => setBudgetForm(current => ({
+                                  ...current,
+                                  scope: "unit",
+                                  visibleMemberIds: myUnit.memberIds
+                                }))}
+                              >
+                                Our unit
+                              </button>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
+                      {budgetForm.scope === "selected" && (
+                        <div className="budget-member-picker">
+                          <span className="emoji-field-label">Choose people</span>
+                          <div className="member-chip-list">
+                            {activeMembers.map(member => (
+                              <button
+                                className={`member-chip${(budgetForm.visibleMemberIds || []).includes(member.id) ? " selected" : ""}`}
+                                type="button"
+                                key={member.id}
+                                onClick={() => toggleBudgetMember(member.id)}
+                              >
+                                {memberNameOf(member.id)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="budget-form-actions">
+                        <button className="primary-button" type="submit" disabled={savingPredictions}>
+                          {savingPredictions ? "Saving…" : editingBudgetId ? "Save allocation" : "Add allocation"}
+                        </button>
+                        {editingBudgetId && (
+                          <button className="secondary-button" type="button" onClick={() => resetBudgetForm()}>
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Allocation list */}
+                  {predictions.length === 0 ? (
+                    <div className="empty-card" style={{ marginTop: 14 }}>
+                      <p className="muted">No allocations yet. Add one above to track spending by category.</p>
+                    </div>
+                  ) : (
+                    <div className="budget-entry-list" style={{ marginTop: 14 }}>
+                      {predictions.map(entry => {
+                        const category = entry.categoryId ? categoriesById.get(entry.categoryId) : null;
+                        const isGroup = normalizeBudgetScope(entry) === "group";
+                        const actualForEntry = entry.categoryId ? (actualByCategoryId.get(entry.categoryId) || 0) : 0;
+                        const entryPct = entry.estimatedEur > 0 ? Math.min(100, Math.round((actualForEntry / entry.estimatedEur) * 100)) : null;
+                        return (
+                          <article className="budget-entry-card" key={entry.id}>
+                            <div className="budget-entry-main">
+                              <span
+                                className="category-dot"
+                                style={{
+                                  backgroundColor: `${category?.color || "#64748B"}22`,
+                                  color: category?.color || "#64748B"
+                                }}
+                              >
+                                {category?.icon || entry.categoryIcon || "📦"}
+                              </span>
+                              <div>
+                                <strong>{entry.title || entry.categoryName || category?.name || "Allocation"}</strong>
+                                <p className="small muted">
+                                  {category?.name || entry.categoryName || "No category"} · {budgetScopeLabel(entry)}
+                                </p>
+                                {entry.categoryId && entryPct !== null && (
+                                  <p className="small muted">
+                                    <span className={entryPct >= 100 ? "over-budget" : entryPct >= 80 ? "near-budget" : "under-budget"}>
+                                      {formatMoney(actualForEntry, groupCurrency)} spent · {entryPct}%
+                                    </span>
+                                  </p>
+                                )}
+                                <p className="small muted">{budgetVisibleNames(entry)}</p>
+                              </div>
+                            </div>
+                            <div className="budget-entry-side">
+                              <strong>{formatMoney(entry.estimatedEur)}</strong>
+                              <span className={isGroup ? "pill" : "pill muted-pill"}>
+                                {isGroup ? "Group" : "Personal view"}
+                              </span>
+                              {!demoMode && (
+                                <div className="expense-actions">
+                                  <button className="secondary-button small-button" type="button" onClick={() => startEditingBudget(entry)}>Edit</button>
+                                  <button className="danger-button small-button" type="button" onClick={() => handleDeleteBudget(entry)}>Delete</button>
+                                </div>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+
           </section>
-        ) : null}
+          );
+        })() : null}
 
         {activeTab === "actual" ? (
           <section className="expenses-page">
@@ -11664,7 +11991,7 @@ function App() {
         {renderNotificationsModal()}
         {renderTutorialModal()}
         {renderBetaWelcome()}
-        {renderFeedbackWidget(true)}
+        {renderFeedbackModal()}
       </div>
     );
   }
@@ -12021,6 +12348,14 @@ function App() {
             <div className="sidebar-promo-icon">🧳</div>
             <p className="sidebar-promo-text">Adventure funded.<br/>Memories included. 🌴</p>
           </div>
+          <button
+            className="sidebar-feedback-btn"
+            type="button"
+            onClick={() => setFeedbackOpen(true)}
+          >
+            <span className="sidebar-nav-icon">💬</span>
+            Share feedback
+          </button>
           <DonateButton />
           <div className="sidebar-footer">
             <div
@@ -12384,7 +12719,7 @@ function App() {
       </Modal>
       {renderTutorialModal()}
       {renderBetaWelcome()}
-      {renderFeedbackWidget()}
+      {renderFeedbackModal()}
     </div>
   );
   }

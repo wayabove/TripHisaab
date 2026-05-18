@@ -2641,6 +2641,149 @@ p {
   font-size: 18px;
 }
 
+/* ---- Group Budget card (lumpsum) ---- */
+.group-budget-card { display: flex; flex-direction: column; gap: 14px; }
+
+.group-budget-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.group-budget-header h2 { margin: 0; }
+
+.group-budget-set-btn { align-self: flex-start; }
+
+.group-budget-display { display: flex; flex-direction: column; gap: 8px; }
+
+.group-budget-amount-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.group-budget-amount {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.group-budget-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.group-budget-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--surface-alt, #f1f5f9);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.group-budget-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.group-budget-bar-fill.near { background: #d97706; }
+.group-budget-bar-fill.over { background: #dc2626; }
+
+.group-budget-pct {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+  min-width: 36px;
+  text-align: right;
+}
+.group-budget-pct.near { color: #d97706; }
+.group-budget-pct.over { color: #dc2626; }
+
+.group-budget-stats {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+.group-budget-stats strong { color: var(--text); }
+
+.group-budget-share-hint { margin-top: 2px; }
+
+.group-budget-form { display: flex; flex-direction: column; gap: 10px; }
+.group-budget-form-row {
+  display: flex;
+  gap: 8px;
+}
+.group-budget-form-row .form-input:first-child { flex: 1; }
+.group-budget-form-row .form-input:last-child { flex: 0 0 auto; width: 80px; }
+.group-budget-form-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---- Category allocations toggle ---- */
+.category-allocations-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  gap: 12px;
+}
+.category-allocations-toggle:hover .category-allocations-title { color: var(--primary); }
+.category-allocations-toggle-left { display: flex; flex-direction: column; gap: 2px; }
+.category-allocations-title { font-size: 16px; font-weight: 700; color: var(--text); }
+.category-allocations-sub { font-size: 12px; }
+.category-allocations-chevron { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+
+/* ---- Allocation progress bar ---- */
+.budget-allocation-track { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.budget-allocation-bar {
+  height: 6px;
+  background: var(--surface-alt, #f1f5f9);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.budget-allocation-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+  opacity: 0.7;
+}
+.budget-allocation-fill.over { background: #dc2626; }
+
+/* ---- Optional label ---- */
+.optional-label {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+/* ---- Personal budget hint (fair share suggestion) ---- */
+.personal-budget-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface-soft, #f8fafc);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 4px;
+}
+.personal-budget-hint .link-button.small { font-size: 12px; white-space: nowrap; }
+
+/* ---- Personal budget mismatch warning ---- */
+.personal-strip-warning {
+  font-size: 11px;
+  color: #d97706;
+  margin-top: 3px;
+}
+
 .smart-settle-page {
   display: grid;
   gap: 18px;
@@ -4929,6 +5072,27 @@ body.body-scroll-locked .main-content {
 .sidebar-logout {
   font-size: 12px;
   color: var(--muted);
+}
+
+.sidebar-currency-select {
+  appearance: none;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  min-width: 0;
+  width: 52px;
+  text-align: center;
+}
+
+.sidebar-currency-select:hover {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .notification-bell {
@@ -8123,66 +8287,39 @@ body.body-scroll-locked .main-content {
 }
 
 /* ============================================================
-   FEEDBACK WIDGET
+   FEEDBACK
    ============================================================ */
 
-.feedback-widget {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 500;
+.sidebar-feedback-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 120ms, color 120ms;
+  text-align: left;
+}
+
+.sidebar-feedback-btn:hover {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.feedback-modal .modal-content {
+  max-width: 380px;
+}
+
+.feedback-modal-body {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
-  transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 280ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Stacked above the Add Expense FAB (58px height + 24px bottom + 12px gap) */
-.feedback-widget--above-fab {
-  bottom: 94px;
-}
-
-/* ---- The FAB button itself ---- */
-.feedback-fab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 20px 0 14px;
-  height: 48px;
-  border-radius: 999px;
-  border: none;
-  background: var(--primary);
-  color: var(--text-on-dark);
-  box-shadow: 0 8px 24px rgba(15, 118, 110, 0.30);
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: background 150ms, transform 150ms, box-shadow 150ms;
-  white-space: nowrap;
-}
-
-.feedback-fab:hover {
-  background: var(--primary-dark);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 28px rgba(15, 118, 110, 0.36);
-}
-
-.feedback-widget--open .feedback-fab {
-  background: var(--primary-dark);
-}
-
-.feedback-fab-icon {
-  display: grid;
-  place-items: center;
-  font-size: 20px;
-  line-height: 1;
-}
-
-.feedback-fab-label {
-  font-size: 14px;
-  font-weight: 800;
+  gap: 14px;
 }
 
 /* ---- Feedback panel ---- */
@@ -8312,36 +8449,86 @@ body.body-scroll-locked .main-content {
   width: 100%;
 }
 
+/* ============================================================
+   MULTI-CURRENCY DISPLAY
+   ============================================================ */
+
+.money-multi {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+  gap: 1px;
+}
+
+.money-primary {
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.money-conv {
+  font-size: 0.72em;
+  font-weight: 500;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.money-conv--personal {
+  color: var(--primary);
+  opacity: 0.75;
+}
+
+/* In stat panels align to end */
+.dash-stat-panel-value .money-multi,
+.hero-stat-value .money-multi {
+  align-items: flex-end;
+}
+
+/* ============================================================
+   QUICK CATEGORY INLINE FORM
+   ============================================================ */
+
+.expense-category-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.expense-category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-field-label {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-secondary);
+}
+
+.quick-category-toggle {
+  font-size: 12px;
+  color: var(--primary);
+}
+
+.quick-category-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.quick-category-actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* ---- Mobile ---- */
 @media (max-width: 768px) {
-  .feedback-widget {
-    right: 14px;
-    /* sits above bottom nav (68px) with a gap */
-    bottom: calc(68px + env(safe-area-inset-bottom) + 10px);
-  }
-
-  /* On mobile the Add Expense FAB is at calc(78px + safe-area), height 52px */
-  .feedback-widget--above-fab {
-    bottom: calc(78px + env(safe-area-inset-bottom) + 52px + 8px);
-  }
-
-  /* Icon-only on mobile — hide text label */
-  .feedback-fab {
-    width: 48px;
-    height: 48px;
-    padding: 0;
-    border-radius: 50%;
-    justify-content: center;
-  }
-
-  .feedback-fab-label {
-    display: none;
-  }
-
-  .feedback-fab-icon {
-    font-size: 22px;
-  }
-
   /* Panel slides up full-width from bottom */
   .feedback-panel {
     position: fixed;
@@ -8380,11 +8567,6 @@ body.body-scroll-locked .main-content {
     pointer-events: none;
   }
 
-  html.fabs-hidden .feedback-widget {
-    transform: translateY(calc(100% + env(safe-area-inset-bottom) + 90px));
-    opacity: 0;
-    pointer-events: none;
-  }
 }
 
 /* ==========================================================
@@ -8465,8 +8647,7 @@ body.body-scroll-locked .main-content {
   }
 
   /* FABs stay circular on iOS */
-  html.os-ios .floating-add-expense,
-  html.os-ios .feedback-fab {
+  html.os-ios .floating-add-expense {
     border-radius: 50%;
   }
 
@@ -8618,11 +8799,6 @@ body.body-scroll-locked .main-content {
 
   /* FAB — Material elevation */
   html.os-android .floating-add-expense {
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2), 0 6px 20px rgba(0, 0, 0, 0.12);
-    border-radius: 16px;
-  }
-
-  html.os-android .feedback-fab {
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2), 0 6px 20px rgba(0, 0, 0, 0.12);
     border-radius: 16px;
   }
@@ -9240,14 +9416,6 @@ body.body-scroll-locked .main-content {
     height: 32px;
     font-size: 24px;
     background: rgba(255, 255, 255, 0.18);
-  }
-
-  .feedback-widget {
-    right: 12px;
-  }
-
-  .feedback-widget--above-fab {
-    bottom: calc(82px + env(safe-area-inset-bottom) + 52px + 8px);
   }
 
   .modal {
@@ -10184,14 +10352,6 @@ body.body-scroll-locked .main-content {
   .floating-add-expense {
     bottom: calc(max(10px, env(safe-area-inset-bottom)) + 82px);
     right: 18px;
-  }
-
-  .feedback-widget {
-    right: 18px;
-  }
-
-  .feedback-widget--above-fab {
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 82px + 60px);
   }
 
   .dash-stat-panel.dash-stat-panel--6 {
