@@ -9012,6 +9012,63 @@ function App() {
       return expense.splitType === "custom" ? "Custom split" : expense.splitType === "percent" ? "% split" : "Equal split";
     };
 
+    const myTripBalance = currentUserMemberId
+      ? balances.find(b => b.memberId === currentUserMemberId)
+      : null;
+    const myTripNet = roundMoney(Number(myTripBalance?.net || 0));
+    const balanceTone = myTripNet > MONEY_EPSILON
+      ? "receive"
+      : myTripNet < -MONEY_EPSILON
+      ? "owe"
+      : "settled";
+    const balanceLabel = balanceTone === "receive"
+      ? "You're owed"
+      : balanceTone === "owe"
+      ? "You owe"
+      : "Settled";
+    const balanceValue = balanceTone === "settled"
+      ? "All clear"
+      : fmx(Math.abs(myTripNet));
+    const budgetRemaining = roundMoney(totals.predicted - totals.actual);
+    const budgetTone = totals.predicted <= 0
+      ? "empty"
+      : budgetRemaining < -MONEY_EPSILON
+      ? "over"
+      : budgetPct >= 80
+      ? "near"
+      : "good";
+    const budgetStatusText = totals.predicted <= 0
+      ? "No budget yet"
+      : budgetRemaining < -MONEY_EPSILON
+      ? `${fmx(Math.abs(budgetRemaining))} over`
+      : `${fmx(budgetRemaining)} left`;
+    const nextAction = suggestedSettlements.length > 0
+      ? {
+          title: `${suggestedSettlements.length} settlement${suggestedSettlements.length === 1 ? "" : "s"} ready`,
+          sub: `${suggestedSettlements[0].fromName} pays ${suggestedSettlements[0].toName} ${fmx(suggestedSettlements[0].amount)}`,
+          cta: "Settle",
+          icon: <Icon name="handshake" />,
+          tone: "settle",
+          onClick: () => setActiveTab("settlements")
+        }
+      : budgetTone === "over" || budgetTone === "near"
+      ? {
+          title: budgetTone === "over" ? "Budget needs attention" : "Close to budget",
+          sub: budgetStatusText,
+          cta: "Review",
+          icon: <Icon name="chart" />,
+          tone: budgetTone,
+          onClick: () => setActiveTab("prediction")
+        }
+      : {
+          title: expenses.length > 0 ? "Keep spending updated" : "Start tracking this trip",
+          sub: expenses.length > 0 ? `${expenses.length} visible expense${expenses.length === 1 ? "" : "s"}` : "Add the first expense when someone pays.",
+          cta: "Add",
+          icon: <Icon name="plus" />,
+          tone: "add",
+          onClick: () => openFastExpenseModal()
+        };
+
     const navItems = [
       { key: "dashboard", label: "Trip Overview", icon: <Icon name="receipt" /> },
               { key: "prediction", label: "Plan Budget", icon: <Icon name="chart" /> },
@@ -9194,35 +9251,61 @@ function App() {
               <div className="trip-hero-dates">
                 <Icon name="calendar" /> {selectedTrip.startDate} – {selectedTrip.endDate}
               </div>
-              {/* Hero stats strip */}
+              {/* Hero stats strip — balance | budget | total */}
               <div className="trip-hero-stats">
-                <div className="hero-stat">
-                  <span className="hero-stat-label">Total spent</span>
-                  <strong className="hero-stat-value">{fmx(totals.actual)}</strong>
-                </div>
+                {currentUserMemberId && (() => {
+                  const myBal = balances.find(b => b.memberId === currentUserMemberId);
+                  const net = myBal ? myBal.net : 0;
+                  if (Math.abs(net) < MONEY_EPSILON)
+                    return (
+                      <div className="hero-stat">
+                        <span className="hero-stat-label">Balance</span>
+                        <strong className="hero-stat-value positive">Settled ✓</strong>
+                      </div>
+                    );
+                  return (
+                    <div className="hero-stat">
+                      <span className="hero-stat-label">
+                        {net > 0 ? "You're owed" : "You owe"}
+                      </span>
+                      <strong
+                        className={`hero-stat-value${net < 0 ? " negative" : " positive"}`}
+                      >
+                        {fmx(Math.abs(net))}
+                      </strong>
+                    </div>
+                  );
+                })()}
                 {totals.predicted > 0 && (
                   <div className="hero-stat">
                     <span className="hero-stat-label">Budget</span>
-                    <strong className={`hero-stat-value${budgetPct >= 100 ? " negative" : budgetPct >= 80 ? " warning-text" : ""}`}>
+                    <strong
+                      className={`hero-stat-value${budgetPct >= 100 ? " negative" : budgetPct >= 80 ? " warning-text" : ""}`}
+                    >
                       {budgetPct}%
                     </strong>
                   </div>
                 )}
-                {currentUserMemberId && (() => {
-                  const myBal = balances.find(b => b.memberId === currentUserMemberId);
-                  const net = myBal ? myBal.net : 0;
-                  if (Math.abs(net) < MONEY_EPSILON) return <div className="hero-stat"><span className="hero-stat-label">Balance</span><strong className="hero-stat-value">Settled ✓</strong></div>;
-                  return (
-                    <div className="hero-stat">
-                      <span className="hero-stat-label">{net > 0 ? "You're owed" : "You owe"}</span>
-                      <strong className={`hero-stat-value${net < 0 ? " negative" : " positive"}`}>{fmx(Math.abs(net))}</strong>
-                    </div>
-                  );
-                })()}
+                <div className="hero-stat">
+                  <span className="hero-stat-label">Total spent</span>
+                  <strong className="hero-stat-value">{fmx(totals.actual)}</strong>
+                </div>
               </div>
             </div>
 
             <div className="dashboard-content">
+              <button
+                className={`mobile-next-action mobile-next-action--${nextAction.tone}`}
+                type="button"
+                onClick={nextAction.onClick}
+              >
+                <span className="mobile-next-action-icon">{nextAction.icon}</span>
+                <span className="mobile-next-action-copy">
+                  <strong>{nextAction.title}</strong>
+                  <span>{nextAction.sub}</span>
+                </span>
+                <span className="mobile-next-action-cta">{nextAction.cta} →</span>
+              </button>
 
               {/* ── Quick actions — desktop only (mobile uses FAB + bottom nav) ── */}
               <div className="dash-action-bar dash-section-actions dash-actions-desktop" aria-label="Primary trip actions">
@@ -9236,70 +9319,52 @@ function App() {
                   <div className="dash-action-icon dash-action-icon--budget"><Icon name="chart" /></div>
                   <span>Budget</span>
                 </button>
-                <button className="dash-action-btn" type="button" onClick={() => setActiveTab("settlements")}>
-                  <div className="dash-action-icon dash-action-icon--settle"><Icon name="handshake" /></div>
-                  <span>Settle</span>
-                </button>
                 {!demoMode ? (
                   <button className="dash-action-btn" type="button" onClick={openCreateTask}>
                     <div className="dash-action-icon dash-action-icon--tasks"><Icon name="check" /></div>
                     <span>Task</span>
                   </button>
                 ) : null}
-                <button className="dash-action-btn" type="button" onClick={() => setActiveTab("members")}>
-                  <div className="dash-action-icon" style={{ background: "var(--info-soft)", color: "var(--info)" }}><Icon name="people" /></div>
-                  <span>Members</span>
-                </button>
               </div>
 
-              {/* ── Row 1: Stat panel (budget donut removed — hero strip covers spend/budget/balance) ── */}
+              {/* ── Trip health row (compact single-line summary) ── */}
               <div className="dash-row dash-section-priority">
-                <div className="dash-card dash-stat-panel dash-stat-panel--6">
-                  <div className="dash-stat-panel-item">
-                    <span className="dash-stat-panel-label">Trip total</span>
-                    <strong className="dash-stat-panel-value">{fmx(totals.actual)}</strong>
+                <div className="dash-card trip-health-row">
+                  <div className="trip-health-item">
+                    <span className="trip-health-label">Total</span>
+                    <strong className="trip-health-value">{fmx(totals.actual)}</strong>
                   </div>
-                  <div className="dash-stat-panel-item">
-                    <span className="dash-stat-panel-label">Shared</span>
-                    <strong className="dash-stat-panel-value">{fmx(totals.shared)}</strong>
-                  </div>
-                  <div className="dash-stat-panel-item">
-                    <span className="dash-stat-panel-label">Avg / day</span>
-                    <strong className="dash-stat-panel-value">
-                      {daysIn > 0 && totals.actual > 0 ? fmx(roundMoney(totals.actual / daysIn)) : "—"}
-                    </strong>
-                  </div>
-                  {currentUserMemberId && (() => {
-                    const myBal = balances.find(b => b.memberId === currentUserMemberId);
-                    const net = myBal ? myBal.net : 0;
-                    const netPos = net >= MONEY_EPSILON;
-                    const netNeg = net <= -MONEY_EPSILON;
-                    return (
-                      <div className="dash-stat-panel-item">
-                        <span className="dash-stat-panel-label">Your balance</span>
-                        <strong className={`dash-stat-panel-value${netPos ? " positive" : netNeg ? " negative" : ""}`}>
-                          {netPos ? "+" : netNeg ? "–" : ""}{fmx(Math.abs(net))}
-                        </strong>
-                        <span className="dash-stat-panel-sub">{netPos ? "you're owed" : netNeg ? "you owe" : "settled"}</span>
+                  {totals.predicted > 0 && (
+                    <div className="trip-health-item trip-health-budget">
+                      <span className="trip-health-label">Budget</span>
+                      <div className="trip-health-budget-wrap">
+                        <div className="trip-health-budget-track">
+                          <div
+                            className={`trip-health-budget-fill${budgetPct >= 100 ? " over" : budgetPct >= 80 ? " near" : ""}`}
+                            style={{ width: `${Math.min(100, budgetPct)}%` }}
+                          />
+                        </div>
+                        <span className={`trip-health-budget-pct${budgetPct >= 100 ? " negative" : budgetPct >= 80 ? " warning-text" : ""}`}>
+                          {budgetPct}%
+                        </span>
                       </div>
-                    );
-                  })()}
-                  <div className="dash-stat-panel-item">
-                    <span className="dash-stat-panel-label">Expenses</span>
-                    <strong className="dash-stat-panel-value">{groupExpenseCount}</strong>
-                    <span className="dash-stat-panel-sub">{expenseFilterOptions[1].count} shared · {expenseFilterOptions[2].count} personal</span>
-                  </div>
-                  <div className="dash-stat-panel-item">
-                    <span className="dash-stat-panel-label">Trip status</span>
-                    <strong className="dash-stat-panel-value">
-                      {daysLeft > 0 ? `${daysLeft}d left` : "Ended"}
-                    </strong>
-                    <span className="dash-stat-panel-sub">{totalDays} days total</span>
+                      <span className={`trip-health-note trip-health-note--${budgetTone}`}>{budgetStatusText}</span>
+                    </div>
+                  )}
+                  {daysIn > 0 && totals.actual > 0 && (
+                    <div className="trip-health-item trip-health-avg">
+                      <span className="trip-health-label">Avg / day</span>
+                      <strong className="trip-health-value">{formatMoney(roundMoney(totals.actual / daysIn))}</strong>
+                    </div>
+                  )}
+                  <div className="trip-health-item">
+                    <span className="trip-health-label">{daysLeft > 0 ? "Days left" : "Status"}</span>
+                    <strong className="trip-health-value">{daysLeft > 0 ? `${daysLeft}d` : "Ended"}</strong>
                   </div>
                 </div>
               </div>
 
-              {currentUserMemberId && (
+              {currentUserMemberId && (myPersonalExpenses.length > 0 || myPersonalBudgetEur > 0 || showPersonalBudgetForm) && (
                 <div className="dash-row dash-section-personal">
                   <div className="dash-card personal-strip-card">
                     {showPersonalBudgetForm ? (
@@ -9563,39 +9628,63 @@ function App() {
                 </div>
               </div>
 
-              {/* ── Row 3: Trip progress + Group snapshot + At a glance ── */}
-              <div className="dash-row dash-row-3col dash-section-context">
-
-                <div className="dash-card">
-                  <h3>Trip progress</h3>
-                  <p className="dash-card-sub">{daysLeft > 0 ? "We're on track! Enjoy the journey 🎉" : "Trip has ended 🏁"}</p>
-                  <div className="progress-track progress-track-lg">
-                    <div
-                      className="progress-track-fill"
-                      style={{ width: `${Math.min(100, Math.round((daysIn / totalDays) * 100))}%` }}
-                    />
+              {/* ── Category bars (tap for full breakdown) ── */}
+              {spendingBreakdown.length > 0 && (
+                <div
+                  className="dash-card dash-section-breakdown"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="View category breakdown"
+                  onClick={() => setShowCategoryBreakdown(true)}
+                  onKeyDown={e => e.key === "Enter" && setShowCategoryBreakdown(true)}
+                >
+                  <div className="dash-card-header">
+                    <div>
+                      <h3>Spending by category</h3>
+                      <p className="dash-card-sub">{spendingBreakdown.length} {spendingBreakdown.length === 1 ? "category" : "categories"}</p>
+                    </div>
+                    <span className="link-button link-button--sm" aria-hidden="true">View all →</span>
                   </div>
-                  <div className="progress-dates-row">
-                    <div className="progress-date-block">
-                      <div className="progress-day-num">{daysIn}</div>
-                      <div className="progress-day-label">Days completed</div>
-                    </div>
-                    <div className="progress-date-block">
-                      <div className="progress-day-num highlight">{daysLeft}</div>
-                      <div className="progress-day-label">Days remaining</div>
-                    </div>
-                    <div className="progress-date-block">
-                      <div className="progress-day-num" style={{ fontSize: "14px", letterSpacing: 0 }}>{selectedTrip.endDate}</div>
-                      <div className="progress-day-label">Trip ends</div>
-                    </div>
+                  <div className="overview-cat-bars">
+                    {spendingBreakdown.slice(0, 4).map(c => {
+                      const pct = Math.max(1, Math.round((c.actual / totals.actual) * 100));
+                      return (
+                        <div className="overview-cat-row" key={c.id}>
+                          <span className="overview-cat-icon" style={{ color: c.color }}>{c.icon}</span>
+                          <div className="overview-cat-info">
+                            <div className="overview-cat-name-row">
+                              <span className="overview-cat-name">{c.name}</span>
+                              <span className="overview-cat-amt">{formatMoney(c.actual)}</span>
+                            </div>
+                            <div className="overview-cat-bar-track">
+                              <div className="overview-cat-bar-fill" style={{ width: `${pct}%`, background: c.color }} />
+                            </div>
+                          </div>
+                          <span className="overview-cat-pct">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                    {spendingBreakdown.length > 4 && (
+                      <div className="overview-cat-more">+{spendingBreakdown.length - 4} more categories</div>
+                    )}
                   </div>
                 </div>
+              )}
 
-                <div className="dash-card">
-                  <h3>Group snapshot</h3>
-                  <p className="dash-card-sub">{activeMembers.length} member{activeMembers.length !== 1 ? "s" : ""}</p>
+              {/* ── Group card: members + settlement suggestion ── */}
+              {activeMembers.length > 0 && (
+                <div className="dash-card overview-group-card">
+                  <div className="dash-card-header">
+                    <div>
+                      <h3>Group</h3>
+                      <p className="dash-card-sub">{activeMembers.length} member{activeMembers.length !== 1 ? "s" : ""}</p>
+                    </div>
+                    <button className="link-button link-button--sm" type="button" onClick={e => { e.stopPropagation(); setActiveTab("members"); }}>
+                      View all →
+                    </button>
+                  </div>
                   <div className="dash-group-avatars">
-                    {activeMembers.slice(0, 5).map(m => (
+                    {activeMembers.slice(0, 6).map(m => (
                       <div key={m.id} className="dash-group-member">
                         <div
                           className={`dash-group-avatar${memberImageOf(m) ? " has-image" : ""}`}
@@ -9608,108 +9697,32 @@ function App() {
                         </div>
                       </div>
                     ))}
-                    {activeMembers.length > 5 && (
+                    {activeMembers.length > 6 && (
                       <div className="dash-group-member">
-                        <div className="dash-group-avatar dash-group-more">+{activeMembers.length - 5}</div>
+                        <div className="dash-group-avatar dash-group-more">+{activeMembers.length - 6}</div>
                         <div className="dash-group-name">more</div>
                       </div>
                     )}
                   </div>
-                  <button className="secondary-button small-button btn-full-top" type="button" onClick={() => setActiveTab("members")}>
-                    View all members
-                  </button>
-                </div>
-
-                <div className="dash-card">
-                  <h3>At a glance</h3>
-                  <div className="dash-glance-list">
-                    <div className="dash-glance-item">
-                      <div className={`dash-glance-icon ${remaining >= 0 ? "success" : "danger"}`}>
-                        {remaining >= 0 ? "✓" : "!"}
-                      </div>
-                      <div>
-                        <div className="dash-glance-title">{remaining >= 0 ? "On budget" : "Over budget"}</div>
-                        <div className="dash-glance-sub">
-                          {remaining >= 0 ? `You're ${formatMoney(remaining)} under budget` : `${formatMoney(Math.abs(remaining))} over budget`}
+                  {suggestedSettlements.length > 0 && (
+                    <div className="settle-snapshot-strip">
+                      <div className="settle-snapshot-strip-icon">✨</div>
+                      <div className="settle-snapshot-strip-body">
+                        <div className="settle-snapshot-strip-title">Smart settle available</div>
+                        <div className="settle-snapshot-strip-sub">
+                          {suggestedSettlements[0].fromName} pays {suggestedSettlements[0].toName} {formatMoney(suggestedSettlements[0].amount)}
+                          {suggestedSettlements.length > 1 && ` · +${suggestedSettlements.length - 1} more`}
                         </div>
                       </div>
+                      <button
+                        className="primary-button small-button"
+                        type="button"
+                        onClick={e => { e.stopPropagation(); setActiveTab("settlements"); }}
+                      >
+                        Settle
+                      </button>
                     </div>
-                    {totals.actual > 0 && daysIn > 0 && (
-                      <div className="dash-glance-item">
-                        <div className="dash-glance-icon info"><Icon name="chart" /></div>
-                        <div>
-                          <div className="dash-glance-title">Keep it balanced</div>
-                          <div className="dash-glance-sub">Average spend per day: {fmx(roundMoney(totals.actual / daysIn))}</div>
-                        </div>
-                      </div>
-                    )}
-                    {suggestedSettlements.length > 0 && (
-                      <div className="dash-glance-item">
-                        <div className="dash-glance-icon primary"><Icon name="handshake" /></div>
-                        <div>
-                          <div className="dash-glance-title">Smart settle available</div>
-                          <div className="dash-glance-sub">{suggestedSettlements.length} suggested settlement{suggestedSettlements.length !== 1 ? "s" : ""}</div>
-                        </div>
-                      </div>
-                    )}
-                    {totals.actual === 0 && (
-                      <div className="dash-glance-item">
-                        <div className="dash-glance-icon info">🌍</div>
-                        <div>
-                          <div className="dash-glance-title">Ready to track</div>
-                          <div className="dash-glance-sub">Add your first expense to get started</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Row 4: Spending by category (compact + tap for detail) ── */}
-              {spendingBreakdown.length > 0 && (
-                <div
-                  className="dash-card breakdown-card breakdown-card--compact dash-section-breakdown"
-                  role="button"
-                  tabIndex={0}
-                  aria-label="View category breakdown"
-                  onClick={() => setShowCategoryBreakdown(true)}
-                  onKeyDown={e => e.key === "Enter" && setShowCategoryBreakdown(true)}
-                >
-                  <div className="breakdown-compact-layout">
-                    <div
-                      className="breakdown-ring breakdown-ring--sm"
-                      style={{ background: `conic-gradient(${breakdownGradient})` }}
-                      aria-hidden="true"
-                    >
-                      <div className="breakdown-ring-center">
-                        <span>Total</span>
-                        <strong>{fmx(totals.actual)}</strong>
-                      </div>
-                    </div>
-                    <div className="breakdown-compact-right">
-                      <div className="breakdown-compact-header">
-                        <div>
-                          <div className="breakdown-compact-title">Spending by category</div>
-                          <div className="breakdown-compact-sub">{spendingBreakdown.length} categories</div>
-                        </div>
-                        <div className="breakdown-compact-cta">View all →</div>
-                      </div>
-                      <div className="breakdown-compact-chips">
-                        {spendingBreakdown.slice(0, 3).map(c => (
-                          <div className="breakdown-chip" key={c.id}>
-                            <span className="breakdown-chip-dot" style={{ background: c.color }} />
-                            <span className="breakdown-chip-name">{c.name}</span>
-                            <span className="breakdown-chip-amt">{formatMoney(c.actual)}</span>
-                          </div>
-                        ))}
-                        {spendingBreakdown.length > 3 && (
-                          <div className="breakdown-chip breakdown-chip--more">
-                            +{spendingBreakdown.length - 3} more
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 

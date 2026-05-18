@@ -6356,6 +6356,189 @@ body.body-scroll-locked .main-content {
   white-space: nowrap;
 }
 
+/* ---- Trip health row ---- */
+.trip-health-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.trip-health-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.trip-health-item:last-child {
+  border-right: none;
+}
+
+.trip-health-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.trip-health-value {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.trip-health-budget {
+  flex: 2;
+}
+
+.trip-health-budget-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.trip-health-budget-track {
+  flex: 1;
+  height: 6px;
+  background: var(--surface-alt, #f1f5f9);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.trip-health-budget-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.trip-health-budget-fill.over { background: #dc2626; }
+.trip-health-budget-fill.near { background: #d97706; }
+
+.trip-health-budget-pct {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+  flex-shrink: 0;
+  min-width: 32px;
+  text-align: right;
+}
+
+.trip-health-budget-pct.negative { color: #dc2626; }
+.trip-health-budget-pct.warning-text { color: #d97706; }
+
+/* ---- Overview category bars ---- */
+.overview-cat-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.overview-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.overview-cat-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+
+.overview-cat-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.overview-cat-name-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.overview-cat-name {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.overview-cat-amt {
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.overview-cat-bar-track {
+  height: 4px;
+  background: var(--surface-alt, #f1f5f9);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.overview-cat-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.overview-cat-pct {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  flex-shrink: 0;
+  min-width: 30px;
+  text-align: right;
+}
+
+.overview-cat-more {
+  font-size: 12px;
+  color: var(--muted);
+  padding-top: 2px;
+  text-align: center;
+}
+
+/* ---- Overview group card ---- */
+.overview-group-card .dash-group-avatars {
+  margin-bottom: 12px;
+}
+
+/* ---- Mobile next action ---- */
+.mobile-next-action {
+  display: none;
+}
+
+.trip-health-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.trip-health-note--good { color: var(--positive); }
+.trip-health-note--near { color: #d97706; }
+.trip-health-note--over { color: var(--negative); }
+
 /* ---- At a glance ---- */
 .dash-glance-list {
   display: flex;
@@ -10518,6 +10701,185 @@ body.body-scroll-locked .main-content {
 @media (max-width: 768px) {
   .main-content {
     padding-bottom: calc(138px + env(safe-area-inset-bottom));
+  }
+
+  .trip-hero-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: stretch;
+    margin-top: 12px;
+    background: transparent;
+    border-radius: 0;
+    backdrop-filter: none;
+    overflow: visible;
+  }
+
+  .hero-stat {
+    flex: 1 1 calc(50% - 4px);
+    align-items: flex-start;
+    min-width: 0;
+    padding: 9px 11px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 16px;
+    background: rgba(15, 23, 42, 0.34);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+  }
+
+  .hero-stat:first-child {
+    flex-basis: 100%;
+  }
+
+  .hero-stat-label,
+  .hero-stat-value {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .hero-stat-label {
+    font-size: 9px;
+    line-height: 1.1;
+    opacity: 0.86;
+  }
+
+  .hero-stat-value {
+    font-size: 15px;
+    line-height: 1.12;
+    letter-spacing: 0;
+  }
+
+  .hero-stat:first-child .hero-stat-value {
+    font-size: 19px;
+  }
+
+  .hero-stat-value.negative {
+    color: #fecaca;
+  }
+
+  .hero-stat-value.positive {
+    color: #bbf7d0;
+  }
+
+  .hero-stat-value.warning-text {
+    color: #fde68a;
+  }
+
+  .mobile-next-action {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(15, 118, 110, 0.16);
+    border-radius: 18px;
+    background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%);
+    color: var(--text);
+    text-align: left;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  }
+
+  .mobile-next-action--over,
+  .mobile-next-action--near {
+    border-color: #fed7aa;
+    background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+  }
+
+  .mobile-next-action--settle {
+    border-color: #a7f3d0;
+    background: linear-gradient(135deg, #f0fdfa 0%, #ffffff 100%);
+  }
+
+  .mobile-next-action-icon {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: rgba(15, 118, 110, 0.1);
+    color: var(--primary);
+    flex: 0 0 auto;
+  }
+
+  .mobile-next-action-icon .app-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mobile-next-action-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .mobile-next-action-copy strong {
+    font-size: 14px;
+    line-height: 1.15;
+    color: var(--text);
+  }
+
+  .mobile-next-action-copy span {
+    font-size: 12px;
+    line-height: 1.25;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-next-action-cta {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--primary);
+    white-space: nowrap;
+  }
+
+  .trip-health-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .trip-health-item {
+    padding: 0;
+    border: 0;
+  }
+
+  .trip-health-item:first-child,
+  .trip-health-avg {
+    display: none;
+  }
+
+  .trip-health-budget {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .trip-health-budget-wrap {
+    width: 100%;
+  }
+
+  .trip-health-budget-track {
+    height: 9px;
+  }
+
+  .trip-health-budget-pct {
+    min-width: 42px;
+    font-size: 14px;
+  }
+
+  .trip-health-label {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+
+  .trip-health-value {
+    font-size: 16px;
   }
 
   .bottom-nav {
