@@ -5961,8 +5961,18 @@ function App() {
     }
   }
 
-  function renderPexelsStrip(setFormFn) {
-    if (!pexelsApiKey) return null;
+  function renderPexelsStrip(setFormFn, onImageChange, hasImage) {
+    if (!pexelsApiKey) {
+      // Only show upload zone when there is no image yet; Change/Remove handle the rest
+      if (hasImage) return null;
+      return (
+        <label className="pexels-upload-zone">
+          <input type="file" accept="image/*" style={{ display: "none" }} onChange={onImageChange} />
+          <span className="pexels-upload-zone-icon">🖼️</span>
+          <span className="pexels-upload-zone-text">Upload a cover photo</span>
+        </label>
+      );
+    }
     if (pexelsFetching) {
       return <div className="pexels-strip"><span className="pexels-loading">Finding photos…</span></div>;
     }
@@ -12843,14 +12853,16 @@ function App() {
                   {!form.imageDataUrl && <span>🏔</span>}
                 </div>
                 <div className="trip-image-controls">
-                  <label className="trip-image-upload small-button">
-                    {form.imageDataUrl ? "Change image" : "Upload image"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleCreateTripImageChange}
-                    />
-                  </label>
+                  {(pexelsApiKey || form.imageDataUrl) && (
+                    <label className="trip-image-upload small-button">
+                      {form.imageDataUrl ? "Change image" : "Upload image"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleCreateTripImageChange}
+                      />
+                    </label>
+                  )}
                   {form.imageDataUrl && (
                     <button
                       className="secondary-button small-button"
@@ -12862,7 +12874,7 @@ function App() {
                   )}
                 </div>
               </div>
-              {renderPexelsStrip(setForm)}
+              {renderPexelsStrip(setForm, handleCreateTripImageChange, !!form.imageDataUrl)}
             </div>
           </div>
           <FormActions asFooter onCancel={() => setIsCreateModalOpen(false)} saving={creatingTrip} saveLabel="Create trip" />
@@ -12934,14 +12946,16 @@ function App() {
                   {!editForm.imageDataUrl && <span>🏔</span>}
                 </div>
                 <div className="trip-image-controls">
-                  <label className="trip-image-upload small-button">
-                    {editForm.imageDataUrl ? "Change image" : "Upload image"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleEditTripImageChange}
-                    />
-                  </label>
+                  {(pexelsApiKey || editForm.imageDataUrl) && (
+                    <label className="trip-image-upload small-button">
+                      {editForm.imageDataUrl ? "Change image" : "Upload image"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleEditTripImageChange}
+                      />
+                    </label>
+                  )}
                   {editForm.imageDataUrl && (
                     <button
                       className="secondary-button small-button"
@@ -12953,7 +12967,7 @@ function App() {
                   )}
                 </div>
               </div>
-              {renderPexelsStrip(setEditForm)}
+              {renderPexelsStrip(setEditForm, handleEditTripImageChange, !!editForm.imageDataUrl)}
             </div>
           </div>
           <footer className="modal-footer">

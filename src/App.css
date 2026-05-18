@@ -10610,6 +10610,47 @@ body.body-scroll-locked .main-content {
   box-shadow: 0 4px 14px rgba(15, 118, 110, 0.28);
 }
 
+/* Upload zone — shown when no Pexels key and no image yet */
+.pexels-upload-zone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  transition: border-color 140ms, color 140ms, background 140ms;
+  user-select: none;
+}
+
+.pexels-upload-zone:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-muted, rgba(15, 118, 110, 0.06));
+}
+
+.pexels-upload-zone-icon {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pexels-upload-zone-text {
+  line-height: 1.3;
+}
+
+@media (max-width: 768px) {
+  .pexels-upload-zone {
+    padding: 16px;
+    min-height: 54px;
+  }
+}
+
 /* Account modal: API key row */
 .pexels-key-row {
   display: flex;
