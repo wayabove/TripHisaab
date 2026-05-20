@@ -80,12 +80,57 @@ function roundMoney(amount) {
   return Math.round(Number(amount || 0) * 100) / 100;
 }
 
+function getTripTimelineState(trip, today = todayIso()) {
+  const status = trip?.status || "Active";
+  if (status === "Archived") return "archived";
+  if (status === "Completed") return "completed";
+  if (trip?.startDate && trip.startDate > today) return "upcoming";
+  if (trip?.endDate && trip.endDate < today) return "ended";
+  return "active";
+}
+
+function isTripActive(trip, today = todayIso()) {
+  return getTripTimelineState(trip, today) === "active";
+}
+
+function isTripUpcoming(trip, today = todayIso()) {
+  return getTripTimelineState(trip, today) === "upcoming";
+}
+
+function isTripPast(trip, today = todayIso()) {
+  return ["ended", "completed", "archived"].includes(getTripTimelineState(trip, today));
+}
+
+function getTripTimelineLabel(state) {
+  if (state === "archived") return "Archived";
+  if (state === "completed") return "Completed";
+  if (state === "ended") return "Ended";
+  if (state === "upcoming") return "Upcoming";
+  return "Active";
+}
+
+function displayText(value, fallback = "Unknown member") {
+  if (value == null) return fallback;
+  if (typeof value === "string" || typeof value === "number") {
+    const raw = String(value).trim();
+    return raw || fallback;
+  }
+  if (typeof value === "object") {
+    return displayText(
+      value.displayName ?? value.name ?? value.email ?? value.id,
+      fallback
+    );
+  }
+  const raw = String(value).trim();
+  return raw || fallback;
+}
+
 function memberDisplayName(member) {
-  return member?.displayName || member?.name || member?.email || member?.id || "Unknown member";
+  return displayText(member?.displayName ?? member?.name ?? member?.email ?? member?.id);
 }
 
 function cleanDisplayName(name) {
-  const raw = String(name || "").trim();
+  const raw = displayText(name).trim();
   if (!raw) return "Unknown member";
   if (raw.includes("@")) return raw;
   return raw
@@ -937,30 +982,124 @@ function mergeMemberDirectory(current, incoming) {
 
 // -------------------- Reusable Modal shell --------------------
 function Modal({ isOpen, onClose, title, children, className }) {
+  const modalRef = useRef(null);
+  const dragStateRef = useRef({ active: false, startY: 0, lastY: 0 });
+
   useEffect(() => {
     if (!isOpen) return;
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+    const previousBodyStyle = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      width: document.body.style.width,
+      overflow: document.body.style.overflow
+    };
+    const previousHtmlOverflow = document.documentElement.style.overflow;
     const handleKey = e => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleKey);
     document.body.classList.add("body-scroll-locked");
+    document.documentElement.classList.add("body-scroll-locked");
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", handleKey);
       document.body.classList.remove("body-scroll-locked");
+      document.documentElement.classList.remove("body-scroll-locked");
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.position = previousBodyStyle.position;
+      document.body.style.top = previousBodyStyle.top;
+      document.body.style.left = previousBodyStyle.left;
+      document.body.style.right = previousBodyStyle.right;
+      document.body.style.width = previousBodyStyle.width;
+      document.body.style.overflow = previousBodyStyle.overflow;
+      window.scrollTo(0, scrollY);
     };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
+  function resetModalDrag() {
+    const modal = modalRef.current;
+    if (!modal) return;
+    modal.style.transition = "";
+    modal.style.transform = "";
+  }
+
+  function handleSheetDragStart(event) {
+    if (!onClose) return;
+    dragStateRef.current = {
+      active: true,
+      startY: event.clientY,
+      lastY: event.clientY
+    };
+    const modal = modalRef.current;
+    if (modal) {
+      modal.style.transition = "none";
+      modal.setPointerCapture?.(event.pointerId);
+    }
+  }
+
+  function handleSheetDragMove(event) {
+    const state = dragStateRef.current;
+    if (!state.active) return;
+    const deltaY = Math.max(0, event.clientY - state.startY);
+    state.lastY = event.clientY;
+    const modal = modalRef.current;
+    if (modal) {
+      modal.style.transform = `translateY(${deltaY}px)`;
+    }
+  }
+
+  function handleSheetDragEnd(event) {
+    const state = dragStateRef.current;
+    if (!state.active) return;
+    const deltaY = Math.max(0, state.lastY - state.startY);
+    dragStateRef.current = { active: false, startY: 0, lastY: 0 };
+    const modal = modalRef.current;
+    modal?.releasePointerCapture?.(event.pointerId);
+    if (deltaY > 96) {
+      if (modal) {
+        modal.style.transition = "transform 160ms ease";
+        modal.style.transform = "translateY(100%)";
+      }
+      window.setTimeout(onClose, 120);
+      return;
+    }
+    if (modal) {
+      modal.style.transition = "transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1)";
+      modal.style.transform = "translateY(0)";
+      window.setTimeout(resetModalDrag, 190);
+    }
+  }
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
+        ref={modalRef}
         className={`modal${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onClick={e => e.stopPropagation()}
       >
+        <button
+          type="button"
+          className="modal-drag-handle"
+          aria-label="Drag down to close"
+          onPointerDown={handleSheetDragStart}
+          onPointerMove={handleSheetDragMove}
+          onPointerUp={handleSheetDragEnd}
+          onPointerCancel={handleSheetDragEnd}
+        />
         <header className="modal-header">
           <h2>{title}</h2>
           <button
@@ -1489,7 +1628,11 @@ function Icon({ name, size = 20, strokeWidth = 1.9, className = "app-icon", titl
     suitcase: "#fdba74",
     eye: "#f9a8d4",
     cloud: "#bae6fd",
-    settings: "#d8b4fe"
+    settings: "#d8b4fe",
+    user: "#fde68a",
+    home: "#a7f3d0",
+    target: "#fecaca",
+    clock: "#ddd6fe"
   };
   const fill = fills[name] || fills.receipt;
   const common = {
@@ -1529,7 +1672,11 @@ function Icon({ name, size = 20, strokeWidth = 1.9, className = "app-icon", titl
     suitcase: <><rect x="5" y="6" width="14" height="15" rx="3" fill={fill} /><path d="M9 6V4h6v2" /><path d="M9 11h.01" /><path d="M15 11h.01" /><path d="M8 21v-1" /><path d="M16 21v-1" /></>,
     eye: <><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" fill={fill} /><circle cx="12" cy="12" r="3.2" fill="#fff7ed" /><circle cx="12" cy="12" r="1.2" fill="#111827" stroke="none" /></>,
     cloud: <><path d="M17.5 19H7a5 5 0 1 1 1-9.8A6.5 6.5 0 0 1 20.7 12 3.8 3.8 0 0 1 17.5 19z" fill={fill} /><path d="M8.5 9.2a6.4 6.4 0 0 1 5.2-3" /></>,
-    settings: <><rect x="4" y="5" width="16" height="14" rx="4" fill={fill} /><path d="M7 9h10" /><path d="M7 15h10" /><circle cx="10" cy="9" r="2" fill="#fff7ed" /><circle cx="14" cy="15" r="2" fill="#fff7ed" /></>
+    settings: <><rect x="4" y="5" width="16" height="14" rx="4" fill={fill} /><path d="M7 9h10" /><path d="M7 15h10" /><circle cx="10" cy="9" r="2" fill="#fff7ed" /><circle cx="14" cy="15" r="2" fill="#fff7ed" /></>,
+    user: <><circle cx="12" cy="8" r="4" fill={fill} /><path d="M4.8 20c.9-4.4 3.3-6.6 7.2-6.6s6.3 2.2 7.2 6.6z" fill="#bfdbfe" /></>,
+    home: <><path d="M3.5 11.2 12 4l8.5 7.2" fill={fill} /><path d="M6 10.5V20h12v-9.5" fill="#a7f3d0" /><path d="M10 20v-5h4v5" fill="#fff7ed" /></>,
+    target: <><circle cx="12" cy="12" r="8.5" fill={fill} /><circle cx="12" cy="12" r="5" fill="#fff7ed" /><circle cx="12" cy="12" r="2" fill="#111827" stroke="none" /></>,
+    clock: <><circle cx="12" cy="12" r="8.5" fill={fill} /><path d="M12 7.5V12l3 2" /></>
   };
   return (
     <svg {...common}>
@@ -1797,6 +1944,7 @@ function App() {
     time: nowTimeIso()
   });
   const [expenseNoteOpen, setExpenseNoteOpen] = useState(false);
+  const [expenseDetailsOpen, setExpenseDetailsOpen] = useState(false);
   const expenseSharedSectionRef = useRef(null);
   const crossUnitExpandedTripsRef = useRef(new Set());
   const pullRefreshRef = useRef({ startY: 0, pulling: false, eligible: false });
@@ -3605,6 +3753,16 @@ function App() {
           .values()
       );
       const loadedSettlementGroups = settlementGroupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const hasActiveSettlementGroups = loadedSettlementGroups.some(group => group.isActive !== false);
+      const storedSettlementMode = (() => {
+        try {
+          return localStorage.getItem(`triphisaab-settle-mode-${tripId}`);
+        } catch {
+          return "";
+        }
+      })();
+      const insightSettlementMode =
+        storedSettlementMode || (hasActiveSettlementGroups ? "family_couple" : "fewest_payments");
       const smartSummary = getSmartSettleSummaryByMode(
         loadedExpenses,
         activeMembers,
@@ -3612,7 +3770,7 @@ function App() {
         loadedSettlements,
         trip.ownerId === user?.uid,
         trip.defaultCurrency || "EUR",
-        "fewest_payments",
+        insightSettlementMode,
         loadedSettlementGroups
       );
       const suggestions = smartSummary.consolidatedSuggestions || [];
@@ -3632,6 +3790,15 @@ function App() {
       console.warn("Could not load trip list insight", trip?.id, error);
       return { tripId: trip.id, unavailable: true };
     }
+  }
+
+  async function refreshTripListInsight(trip = selectedTrip) {
+    if (!user || !trip?.id) return;
+    const insight = await loadTripListInsight(trip);
+    setTripListInsights(current => ({
+      ...current,
+      [insight.tripId]: insight
+    }));
   }
 
   function updateSnapshotSyncState(snapshot) {
@@ -5238,6 +5405,7 @@ function App() {
     setExpenseFeedback(null);
     setExpenseForm(buildFastExpenseForm(overrides));
     setExpenseNoteOpen(false);
+    setExpenseDetailsOpen(false);
     setIsAddExpenseModalOpen(true);
   }
 
@@ -5428,6 +5596,7 @@ function App() {
         : [defaultPayerId];
 
     setExpenseNoteOpen(!!(expense.notes));
+    setExpenseDetailsOpen(true);
     setEditingExpenseId(expense.id);
     setExpenseEditForm({
       date: expense.date || todayIso(),
@@ -5450,6 +5619,7 @@ function App() {
 
   function cancelEditingExpense() {
     setEditingExpenseId(null);
+    setExpenseDetailsOpen(false);
     setExpenseEditForm({
       ...EMPTY_EXPENSE_FORM,
       date: todayIso(),
@@ -6558,6 +6728,7 @@ function App() {
         }
       );
       await loadTripData(selectedTrip.id);
+      await refreshTripListInsight(selectedTrip);
       setPendingSmartSettlement(null);
       setSmartSettleToast("Settlement marked as paid.");
     } catch (error) {
@@ -6601,6 +6772,7 @@ function App() {
         notes: ""
       });
       await loadTripData(selectedTrip.id);
+      await refreshTripListInsight(selectedTrip);
       return true;
     } catch (error) {
       console.error("Could not record settlement:", error);
@@ -6614,6 +6786,7 @@ function App() {
             amount
           );
           await loadTripData(selectedTrip.id);
+          await refreshTripListInsight(selectedTrip);
           showToast("Could not send approval notification, so the settlement was recorded directly.", "error");
           return true;
         } catch (fallbackError) {
@@ -6794,7 +6967,10 @@ function App() {
       );
       await createSettlementCompletedNotification(notification, Number(notification.amountEur || 0), settlementId);
       setSelectedNotification(null);
-      if (navigator.onLine !== false) await loadTripData(selectedTrip.id);
+      if (navigator.onLine !== false) {
+        await loadTripData(selectedTrip.id);
+        await refreshTripListInsight(selectedTrip);
+      }
     } catch (error) {
       console.error("Could not approve settlement:", error);
       showToast("Could not approve settlement.", "error");
@@ -6818,6 +6994,7 @@ function App() {
         doc(db, "trips", selectedTrip.id, "settlements", settlement.id)
       );
       await loadTripData(selectedTrip.id);
+      await refreshTripListInsight(selectedTrip);
     } catch (error) {
       console.error("Could not delete settlement:", error);
       showToast("Could not delete settlement.", "error");
@@ -7889,9 +8066,39 @@ function App() {
     const currentUnit = getCurrentUserUnit();
     const currentUnitMemberIds = currentUnit?.memberIds?.filter(id => activeMembers.some(member => member.id === id)) || [];
     const expenseImpact = getExpenseImpactMeta(formData);
+    const selectedSplitCount = Array.isArray(formData.splitMemberIds) ? formData.splitMemberIds.length : 0;
+    const allMembersSelected =
+      activeMembers.length > 0
+      && selectedSplitCount >= activeMembers.length
+      && activeMembers.every(member => (formData.splitMemberIds || []).includes(member.id));
+    const splitLabel =
+      formData.expenseType !== "shared"
+        ? "No split"
+        : formData.splitType === "custom"
+        ? "Custom split"
+        : formData.splitType === "percent"
+        ? "Percent split"
+        : allMembersSelected
+        ? "Equal split with everyone"
+        : `Equal split with ${selectedSplitCount || 0}`;
+    const detailsSummary = [
+      formData.paidByMemberId ? `Paid by ${getMemberShortName(formData.paidByMemberId)}` : "Choose payer",
+      `${formatExpenseDate(formData.date)} ${formData.time || nowTimeIso()}`,
+      splitLabel
+    ].join(" · ");
+    const shouldShowSplitEditor =
+      formData.expenseType === "shared"
+      && (
+        expenseDetailsOpen
+        || expenseImpact.mode === "selected"
+        || formData.splitType !== "equal"
+        || !allMembersSelected
+      );
+    const quickCategoryOptions = activeCategories.slice(0, 6);
 
     function setExpenseAudience(mode) {
       if (mode === "personal") {
+        setExpenseDetailsOpen(false);
         setFormData({
           ...formData,
           expenseType: "personal",
@@ -7902,6 +8109,7 @@ function App() {
         return;
       }
       if (mode === "unit" && currentUnitMemberIds.length > 0) {
+        setExpenseDetailsOpen(false);
         setFormData({
           ...formData,
           expenseType: "shared",
@@ -7912,6 +8120,7 @@ function App() {
         return;
       }
       if (mode === "selected") {
+        setExpenseDetailsOpen(true);
         const currentSelected = Array.isArray(formData.splitMemberIds) ? formData.splitMemberIds : [];
         const currentIsEveryone =
           activeMembers.length > 0
@@ -7934,6 +8143,7 @@ function App() {
         }, 60);
         return;
       }
+      setExpenseDetailsOpen(false);
       setFormData({
         ...formData,
         expenseType: "shared",
@@ -8085,22 +8295,66 @@ function App() {
                 </div>
               </div>
             ) : (
-              <select
-                value={formData.categoryId}
-                onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
-                required
-              >
-                <option value="">Choose category</option>
-                {activeCategories.map(c => (
-                  <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
-                ))}
-              </select>
+              <>
+                <div className="quick-category-chips" aria-label="Quick categories">
+                  {quickCategoryOptions.map(category => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className={`quick-category-chip${formData.categoryId === category.id ? " active" : ""}`}
+                      onClick={() => setFormData({ ...formData, categoryId: category.id })}
+                    >
+                      <span>{category.icon}</span>
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+                <select
+                  value={formData.categoryId}
+                  onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+                  required
+                >
+                  <option value="">More categories</option>
+                  {activeCategories.map(c => (
+                    <option value={c.id} key={c.id}>{c.icon} {c.name}</option>
+                  ))}
+                </select>
+              </>
             )}
           </div>
 
-          {/* Date + Time chips */}
-          <div className="exp-datetime-row">
+          <div className="expense-quick-details">
+            <div>
+              <span>Details</span>
+              <strong>{detailsSummary}</strong>
+            </div>
+            <button
+              type="button"
+              className="secondary-button small-button"
+              onClick={() => setExpenseDetailsOpen(open => !open)}
+            >
+              {expenseDetailsOpen ? "Done" : "Edit"}
+            </button>
+          </div>
+
+          {expenseDetailsOpen && (
+          <div className="expense-details-panel">
+            <label>
+              Who paid?
+              <select
+                value={formData.paidByMemberId}
+                onChange={e => setFormData({ ...formData, paidByMemberId: e.target.value })}
+                required
+              >
+                <option value="">Choose payer</option>
+                {activeMembers.map(m => (
+                  <option value={m.id} key={m.id}>{memberNameOf(m.id)}</option>
+                ))}
+              </select>
+            </label>
+            <div className="exp-datetime-row">
             <label className="exp-date-chip">
+              <Icon name="calendar" size={16} className="exp-chip-icon" />
               <span className="exp-chip-icon">📅</span>
               <span className="exp-chip-label">{formatExpenseDate(formData.date)}</span>
               <input
@@ -8112,6 +8366,7 @@ function App() {
               />
             </label>
             <label className="exp-time-chip">
+              <Icon name="clock" size={16} className="exp-chip-icon" />
               <span className="exp-chip-icon">🕐</span>
               <span className="exp-chip-label">{formData.time || nowTimeIso()}</span>
               <input
@@ -8121,7 +8376,9 @@ function App() {
                 onChange={e => setFormData({ ...formData, time: e.target.value || nowTimeIso() })}
               />
             </label>
+            </div>
           </div>
+          )}
 
           {/* Expense type cards */}
           <div>
@@ -8132,6 +8389,7 @@ function App() {
                 className={`exp-type-card${expenseImpact.mode === "personal" ? " active" : ""}`}
                 onClick={() => setExpenseAudience("personal")}
               >
+                <Icon name="user" size={28} className="exp-type-icon" />
                 <span className="exp-type-emoji">🙋</span>
                 <span className="exp-type-label">Just me</span>
                 <span className="exp-type-sub">No split</span>
@@ -8141,6 +8399,7 @@ function App() {
                 className={`exp-type-card${expenseImpact.mode === "group" ? " active" : ""}`}
                 onClick={() => setExpenseAudience("group")}
               >
+                <Icon name="users" size={28} className="exp-type-icon" />
                 <span className="exp-type-emoji">👥</span>
                 <span className="exp-type-label">Everyone</span>
                 <span className="exp-type-sub">Group total</span>
@@ -8151,6 +8410,7 @@ function App() {
                   className={`exp-type-card${expenseImpact.mode === "unit" ? " active" : ""}`}
                   onClick={() => setExpenseAudience("unit")}
                 >
+                  <Icon name="home" size={28} className="exp-type-icon" />
                   <span className="exp-type-emoji">ðŸ </span>
                   <span className="exp-type-label">Our unit</span>
                   <span className="exp-type-sub">{currentUnit?.name || "Private unit"}</span>
@@ -8161,6 +8421,7 @@ function App() {
                 className={`exp-type-card${expenseImpact.mode === "selected" ? " active" : ""}`}
                 onClick={() => setExpenseAudience("selected")}
               >
+                <Icon name="target" size={28} className="exp-type-icon" />
                 <span className="exp-type-emoji">ðŸŽ¯</span>
                 <span className="exp-type-label">Selected</span>
                 <span className="exp-type-sub">Private split</span>
@@ -8195,7 +8456,24 @@ function App() {
           {/* Shared: inline split section */}
           {formData.expenseType === "shared" && (
             <div className="exp-shared-section" ref={expenseSharedSectionRef}>
+              <div className="expense-split-summary">
+                <div>
+                  <span>Split</span>
+                  <strong>{splitLabel}</strong>
+                  <small>{allMembersSelected ? "Everyone is included." : `${selectedSplitCount || 0} selected.`}</small>
+                </div>
+                <button
+                  type="button"
+                  className="secondary-button small-button"
+                  onClick={() => setExpenseDetailsOpen(true)}
+                >
+                  Edit split
+                </button>
+              </div>
 
+              {shouldShowSplitEditor ? (
+              <>
+              {!expenseDetailsOpen && (
               <label>
                 Who paid?
                 <select
@@ -8209,6 +8487,7 @@ function App() {
                   ))}
                 </select>
               </label>
+              )}
 
               <div className="exp-section-header">How to split?</div>
 
@@ -8379,6 +8658,8 @@ function App() {
                   </div>
                 </>
               )}
+              </>
+              ) : null}
 
             </div>
           )}
@@ -8416,10 +8697,47 @@ function App() {
     try { localStorage.setItem(`triphisaab-settle-mode-${selectedTrip.id}`, mode); } catch { /* ignore */ }
   }
 
+  function updateTripListInsightFromSettlementMode(mode) {
+    if (!selectedTrip?.id) return;
+    const activeTripMembers = members.filter(m => m.status !== "inactive");
+    const summary = getSmartSettleSummaryByMode(
+      expenses,
+      activeTripMembers,
+      currentUserMemberId,
+      settlements,
+      selectedTrip.ownerId === user?.uid,
+      selectedTrip.defaultCurrency || "EUR",
+      mode,
+      settlementGroups
+    );
+    const suggestions = summary.consolidatedSuggestions || [];
+    setTripListInsights(current => ({
+      ...current,
+      [selectedTrip.id]: {
+        ...(current[selectedTrip.id] || {}),
+        tripId: selectedTrip.id,
+        memberCount: activeTripMembers.length,
+        expenseCount: expenses.filter(expense => expense.isActive !== false).length,
+        pendingSettlementCount: suggestions.length,
+        pendingSettlementEur: roundMoney(
+          suggestions.reduce((sum, suggestion) => sum + Number(suggestion.amount || 0), 0)
+        )
+      }
+    }));
+  }
+
   function handleSettlementModeChange(mode) {
+    if (mode === settlementMode) return;
     setSettlementMode(mode);
     saveSettlementModeToStorage(mode);
     setExpandedSmartSettleId("");
+    updateTripListInsightFromSettlementMode(mode);
+    const label = {
+      fewest_payments: "Fewest payments",
+      familiar_only: "Familiar only",
+      family_couple: "Family / couple"
+    }[mode] || "Settlement";
+    setSmartSettleToast(`${label} mode applied.`);
   }
 
   async function expandCrossUnitVisibility(allGroups) {
@@ -9252,7 +9570,7 @@ function App() {
     const nextAction = suggestedSettlements.length > 0
       ? {
           title: `${suggestedSettlements.length} settlement${suggestedSettlements.length === 1 ? "" : "s"} ready`,
-          sub: `${suggestedSettlements[0].fromName} pays ${suggestedSettlements[0].toName} ${fmx(suggestedSettlements[0].amount)}`,
+          sub: `${cleanDisplayName(suggestedSettlements[0].fromName)} pays ${cleanDisplayName(suggestedSettlements[0].toName)} ${fmxText(suggestedSettlements[0].amount)}`,
           cta: "Settle",
           icon: <Icon name="handshake" />,
           tone: "settle",
@@ -9502,6 +9820,7 @@ function App() {
                 type="button"
                 onClick={nextAction.onClick}
               >
+                <Icon name="users" size={28} className="exp-type-icon" />
                 <span className="mobile-next-action-icon">{nextAction.icon}</span>
                 <span className="mobile-next-action-copy">
                   <strong>{nextAction.title}</strong>
@@ -9818,7 +10137,7 @@ function App() {
                           <div className="settle-snapshot-strip-body">
                             <div className="settle-snapshot-strip-title">Suggested settlement</div>
                             <div className="settle-snapshot-strip-sub">
-                              {suggestedSettlements[0].fromName} pays {suggestedSettlements[0].toName} {formatMoney(suggestedSettlements[0].amount)}
+                              {cleanDisplayName(suggestedSettlements[0].fromName)} pays {cleanDisplayName(suggestedSettlements[0].toName)} {formatMoney(suggestedSettlements[0].amount)}
                             </div>
                           </div>
                           <button
@@ -9874,6 +10193,7 @@ function App() {
                   onClick={() => setShowCategoryBreakdown(true)}
                   onKeyDown={e => e.key === "Enter" && setShowCategoryBreakdown(true)}
                 >
+                  <Icon name="home" size={28} className="exp-type-icon" />
                   <div className="dash-card-header">
                     <div>
                       <h3>Spending by category</h3>
@@ -9929,7 +10249,7 @@ function App() {
                           {!memberImageOf(m) ? memberInitialOf(m) : null}
                         </div>
                         <div className="dash-group-name">
-                          {(m.displayName || m.name || m.email || "").split(" ")[0]}
+                          {cleanDisplayName(memberDisplayName(m)).split(" ")[0]}
                         </div>
                       </div>
                     ))}
@@ -9946,7 +10266,7 @@ function App() {
                       <div className="settle-snapshot-strip-body">
                         <div className="settle-snapshot-strip-title">Smart settle available</div>
                         <div className="settle-snapshot-strip-sub">
-                          {suggestedSettlements[0].fromName} pays {suggestedSettlements[0].toName} {formatMoney(suggestedSettlements[0].amount)}
+                          {cleanDisplayName(suggestedSettlements[0].fromName)} pays {cleanDisplayName(suggestedSettlements[0].toName)} {formatMoney(suggestedSettlements[0].amount)}
                           {suggestedSettlements.length > 1 && ` · +${suggestedSettlements.length - 1} more`}
                         </div>
                       </div>
@@ -9969,8 +10289,9 @@ function App() {
                 title="Spending by category"
                 className="category-breakdown-modal"
               >
-                <div className="modal-body">
-                  <div className="cbm-donut-wrap">
+                <Icon name="target" size={28} className="exp-type-icon" />
+                <div className="modal-body cbm-body">
+                  <div className="cbm-summary">
                     <div
                       className="breakdown-ring breakdown-ring--lg"
                       style={{ background: `conic-gradient(${breakdownGradient})` }}
@@ -9982,23 +10303,25 @@ function App() {
                       </div>
                     </div>
                   </div>
-                  <div className="cbm-list">
-                    {spendingBreakdown.map(c => {
-                      const pct = Math.max(1, Math.round((c.actual / totals.actual) * 100));
-                      return (
-                        <div className="cbm-item" key={c.id}>
-                          <div className="cbm-item-top">
-                            <div className="cbm-icon" style={{ color: c.color }}>{c.icon}</div>
-                            <div className="cbm-name">{c.name}</div>
-                            <div className="cbm-amount">{formatMoney(c.actual)}</div>
-                            <div className="cbm-pct">{pct}%</div>
+                  <div className="cbm-scroll-region" role="region" aria-label="Category spending list" tabIndex={0}>
+                    <div className="cbm-list">
+                      {spendingBreakdown.map(c => {
+                        const pct = Math.max(1, Math.round((c.actual / totals.actual) * 100));
+                        return (
+                          <div className="cbm-item" key={c.id}>
+                            <div className="cbm-item-top">
+                              <div className="cbm-icon" style={{ color: c.color }}>{c.icon}</div>
+                              <div className="cbm-name">{c.name}</div>
+                              <div className="cbm-amount">{formatMoney(c.actual)}</div>
+                              <div className="cbm-pct">{pct}%</div>
+                            </div>
+                            <div className="cbm-bar-track">
+                              <div className="cbm-bar-fill" style={{ width: `${pct}%`, background: c.color }} />
+                            </div>
                           </div>
-                          <div className="cbm-bar-track">
-                            <div className="cbm-bar-fill" style={{ width: `${pct}%`, background: c.color }} />
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </Modal>
@@ -12736,13 +13059,11 @@ function App() {
 
   {
     const today = todayIso();
-    const isCompletedTrip = trip => ["Completed", "Archived"].includes(trip.status);
-    const isUpcomingTrip = trip => !isCompletedTrip(trip) && trip.startDate > today;
-    const isActiveTrip = trip => !isCompletedTrip(trip) && trip.startDate <= today && (!trip.endDate || trip.endDate >= today);
+    const getTripState = trip => getTripTimelineState(trip, today);
     const hasUnsettledTrip = trip => Number(tripListInsights[trip.id]?.pendingSettlementEur || 0) > MONEY_EPSILON;
-    const activeTripCount = trips.filter(isActiveTrip).length;
-    const upcomingCount = trips.filter(isUpcomingTrip).length;
-    const completedCount = trips.filter(isCompletedTrip).length;
+    const activeTripCount = trips.filter(trip => isTripActive(trip, today)).length;
+    const upcomingCount = trips.filter(trip => isTripUpcoming(trip, today)).length;
+    const pastTripCount = trips.filter(trip => isTripPast(trip, today)).length;
     const unsettledCount = trips.filter(hasUnsettledTrip).length;
     const editingTrip = trips.find(t => t.id === editingTripId);
     const searchedTrips = tripSearch.trim()
@@ -12750,18 +13071,20 @@ function App() {
       : trips;
     const filteredTrips = searchedTrips
       .filter(trip => {
-        if (homeTripFilter === "active") return isActiveTrip(trip);
-        if (homeTripFilter === "upcoming") return isUpcomingTrip(trip);
-        if (homeTripFilter === "completed") return isCompletedTrip(trip);
+        if (homeTripFilter === "active") return isTripActive(trip, today);
+        if (homeTripFilter === "upcoming") return isTripUpcoming(trip, today);
+        if (homeTripFilter === "completed") return isTripPast(trip, today);
         if (homeTripFilter === "unsettled") return hasUnsettledTrip(trip);
         return true;
       })
       .sort((a, b) => {
         const priority = trip => {
+          const state = getTripState(trip);
           if (hasUnsettledTrip(trip)) return 0;
-          if (isActiveTrip(trip)) return 1;
-          if (isUpcomingTrip(trip)) return 2;
-          if (isCompletedTrip(trip)) return 3;
+          if (state === "active") return 1;
+          if (state === "upcoming") return 2;
+          if (["ended", "completed"].includes(state)) return 3;
+          if (state === "archived") return 4;
           return 4;
         };
         const p = priority(a) - priority(b);
@@ -12773,7 +13096,7 @@ function App() {
       { key: "active", label: "Active", count: activeTripCount },
       { key: "unsettled", label: "Settle", count: unsettledCount },
       { key: "upcoming", label: "Upcoming", count: upcomingCount },
-      { key: "completed", label: "Completed", count: completedCount }
+      { key: "completed", label: "Past", count: pastTripCount }
     ];
     const cardGradients = [
       "linear-gradient(135deg,#89CFF0,#B0E2F5)",
@@ -12938,13 +13261,16 @@ function App() {
               <div className="home-trip-grid">
                 {filteredTrips.map((trip, i) => {
                   const insight = tripListInsights[trip.id] || {};
-                  const completed = isCompletedTrip(trip);
-                  const upcoming = isUpcomingTrip(trip);
+                  const timelineState = getTripState(trip);
+                  const timelineLabel = getTripTimelineLabel(timelineState);
+                  const past = isTripPast(trip, today);
+                  const active = timelineState === "active";
+                  const upcoming = timelineState === "upcoming";
                   const unsettledAmount = Number(insight.pendingSettlementEur || 0);
                   const unsettled = unsettledAmount > MONEY_EPSILON;
                   return (
                     <div
-                      className={`home-trip-card${completed ? " is-completed" : ""}${unsettled ? " is-unsettled" : ""}`}
+                      className={`home-trip-card${past ? " is-completed" : ""}${unsettled ? " is-unsettled" : ""}`}
                       key={trip.id}
                       role="button"
                       tabIndex={0}
@@ -12979,13 +13305,14 @@ function App() {
                         <div className="home-trip-title-row">
                           <h3 className="home-trip-name">{trip.name}</h3>
                           {unsettled ? <span className="home-status-badge home-status-badge--unsettled">Unsettled</span> : null}
-                          {!unsettled && completed ? <span className="home-status-badge home-status-badge--completed">Completed</span> : null}
+                          {!unsettled && past ? <span className="home-status-badge home-status-badge--completed">{timelineLabel}</span> : null}
+                          {!unsettled && upcoming ? <span className="home-status-badge home-status-badge--upcoming">Upcoming</span> : null}
                         </div>
                         <p className="home-trip-dates">{trip.startDate} → {trip.endDate}</p>
                         <div className="home-trip-meta">
                           <span>{insight.memberCount ? `${insight.memberCount} member${insight.memberCount !== 1 ? "s" : ""}` : trip.accessRole === "owner" ? "Owner" : "Member"}</span>
                           {insight.totalSpentEur ? <span>{formatMoney(insight.totalSpentEur)} spent</span> : null}
-                          {upcoming ? <span>Upcoming</span> : null}
+                          <span>{timelineLabel}</span>
                         </div>
                         {unsettled ? (
                           <div className="home-trip-alert">
@@ -12995,7 +13322,7 @@ function App() {
                         <div className="home-trip-pills">
                           <span className="home-pill">{trip.accessRole === "owner" ? "Owner" : "Member"}</span>
                           <span className="home-pill">{trip.defaultCurrency}</span>
-                          {!completed && !upcoming ? <span className="home-pill home-pill-active">Active</span> : null}
+                          {active ? <span className="home-pill home-pill-active">Active</span> : null}
                         </div>
                       </div>
                     </div>

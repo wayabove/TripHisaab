@@ -215,6 +215,21 @@ service cloud.firestore {
         );
     }
 
+    function isTripImageOnlyUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(["imageDataUrl", "updatedAt"])
+        && request.resource.data.imageDataUrl is string;
+    }
+
+    function canWriteGroupBudget(data) {
+      return data.originalAmount is number
+        && data.originalAmount > 0
+        && data.originalCurrency is string
+        && data.originalCurrency.size() > 0
+        && data.amountEur is number
+        && data.amountEur > 0;
+    }
+
     function isSelfUser(userId) {
       return signedIn() && request.auth.uid == userId;
     }
@@ -249,7 +264,8 @@ service cloud.firestore {
         && request.resource.data.ownerId == request.auth.uid;
       allow get, list: if canReadTrip(tripId)
         || (signedIn() && resource.data.ownerId == request.auth.uid);
-      allow update, delete: if isOwner(tripId);
+      allow update: if isOwner(tripId) || (canReadTrip(tripId) && isTripImageOnlyUpdate());
+      allow delete: if isOwner(tripId);
 
       match /members/{memberId} {
         allow get, list: if canReadTrip(tripId) || isOwnerAfter(tripId);
@@ -333,6 +349,12 @@ service cloud.firestore {
 
       match /personalBudgets/{userId} {
         allow read, write: if signedIn() && request.auth.uid == userId;
+      }
+
+      match /groupBudget/{budgetId} {
+        allow read: if canReadTrip(tripId);
+        allow create, update: if canReadTrip(tripId) && canWriteGroupBudget(request.resource.data);
+        allow delete: if canReadTrip(tripId);
       }
 
       match /personalContributions/{userId} {

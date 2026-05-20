@@ -3966,6 +3966,7 @@ p {
 }
 
 /* ---------- Scroll lock (applied when any modal is open) ---------- */
+html.body-scroll-locked,
 body.body-scroll-locked {
   overflow: hidden;
 }
@@ -3985,9 +3986,9 @@ body.body-scroll-locked .main-content {
   background: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
-  touch-action: pan-y;
+  touch-action: auto;
   animation: modal-fade 160ms ease;
 }
 
@@ -3997,11 +3998,39 @@ body.body-scroll-locked .main-content {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  touch-action: pan-y;
   overflow: hidden;
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
   animation: modal-slide 220ms cubic-bezier(0.2, 0.9, 0.3, 1.05);
+}
+
+.modal-drag-handle {
+  display: none;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 24px;
+  margin: 6px auto -4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+  cursor: grab;
+}
+
+.modal-drag-handle::before {
+  content: "";
+  display: block;
+  width: 38px;
+  height: 5px;
+  margin: 9px auto 0;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.modal-drag-handle:active {
+  cursor: grabbing;
 }
 
 .modal-header {
@@ -4049,6 +4078,7 @@ body.body-scroll-locked .main-content {
 .modal-body {
   flex: 1 1 auto;
   min-height: 0;
+  max-height: calc(100dvh - 112px);
   display: grid;
   gap: 14px;
   padding: 22px;
@@ -4740,8 +4770,22 @@ body.body-scroll-locked .main-content {
   .modal {
     width: 100%;
     max-height: 92dvh;
+    min-height: 0;
     border-radius: 20px 20px 0 0;
     animation: modal-slide-up 240ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+
+  .modal-drag-handle {
+    display: block;
+  }
+
+  .expense-modal .modal-drag-handle {
+    display: none;
+  }
+
+  .category-breakdown-modal {
+    height: calc(88dvh - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - env(safe-area-inset-top));
   }
 
   .modal-header {
@@ -4750,6 +4794,10 @@ body.body-scroll-locked .main-content {
 
   .modal-body {
     padding: 18px;
+    max-height: calc(92dvh - 72px - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   .modal-footer {
@@ -4784,6 +4832,7 @@ body.body-scroll-locked .main-content {
   .expense-modal .modal-body {
     flex: 1 1 0;
     min-height: 0;
+    max-height: none;
     overflow-y: auto;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
@@ -7075,14 +7124,49 @@ body.body-scroll-locked .main-content {
 }
 
 /* ---- Category breakdown modal content ---- */
+.category-breakdown-modal {
+  height: min(720px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+}
+
 .category-breakdown-modal .modal-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: none;
   padding: 16px;
+  overflow: hidden;
+}
+
+.cbm-summary {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  padding-bottom: 16px;
 }
 
 .cbm-donut-wrap {
   display: flex;
   justify-content: center;
   margin-bottom: 20px;
+}
+
+.cbm-scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding-right: 4px;
+}
+
+.cbm-scroll-region:focus {
+  outline: 2px solid rgba(15, 118, 110, 0.24);
+  outline-offset: 2px;
+  border-radius: 12px;
 }
 
 .cbm-list {
@@ -8030,6 +8114,12 @@ body.body-scroll-locked .main-content {
   color: #4b5563;
 }
 
+.home-status-badge--upcoming {
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+}
+
 .home-trip-alert {
   margin-top: 4px;
   padding: 7px 9px;
@@ -8335,6 +8425,7 @@ body.body-scroll-locked .main-content {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 
 .exp-form-body {
@@ -8342,7 +8433,21 @@ body.body-scroll-locked .main-content {
   gap: 14px;
   padding: 20px 22px;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
+}
+
+.expense-modal,
+.expense-modal *,
+.exp-single-form,
+.exp-form-body,
+.exp-form-body label,
+.exp-form-body select,
+.exp-form-body input,
+.exp-form-body textarea {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .expense-form-priority {
@@ -8409,6 +8514,7 @@ body.body-scroll-locked .main-content {
 }
 
 .exp-chip-icon { font-size: 16px; flex-shrink: 0; line-height: 1; }
+.exp-chip-icon:not(svg) { display: none; }
 .exp-chip-label { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .exp-chip-input {
@@ -8459,8 +8565,11 @@ body.body-scroll-locked .main-content {
 }
 
 .exp-type-emoji {
-  font-size: 30px;
-  line-height: 1;
+  display: none;
+}
+.exp-type-icon {
+  flex: 0 0 auto;
+  margin-bottom: 2px;
 }
 .exp-type-label {
   font-size: 14px;
@@ -9147,6 +9256,95 @@ body.body-scroll-locked .main-content {
   gap: 8px;
 }
 
+.quick-category-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.quick-category-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.quick-category-chip.active {
+  border-color: var(--primary);
+  background: var(--primary-muted);
+  color: var(--primary-dark);
+}
+
+.expense-quick-details,
+.expense-split-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.expense-quick-details > div,
+.expense-split-summary > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.expense-quick-details span,
+.expense-split-summary span,
+.expense-split-summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  line-height: 1.25;
+}
+
+.expense-quick-details strong,
+.expense-split-summary strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
+
+.expense-quick-details .small-button,
+.expense-split-summary .small-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.expense-details-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: var(--radius-sm);
+  background: rgba(240, 253, 250, 0.56);
+}
+
 /* ---- Mobile ---- */
 @media (max-width: 768px) {
   /* Panel slides up full-width from bottom */
@@ -9228,14 +9426,7 @@ body.body-scroll-locked .main-content {
   }
 
   html.os-ios .modal::before {
-    content: '';
-    display: block;
-    flex-shrink: 0;
-    width: 36px;
-    height: 5px;
-    margin: 8px auto -2px;
-    background: rgba(0, 0, 0, 0.18);
-    border-radius: 3px;
+    display: none;
   }
 
   /* Expense modal: full-screen, no misleading drag handle */
@@ -9357,14 +9548,7 @@ body.body-scroll-locked .main-content {
   }
 
   html.os-android .modal::before {
-    content: '';
-    display: block;
-    flex-shrink: 0;
-    width: 32px;
-    height: 4px;
-    margin: 10px auto -2px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 2px;
+    display: none;
   }
 
   /* Expense modal: full-screen, no misleading drag handle */
@@ -10041,6 +10225,12 @@ body.body-scroll-locked .main-content {
   .modal {
     width: 100%;
     max-height: calc(100dvh - env(safe-area-inset-top));
+    min-height: 0;
+  }
+
+  .category-breakdown-modal {
+    height: calc(88dvh - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - env(safe-area-inset-top));
   }
 
   .expense-modal {
@@ -10071,10 +10261,15 @@ body.body-scroll-locked .main-content {
 
   .modal-body {
     padding: 14px;
+    max-height: calc(100dvh - 74px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   .expense-modal .exp-form-body {
     flex: 1 1 auto;
+    max-height: none;
     padding: 10px 12px;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -10087,9 +10282,32 @@ body.body-scroll-locked .main-content {
     grid-template-columns: 1fr;
   }
 
+  .expense-modal .expense-form-priority {
+    grid-template-columns: minmax(0, 1fr) 104px;
+    gap: 8px;
+  }
+
   .expense-modal .expense-amount-input {
     min-height: 54px;
     font-size: 26px;
+  }
+
+  .expense-modal .exp-type-card {
+    min-height: 76px;
+    padding: 10px 8px;
+    gap: 3px;
+  }
+
+  .expense-modal .exp-type-emoji {
+    font-size: 24px;
+  }
+
+  .expense-modal .exp-type-label {
+    font-size: 13px;
+  }
+
+  .expense-modal .exp-type-sub {
+    font-size: 11px;
   }
 
   .modal-footer {
