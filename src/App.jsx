@@ -252,6 +252,57 @@ function getTaskSummary(tasks, currentUserId) {
   };
 }
 
+const TASK_STARTERS = [
+  {
+    id: "booking",
+    label: "Booking",
+    title: "Confirm accommodation booking",
+    type: "booking",
+    scope: "group",
+    note: "Reservations, tickets, and confirmations."
+  },
+  {
+    id: "payment",
+    label: "Payment",
+    title: "Pay trip deposit",
+    type: "payment",
+    scope: "group",
+    note: "Deposits, refunds, and shared payments."
+  },
+  {
+    id: "packing",
+    label: "Packing",
+    title: "Pack travel essentials",
+    type: "packing",
+    scope: "personal",
+    note: "Private checklist items for yourself."
+  },
+  {
+    id: "document",
+    label: "Document",
+    title: "Check passport and travel documents",
+    type: "document",
+    scope: "personal",
+    note: "IDs, visas, insurance, and files."
+  },
+  {
+    id: "receipt",
+    label: "Receipt",
+    title: "Upload receipt",
+    type: "receipt",
+    scope: "group",
+    note: "Proofs for expenses and reimbursements."
+  },
+  {
+    id: "custom",
+    label: "Custom",
+    title: "",
+    type: "general",
+    scope: "group",
+    note: "Anything else the trip needs."
+  }
+];
+
 function isActiveSharedExpense(expense) {
   return expense?.isActive !== false
     && expense?.expenseType === "shared"
@@ -5767,6 +5818,23 @@ function App() {
     return TASK_TYPE_OPTIONS.find(option => option.value === type)?.label || "General";
   }
 
+  function taskTypeIconName(type) {
+    if (type === "booking") return "briefcase";
+    if (type === "payment") return "card";
+    if (type === "receipt") return "receipt";
+    if (type === "packing") return "suitcase";
+    if (type === "document") return "note";
+    return "check";
+  }
+
+  function taskDueMeta(task) {
+    if (!task?.dueDate || task.status === "done") return null;
+    const today = todayIso();
+    if (task.dueDate < today) return { label: `Overdue ${formatTaskDate(task.dueDate)}`, tone: "overdue" };
+    if (task.dueDate === today) return { label: "Due today", tone: "today" };
+    return { label: `Due ${formatTaskDate(task.dueDate)}`, tone: "upcoming" };
+  }
+
   function taskScopeLabel(scope) {
     if (scope === "group") return "Group";
     if (scope === "selected_members") return "Shared";
@@ -5836,8 +5904,18 @@ function App() {
     setEditingTaskId(null);
   }
 
-  function openCreateTask() {
-    resetTaskForm();
+  function openCreateTask(starter = null) {
+    const fallbackAssignee = currentUserMemberId || activeMembers[0]?.id || "";
+    const scope = starter?.scope || "group";
+    setTaskForm({
+      ...EMPTY_TASK_FORM,
+      title: starter?.title || "",
+      type: starter?.type || "general",
+      scope,
+      assignedTo: fallbackAssignee ? [fallbackAssignee] : [],
+      selectedMemberIds: fallbackAssignee ? [fallbackAssignee] : []
+    });
+    setEditingTaskId(null);
     setIsTaskModalOpen(true);
   }
 
@@ -10990,11 +11068,11 @@ function App() {
             { label: "Done", value: taskSummary.doneCount, tone: "violet" }
           ];
           const filteredTasks = visibleTasks.filter(task => {
-            if (taskFilter === "assigned") return task.assignedTo?.includes(currentUserMemberId);
-            if (taskFilter === "group") return task.scope === "group";
-            if (taskFilter === "private") return task.scope === "personal" || task.scope === "selected_members";
+            if (taskFilter === "assigned") return task.assignedTo?.includes(currentUserMemberId) && task.status !== "done";
+            if (taskFilter === "group") return task.scope === "group" && task.status !== "done";
+            if (taskFilter === "private") return (task.scope === "personal" || task.scope === "selected_members") && task.status !== "done";
             if (taskFilter === "done") return task.status === "done";
-            return true;
+            return task.status !== "done";
           });
           const emptyCopy = {
             all: ["No tasks yet.", "Create your first trip task to keep everyone organized."],
@@ -11008,13 +11086,24 @@ function App() {
             <section className="tasks-page">
               <div className="tasks-head">
                 <div>
-                  <h2>Trip Tasks</h2>
-                  <p className="muted">Plan, assign, and track what needs to be done.</p>
+                  <h2>Tasks</h2>
+                  <p className="muted">
+                    {selectedTrip?.startDate && selectedTrip.startDate > todayIso()
+                      ? `Get ready for ${selectedTrip.name || "this trip"}`
+                      : selectedTrip?.endDate && selectedTrip.endDate < todayIso()
+                      ? "Wrap up anything still open"
+                      : "Keep the trip moving"}
+                  </p>
                 </div>
                 {!demoMode ? (
-                  <button className="primary-button" type="button" onClick={openBulkTaskModal}>
-                    + New task
-                  </button>
+                  <div className="tasks-head-actions">
+                    <button className="primary-button" type="button" onClick={() => openCreateTask()}>
+                      + Add
+                    </button>
+                    <button className="secondary-button" type="button" onClick={openBulkTaskModal}>
+                      Add several
+                    </button>
+                  </div>
                 ) : null}
               </div>
 
@@ -11032,8 +11121,8 @@ function App() {
 
               <div className="task-filter-pills">
                 {[
-                  ["all", "All"],
-                  ["assigned", "Assigned to me"],
+                  ["all", "Open"],
+                  ["assigned", "Mine"],
                   ["group", "Group"],
                   ["private", "Private"],
                   ["done", "Done"]
@@ -11079,9 +11168,38 @@ function App() {
 
               <div className="task-list">
                 {filteredTasks.length === 0 ? (
-                  <div className="task-empty-state">
-                    <h3>{emptyCopy[0]}</h3>
-                    <p className="muted">{emptyCopy[1]}</p>
+                  <div className={`task-empty-state${visibleTasks.length === 0 ? " task-empty-state--starter" : ""}`}>
+                    <div className="task-empty-copy">
+                      <span className="task-empty-icon"><Icon name="check" /></span>
+                      <div>
+                        <h3>{emptyCopy[0]}</h3>
+                        <p className="muted">
+                          {visibleTasks.length === 0
+                            ? "Start with the trip work people actually forget: bookings, payments, documents, packing, and receipts."
+                            : emptyCopy[1]}
+                        </p>
+                      </div>
+                    </div>
+                    {visibleTasks.length === 0 && !demoMode ? (
+                      <div className="task-starter-grid">
+                        {TASK_STARTERS.map(starter => (
+                          <button
+                            type="button"
+                            className="task-starter-card"
+                            key={starter.id}
+                            onClick={() => openCreateTask(starter)}
+                          >
+                            <Icon name={taskTypeIconName(starter.type)} size={22} />
+                            <strong>{starter.label}</strong>
+                            <span>{starter.note}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : !demoMode && taskFilter !== "done" ? (
+                      <button className="primary-button small-button" type="button" onClick={() => openCreateTask()}>
+                        Add task
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
                   filteredTasks.map(task => {
@@ -11089,6 +11207,7 @@ function App() {
                     const canComplete = canUserCompleteTask(task, currentUserMemberId);
                     const canEdit = canUserEditTask(task, currentUserMemberId, canManageSelectedTrip());
                     const isSelected = selectedTaskIds.has(task.id);
+                    const dueMeta = taskDueMeta(task);
                     const completedText = task.completedBy
                       ? `Done by ${memberNameOf(task.completedBy)}${task.completedAt?.toDate ? ` · ${task.completedAt.toDate().toLocaleDateString()}` : ""}`
                       : "Done";
@@ -11119,10 +11238,18 @@ function App() {
                         >
                           <span aria-hidden="true">{isDone ? "✓" : ""}</span>
                         </button>
+                        <div className="task-type-badge" aria-hidden="true">
+                          <Icon name={taskTypeIconName(task.type)} size={20} />
+                        </div>
                         <div className="task-card-main">
                           <div className="task-card-title-row">
                             <h3>{task.title}</h3>
-                            <span className={`pill${isDone ? " muted-pill" : ""}`}>{isDone ? "Done" : "Todo"}</span>
+                            <span className={`pill${isDone ? " muted-pill" : ""}`}>{isDone ? "Done" : taskTypeLabel(task.type)}</span>
+                          </div>
+                          <div className="task-chip-row">
+                            <span>{taskScopeLabel(task.scope)}</span>
+                            <span>{taskMemberListLabel(task.assignedTo)}</span>
+                            {dueMeta ? <span className={`task-due-chip ${dueMeta.tone}`}>{dueMeta.label}</span> : null}
                           </div>
                           <p className="task-meta">
                             {isDone
@@ -12327,6 +12454,22 @@ function App() {
               <p className="small muted">
                 Add tasks for bookings, receipts, payments, packing, and documents.
               </p>
+
+              {!editingTaskId ? (
+                <div className="task-template-picker" aria-label="Task templates">
+                  {TASK_STARTERS.map(starter => (
+                    <button
+                      type="button"
+                      className={`task-template-chip${taskForm.type === starter.type && taskForm.title === starter.title ? " active" : ""}`}
+                      key={starter.id}
+                      onClick={() => openCreateTask(starter)}
+                    >
+                      <Icon name={taskTypeIconName(starter.type)} size={18} />
+                      <span>{starter.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
               <label>
                 Task title

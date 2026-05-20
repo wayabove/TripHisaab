@@ -1995,6 +1995,14 @@ p {
   gap: 18px;
 }
 
+.tasks-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .tasks-head h2 {
   margin-bottom: 6px;
   font-size: 30px;
@@ -2004,27 +2012,27 @@ p {
 .task-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 10px;
 }
 
 .task-summary-card {
   display: flex;
   align-items: center;
-  gap: 18px;
-  min-height: 112px;
-  padding: 20px;
+  gap: 10px;
+  min-height: 72px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
 
 .task-summary-icon {
-  width: 54px;
-  height: 54px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
-  border-radius: 18px;
+  border-radius: 14px;
   background: var(--primary-soft);
   color: var(--primary);
   font-weight: 900;
@@ -2036,13 +2044,13 @@ p {
 
 .task-summary-card strong {
   display: block;
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 900;
   line-height: 1;
 }
 
 .task-summary-card p {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: var(--text);
   font-size: 13px;
   font-weight: 750;
@@ -2078,10 +2086,10 @@ p {
 
 .task-card {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
-  padding: 18px;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -2243,8 +2251,8 @@ p {
 }
 
 .task-status-button {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -2293,6 +2301,41 @@ p {
   overflow-wrap: anywhere;
 }
 
+.task-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.task-chip-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.task-chip-row .task-due-chip.today {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+
+.task-chip-row .task-due-chip.overdue {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.task-chip-row .task-due-chip.upcoming {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
 .task-meta,
 .task-notes {
   margin: 6px 0 0;
@@ -2319,6 +2362,69 @@ p {
   border-radius: var(--radius);
   background: var(--surface);
   text-align: center;
+}
+
+.task-empty-state--starter {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  text-align: left;
+}
+
+.task-empty-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.task-empty-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--primary-muted);
+  flex: 0 0 auto;
+}
+
+.task-starter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.task-starter-card {
+  min-height: 112px;
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  justify-items: start;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+
+.task-starter-card:hover {
+  border-color: rgba(15, 118, 110, 0.35);
+  background: var(--primary-muted);
+  transform: translateY(-1px);
+}
+
+.task-starter-card strong {
+  font-size: 14px;
+}
+
+.task-starter-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .task-empty-state h3,
@@ -2390,6 +2496,35 @@ p {
   gap: 8px;
 }
 
+.task-template-picker {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.task-template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.task-template-chip.active {
+  border-color: transparent;
+  background: var(--primary);
+  color: var(--text-on-dark);
+}
+
 .compact-checkbox-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -2400,7 +2535,7 @@ p {
   }
 
   .task-card {
-    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-columns: auto auto auto minmax(0, 1fr);
   }
 
   .task-card-actions {
@@ -2414,13 +2549,51 @@ p {
     display: grid;
   }
 
+  .tasks-head-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .tasks-head-actions .primary-button,
+  .tasks-head-actions .secondary-button {
+    width: 100%;
+    min-width: 0;
+  }
+
   .task-summary-grid,
   .compact-checkbox-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-summary-card {
+    min-height: 64px;
+    padding: 10px;
+  }
+
+  .task-summary-icon {
+    display: none;
+  }
+
+  .task-card {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .task-type-badge {
+    display: none;
   }
 
   .task-card-title-row {
     align-items: flex-start;
+  }
+
+  .task-starter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-empty-copy {
+    margin: 0;
   }
 }
 
@@ -2561,6 +2734,22 @@ p {
   padding: 9px 13px;
   font-weight: var(--weight-bold);
   transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.task-type-badge {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 640px) {
+  .task-type-badge {
+    display: none;
+  }
 }
 
 .scope-option.intent-option {
