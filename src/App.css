@@ -9359,17 +9359,29 @@ body.body-scroll-locked .main-content {
     margin-right: -14px;
     padding-right: 14px;
   }
+  .expense-category-field {
+    gap: 9px;
+  }
+  .expense-category-field select {
+    min-height: 48px;
+  }
   .expense-quick-details {
+    margin: 2px 0 6px;
     padding: 10px 11px;
   }
   .expense-audience-head {
-    align-items: stretch;
+    display: grid;
+    align-items: start;
+    gap: 7px;
   }
   .expense-audience-pill {
-    max-width: 36%;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
+    max-width: 100%;
+    width: fit-content;
+    text-align: left;
+    justify-self: start;
+  }
+  .expense-modal .expense-audience-pill {
+    max-width: 100%;
   }
   .expense-audience-options {
     grid-template-columns: 1fr 1fr;
@@ -9379,6 +9391,10 @@ body.body-scroll-locked .main-content {
     min-height: 58px;
     padding: 9px;
     gap: 8px;
+  }
+  .expense-audience-icon {
+    width: 20px;
+    height: 20px;
   }
   .expense-audience-option strong {
     font-size: 13px;
@@ -9747,7 +9763,11 @@ body.body-scroll-locked .main-content {
 .expense-category-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+}
+
+.expense-category-field select {
+  min-height: 46px;
 }
 
 .expense-category-header {
@@ -9820,15 +9840,17 @@ body.body-scroll-locked .main-content {
 
 .expense-quick-details,
 .expense-split-summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
   padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
   overflow: hidden;
+  position: relative;
+  z-index: 0;
 }
 
 .expense-quick-details > div,
@@ -9862,7 +9884,6 @@ body.body-scroll-locked .main-content {
 
 .expense-quick-details .small-button,
 .expense-split-summary .small-button {
-  flex: 0 0 auto;
   align-self: center;
   white-space: nowrap;
 }
