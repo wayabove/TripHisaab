@@ -9832,7 +9832,7 @@ function App() {
         };
 
     const navItems = [
-      { key: "dashboard", label: "Trip Overview", icon: <Icon name="receipt" /> },
+      { key: "dashboard", label: "Trip Overview", icon: <Icon name="suitcase" /> },
               { key: "prediction", label: "Plan Budget", icon: <Icon name="chart" /> },
               { key: "actual", label: "Expenses", icon: <Icon name="card" /> },
               { key: "settlements", label: "Settle", icon: <Icon name="handshake" /> },
@@ -12543,7 +12543,7 @@ function App() {
         {/* Bottom navigation — visible on mobile only */}
         <nav className="bottom-nav" data-tour="bottom-nav-tour">
           {[
-            { key: "dashboard",   label: "Home",     icon: <Icon name="receipt" /> },
+            { key: "dashboard",   label: "Home",     icon: <Icon name="suitcase" /> },
             { key: "actual",      label: "Expenses", icon: <Icon name="card" /> },
             { key: "settlements", label: "Settle",   icon: <Icon name="handshake" /> },
             { key: "prediction",  label: "Budget",   icon: <Icon name="chart" /> },
