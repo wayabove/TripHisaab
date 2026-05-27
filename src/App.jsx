@@ -8304,7 +8304,11 @@ function App() {
         || formData.splitType !== "equal"
         || !allMembersSelected
       );
-    const quickCategoryOptions = activeCategories.slice(0, 6);
+    const selectedQuickCategory = activeCategories.find(category => category.id === formData.categoryId);
+    const quickCategoryOptions = [
+      ...(selectedQuickCategory ? [selectedQuickCategory] : []),
+      ...activeCategories.filter(category => category.id !== formData.categoryId)
+    ].slice(0, 6);
 
     function setExpenseAudience(mode) {
       if (mode === "personal") {
@@ -8533,22 +8537,37 @@ function App() {
             )}
           </div>
 
-          <div className="expense-quick-details">
-            <div>
-              <span>Details</span>
-              <strong>{detailsSummary}</strong>
+          {!expenseDetailsOpen && (
+            <div className="expense-quick-details">
+              <div>
+                <span>Details</span>
+                <strong>{detailsSummary}</strong>
+              </div>
+              <button
+                type="button"
+                className="secondary-button small-button"
+                onClick={() => setExpenseDetailsOpen(true)}
+              >
+                Edit
+              </button>
             </div>
-            <button
-              type="button"
-              className="secondary-button small-button"
-              onClick={() => setExpenseDetailsOpen(open => !open)}
-            >
-              {expenseDetailsOpen ? "Done" : "Edit"}
-            </button>
-          </div>
+          )}
 
           {expenseDetailsOpen && (
           <div className="expense-details-panel">
+            <div className="expense-details-panel-head">
+              <div>
+                <span>Details</span>
+                <strong>{detailsSummary}</strong>
+              </div>
+              <button
+                type="button"
+                className="secondary-button small-button"
+                onClick={() => setExpenseDetailsOpen(false)}
+              >
+                Done
+              </button>
+            </div>
             <label>
               Who paid?
               <select
