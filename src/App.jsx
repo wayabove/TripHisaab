@@ -9887,7 +9887,7 @@ function App() {
             </button>
           </div>
           <button className="sidebar-back-btn" type="button" onClick={goToTrips}>
-            <span className="sidebar-nav-icon"><Icon name="suitcase" /></span>
+            <span className="sidebar-nav-icon"><Icon name="list" /></span>
             My trips
           </button>
           {canManageSelectedTrip() && !demoMode ? (
@@ -9988,7 +9988,7 @@ function App() {
               type="button"
               onClick={goToTrips}
             >
-              <Icon name="suitcase" size={17} />
+              <Icon name="list" size={17} />
               <span>Trips</span>
             </button>
             {!demoMode ? renderNotificationBell() : null}
