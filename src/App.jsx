@@ -1683,7 +1683,9 @@ function Icon({ name, size = 20, strokeWidth = 1.9, className = "app-icon", titl
     user: "#fde68a",
     home: "#a7f3d0",
     target: "#fecaca",
-    clock: "#ddd6fe"
+    clock: "#ddd6fe",
+    search: "#e5e7eb",
+    bell: "#fde68a"
   };
   const fill = fills[name] || fills.receipt;
   const common = {
@@ -1727,7 +1729,9 @@ function Icon({ name, size = 20, strokeWidth = 1.9, className = "app-icon", titl
     user: <><circle cx="12" cy="8" r="4" fill={fill} /><path d="M4.8 20c.9-4.4 3.3-6.6 7.2-6.6s6.3 2.2 7.2 6.6z" fill="#bfdbfe" /></>,
     home: <><path d="M3.5 11.2 12 4l8.5 7.2" fill={fill} /><path d="M6 10.5V20h12v-9.5" fill="#a7f3d0" /><path d="M10 20v-5h4v5" fill="#fff7ed" /></>,
     target: <><circle cx="12" cy="12" r="8.5" fill={fill} /><circle cx="12" cy="12" r="5" fill="#fff7ed" /><circle cx="12" cy="12" r="2" fill="#111827" stroke="none" /></>,
-    clock: <><circle cx="12" cy="12" r="8.5" fill={fill} /><path d="M12 7.5V12l3 2" /></>
+    clock: <><circle cx="12" cy="12" r="8.5" fill={fill} /><path d="M12 7.5V12l3 2" /></>,
+    search: <><circle cx="10.5" cy="10.5" r="6.5" fill={fill} /><path d="m15.2 15.2 4.3 4.3" /></>,
+    bell: <><path d="M18 10.7a6 6 0 1 0-12 0c0 3.6-1.8 5-2.8 5.8h17.6c-1-.8-2.8-2.2-2.8-5.8z" fill={fill} /><path d="M9.4 19a2.8 2.8 0 0 0 5.2 0" /></>
   };
   return (
     <svg {...common}>
@@ -1998,7 +2002,7 @@ function App() {
   const [expenseDetailsOpen, setExpenseDetailsOpen] = useState(false);
   const expenseSharedSectionRef = useRef(null);
   const crossUnitExpandedTripsRef = useRef(new Set());
-  const pullRefreshRef = useRef({ startY: 0, pulling: false, eligible: false });
+  const pullRefreshRef = useRef({ startX: 0, startY: 0, pulling: false, eligible: false });
   const deliveredBrowserNotificationIdsRef = useRef(new Set());
   const pexelsDebounceRef = useRef(null);
 
@@ -2144,26 +2148,35 @@ function App() {
   }, [selectedTrip?.id, user?.uid, user?.email]);
 
   useEffect(() => {
+    const PULL_REFRESH_THRESHOLD = 128;
+    const PULL_REFRESH_MAX_HORIZONTAL_DRIFT = 44;
     const onTouchStart = event => {
       const touch = event.touches?.[0];
       const main = event.target?.closest?.(".main-content");
-      if (!touch || !main || main.scrollTop > 4) {
-        pullRefreshRef.current = { startY: 0, pulling: false, eligible: false };
+      const interactiveTarget = event.target?.closest?.("button, input, select, textarea, a, [role='button'], .bottom-nav");
+      if (!touch || !main || interactiveTarget || main.scrollTop > 2) {
+        pullRefreshRef.current = { startX: 0, startY: 0, pulling: false, eligible: false };
         return;
       }
-      pullRefreshRef.current = { startY: touch.clientY, pulling: false, eligible: true };
+      pullRefreshRef.current = { startX: touch.clientX, startY: touch.clientY, pulling: false, eligible: true };
     };
     const onTouchMove = event => {
       const touch = event.touches?.[0];
       const state = pullRefreshRef.current;
       if (!touch || !state.eligible) return;
-      if (touch.clientY - state.startY > 72) {
+      const deltaY = touch.clientY - state.startY;
+      const deltaX = Math.abs(touch.clientX - state.startX);
+      if (deltaX > PULL_REFRESH_MAX_HORIZONTAL_DRIFT || deltaY < -8) {
+        pullRefreshRef.current = { startX: 0, startY: 0, pulling: false, eligible: false };
+        return;
+      }
+      if (deltaY > PULL_REFRESH_THRESHOLD) {
         pullRefreshRef.current = { ...state, pulling: true };
       }
     };
     const onTouchEnd = () => {
       const state = pullRefreshRef.current;
-      pullRefreshRef.current = { startY: 0, pulling: false, eligible: false };
+      pullRefreshRef.current = { startX: 0, startY: 0, pulling: false, eligible: false };
       if (!state.pulling) return;
       setSyncStatus(navigator.onLine === false ? "offline" : "syncing");
       refreshCurrentView().finally(() => {
@@ -7202,7 +7215,7 @@ function App() {
         aria-label="Open notifications"
         onClick={openNotifications}
       >
-        <span className="notification-bell-icon">🔔</span>
+        <span className="notification-bell-icon"><Icon name="bell" size={19} /></span>
         {unreadNotificationCount > 0 ? (
           <span className="notification-badge">{unreadNotificationCount}</span>
         ) : null}
@@ -9898,7 +9911,6 @@ function App() {
                 type="button"
                 onClick={nextAction.onClick}
               >
-                <Icon name="users" size={28} className="exp-type-icon" />
                 <span className="mobile-next-action-icon">{nextAction.icon}</span>
                 <span className="mobile-next-action-copy">
                   <strong>{nextAction.title}</strong>
@@ -10697,7 +10709,7 @@ function App() {
               </div>
               <div className="expenses-toolbar">
                 <label className="expense-search">
-                  <span aria-hidden="true">⌕</span>
+                  <span aria-hidden="true"><Icon name="search" size={18} /></span>
                   <input
                     type="search"
                     value={expenseSearch}
@@ -13359,7 +13371,7 @@ function App() {
             {/* Search row */}
             <div className="home-search-row">
               <div className="home-search-wrap">
-                <span className="home-search-icon">🔍</span>
+                <span className="home-search-icon"><Icon name="search" size={18} /></span>
                 <input
                   className="home-search-input"
                   type="text"
