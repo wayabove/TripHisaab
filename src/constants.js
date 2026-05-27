@@ -101,7 +101,6 @@ export const CATEGORY_EMOJI_OPTIONS = [
 
 export const BUDGET_SCOPE_OPTIONS = [
   { value: "group", label: "Whole group" },
-  { value: "selected", label: "Selected people" },
   { value: "me", label: "Only me" }
 ];
 

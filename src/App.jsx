@@ -1941,6 +1941,7 @@ function App() {
   const [savingGroupBudget, setSavingGroupBudget] = useState(false);
   const [showGroupBudgetForm, setShowGroupBudgetForm] = useState(false);
   const [showCategoryAllocations, setShowCategoryAllocations] = useState(false);
+  const [activeBudgetScope, setActiveBudgetScope] = useState("group");
   const [personalContributions, setPersonalContributions] = useState([]);
   const [tripTotalsSummary, setTripTotalsSummary] = useState(null);
 
@@ -1956,6 +1957,7 @@ function App() {
   const [isBulkTaskModalOpen, setIsBulkTaskModalOpen] = useState(false);
   const [bulkTaskRows, setBulkTaskRows] = useState([{ id: 1, title: "", type: "general" }]);
   const [savingBulkTasks, setSavingBulkTasks] = useState(false);
+  const [showRatesDetails, setShowRatesDetails] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
   const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
   const [bulkAssignMode, setBulkAssignMode] = useState("group");
@@ -2430,6 +2432,7 @@ function App() {
     const map = new Map();
     predictions
       .filter(p => normalizeBudgetScope(p) === "group")
+      .filter(isBudgetAllocationEntry)
       .forEach(p => {
         map.set(
           p.categoryId,
@@ -2450,8 +2453,9 @@ function App() {
     if (activeMembers.length === 0) return 0;
     const allocated = predictions
       .filter(p => normalizeBudgetScope(p) === "group")
+      .filter(isBudgetAllocationEntry)
       .reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0);
-    const budget = allocated > 0 ? allocated : (groupBudget?.amountEur || 0);
+    const budget = groupBudget?.amountEur > 0 ? groupBudget.amountEur : allocated;
     if (!budget) return 0;
     return roundMoney(budget / activeMembers.length);
   }, [predictions, groupBudget, activeMembers]);
@@ -2540,10 +2544,10 @@ function App() {
       : roundMoney(shared + contribTotal);
     const groupAllocated = predictions
       .filter(p => normalizeBudgetScope(p) === "group")
+      .filter(isBudgetAllocationEntry)
       .reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0);
     const lumpsum = groupBudget?.amountEur || 0;
-    // Category allocations are the canonical budget; lump-sum is a legacy fallback only
-    const predicted = groupAllocated > 0 ? groupAllocated : lumpsum;
+    const predicted = lumpsum > 0 ? lumpsum : groupAllocated;
     const settled = settlements.reduce(
       (sum, s) => sum + Number(s.amountEur || 0),
       0
@@ -2552,7 +2556,7 @@ function App() {
   }, [currentUserMemberId, expenses, groupBudget, personalContributions, predictions, selectedTrip?.ownerId, settlements, tripTotalsSummary, user?.uid]);
 
   const visiblePlanTotal = useMemo(
-    () => predictions.reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0),
+    () => predictions.filter(isBudgetAllocationEntry).reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0),
     [predictions]
   );
 
@@ -3129,6 +3133,7 @@ function App() {
   function budgetScopeLabel(entry) {
     const scope = normalizeBudgetScope(entry);
     if (scope === "unit") return "Our unit";
+    if (scope === "selected") return "Legacy selection";
     return BUDGET_SCOPE_OPTIONS.find(option => option.value === scope)?.label || "Whole group";
   }
 
@@ -3140,7 +3145,7 @@ function App() {
       : entry.memberIds || [];
     if (scope === "me") return "Only me";
     if (scope === "unit") return ids.map(memberNameOf).join(" · ") || "Our unit";
-    return ids.map(memberNameOf).join(", ") || "Selected people";
+    return ids.map(memberNameOf).join(", ") || "Legacy selected people";
   }
 
   function getCurrentUserUnit() {
@@ -3169,9 +3174,9 @@ function App() {
     }
     if (scope === "selected") {
       return {
-        title: "Selected people",
-        detail: "Useful when only part of the group is planning this cost.",
-        impact: "Private group"
+        title: "Legacy selection",
+        detail: "This older budget can be viewed here. Edit it to move it to Group, My budget, or My unit.",
+        impact: "Legacy"
       };
     }
     return {
@@ -5128,7 +5133,16 @@ function App() {
   function buildBudgetVisibility(scope) {
     if (scope === "group") return activeMembers.map(m => m.id);
     if (scope === "me") return currentUserMemberId ? [currentUserMemberId] : [];
+    if (scope === "unit") return getCurrentUserUnit()?.memberIds || [];
     return budgetForm.visibleMemberIds || [];
+  }
+
+  function isBudgetTotalEntry(entry) {
+    return entry?.entryType === "total" || entry?.budgetEntryType === "total";
+  }
+
+  function isBudgetAllocationEntry(entry) {
+    return !isBudgetTotalEntry(entry);
   }
 
   function startEditingBudget(entry) {
@@ -5155,6 +5169,9 @@ function App() {
     if (!currentUserMemberId) return showToast("Could not find your trip member profile yet.", "error");
     const scope = budgetForm.scope || "group";
     const visibleMemberIds = buildBudgetVisibility(scope);
+    if (scope === "selected") {
+      return showToast("Selected-people budgets are now handled through travel units. Choose Group, My budget, or My unit.", "info");
+    }
     if ((scope === "selected" || scope === "unit") && visibleMemberIds.length === 0) {
       return showToast("Choose at least one person for this budget entry.", "error");
     }
@@ -5166,6 +5183,7 @@ function App() {
         categoryName: category?.name || "",
         title: budgetForm.title.trim(),
         estimatedEur: amount,
+        entryType: "allocation",
         scope,
         visibleMemberIds,
         createdByMemberId: currentUserMemberId,
@@ -5254,7 +5272,7 @@ function App() {
     setSavingPersonalBudget(true);
     try {
       const currency = personalBudgetForm.currency || selectedTrip.defaultCurrency || "EUR";
-      const amountEur = convertAmount(amount, currency);
+      const amountEur = convertToEur(amount, currency);
       const data = { originalAmount: amount, originalCurrency: currency, amountEur, updatedAt: new Date().toISOString() };
       await queueFirestoreWrite(
         setDoc(doc(db, "trips", selectedTrip.id, "personalBudgets", user.uid), data),
@@ -5294,7 +5312,7 @@ function App() {
     setSavingGroupBudget(true);
     try {
       const currency = groupBudgetForm.currency || selectedTrip.defaultCurrency || "EUR";
-      const amountEur = convertAmount(amount, currency);
+      const amountEur = convertToEur(amount, currency);
       const data = { originalAmount: amount, originalCurrency: currency, amountEur, updatedAt: new Date().toISOString() };
       await queueFirestoreWrite(
         setDoc(doc(db, "trips", selectedTrip.id, "groupBudget", "config"), data),
@@ -5323,6 +5341,97 @@ function App() {
     } catch (err) {
       console.error("Could not remove group budget:", err);
       showToast("Could not remove group budget.", "error");
+    }
+  }
+
+  async function handleSaveBudgetTotal(scope = activeBudgetScope, existingTotalEntry = null) {
+    if (!selectedTrip || isDemoMode()) return;
+    if (scope === "group") return handleSaveGroupBudget();
+    if (scope === "me") {
+      if (!user?.uid) return;
+      const amount = parseAmount(groupBudgetForm.amount);
+      if (!amount || amount <= 0) return showToast("Enter a valid budget amount.", "error");
+      setSavingPersonalBudget(true);
+      try {
+        const currency = groupBudgetForm.currency || selectedTrip.defaultCurrency || "EUR";
+        const amountEur = convertToEur(amount, currency);
+        const data = { originalAmount: amount, originalCurrency: currency, amountEur, updatedAt: new Date().toISOString() };
+        await queueFirestoreWrite(
+          setDoc(doc(db, "trips", selectedTrip.id, "personalBudgets", user.uid), data),
+          "Personal budget"
+        );
+        setPersonalBudget(data);
+        setShowGroupBudgetForm(false);
+      } catch (err) {
+        console.error("Could not save personal budget:", err);
+        showToast("Could not save personal budget.", "error");
+      } finally {
+        setSavingPersonalBudget(false);
+      }
+      return;
+    }
+    if (scope !== "unit") return;
+    const unit = getCurrentUserUnit();
+    if (!unit) return showToast("Create a unit in Members before setting a unit budget.", "info");
+    const amount = parseAmount(groupBudgetForm.amount);
+    if (!amount || amount <= 0) return showToast("Enter a valid budget amount.", "error");
+    setSavingGroupBudget(true);
+    try {
+      const currency = groupBudgetForm.currency || selectedTrip.defaultCurrency || "EUR";
+      const amountEur = convertToEur(amount, currency);
+      const totalRef = existingTotalEntry?.id
+        ? doc(db, "trips", selectedTrip.id, "predictions", existingTotalEntry.id)
+        : doc(collection(db, "trips", selectedTrip.id, "predictions"));
+      const data = {
+        entryType: "total",
+        title: unit.name ? `${unit.name} total budget` : "Unit total budget",
+        categoryId: null,
+        categoryName: "",
+        estimatedEur: amountEur,
+        originalAmount: amount,
+        originalCurrency: currency,
+        scope: "unit",
+        visibleMemberIds: unit.memberIds || [],
+        createdByMemberId: currentUserMemberId,
+        updatedAt: serverTimestamp()
+      };
+      await queueFirestoreWrite(
+        setDoc(totalRef, existingTotalEntry?.id ? data : { ...data, createdBy: user.uid, createdAt: serverTimestamp() }, { merge: true }),
+        "Unit budget"
+      );
+      setPredictions(current => {
+        const nextEntry = { id: totalRef.id, ...data, updatedAt: new Date() };
+        if (existingTotalEntry?.id) {
+          return current.map(entry => entry.id === existingTotalEntry.id ? nextEntry : entry);
+        }
+        return [nextEntry, ...current];
+      });
+      setShowGroupBudgetForm(false);
+      if (navigator.onLine !== false) showToast("Unit budget saved.", "success");
+    } catch (err) {
+      console.error("Could not save unit budget:", err);
+      showToast("Could not save unit budget.", "error");
+    } finally {
+      setSavingGroupBudget(false);
+    }
+  }
+
+  async function handleDeleteBudgetTotal(scope = activeBudgetScope, existingTotalEntry = null) {
+    if (!selectedTrip || isDemoMode()) return;
+    if (scope === "group") return handleDeleteGroupBudget();
+    if (scope === "me") return handleDeletePersonalBudget();
+    if (scope !== "unit" || !existingTotalEntry?.id) return;
+    if (!window.confirm("Remove the unit total budget? Category allocations will remain.")) return;
+    try {
+      await queueFirestoreWrite(
+        deleteDoc(doc(db, "trips", selectedTrip.id, "predictions", existingTotalEntry.id)),
+        "Unit budget removal"
+      );
+      setPredictions(current => current.filter(entry => entry.id !== existingTotalEntry.id));
+      setShowGroupBudgetForm(false);
+    } catch (err) {
+      console.error("Could not remove unit budget:", err);
+      showToast("Could not remove unit budget.", "error");
     }
   }
 
@@ -8172,10 +8281,20 @@ function App() {
         : allMembersSelected
         ? "Equal split with everyone"
         : `Equal split with ${selectedSplitCount || 0}`;
+    const detailSplitLabel =
+      formData.expenseType !== "shared"
+        ? "No split"
+        : formData.splitType === "custom"
+        ? "Custom"
+        : formData.splitType === "percent"
+        ? "Percent"
+        : allMembersSelected
+        ? "Equal split"
+        : `Split ${selectedSplitCount || 0}`;
     const detailsSummary = [
       formData.paidByMemberId ? `Paid by ${getMemberShortName(formData.paidByMemberId)}` : "Choose payer",
       `${formatExpenseDate(formData.date)} ${formData.time || nowTimeIso()}`,
-      splitLabel
+      detailSplitLabel
     ].join(" · ");
     const shouldShowSplitEditor =
       formData.expenseType === "shared"
@@ -8446,7 +8565,6 @@ function App() {
             <div className="exp-datetime-row">
             <label className="exp-date-chip">
               <Icon name="calendar" size={16} className="exp-chip-icon" />
-              <span className="exp-chip-icon">📅</span>
               <span className="exp-chip-label">{formatExpenseDate(formData.date)}</span>
               <input
                 type="date"
@@ -8458,7 +8576,6 @@ function App() {
             </label>
             <label className="exp-time-chip">
               <Icon name="clock" size={16} className="exp-chip-icon" />
-              <span className="exp-chip-icon">🕐</span>
               <span className="exp-chip-label">{formData.time || nowTimeIso()}</span>
               <input
                 type="time"
@@ -8471,57 +8588,69 @@ function App() {
           </div>
           )}
 
-          {/* Expense type cards */}
-          <div>
-            <div className="exp-section-header" style={{ marginBottom: "10px" }}>Who is this for?</div>
-            <div className="exp-type-cards exp-intent-cards">
+          {/* Expense audience */}
+          <div className="expense-audience-section">
+            <div className="expense-audience-head">
+              <div>
+                <span className="exp-section-header">Who is this for?</span>
+                <small>Pick who sees it and who shares the cost.</small>
+              </div>
+              <span className="expense-audience-pill">{expenseImpact.settlement}</span>
+            </div>
+            <div className="expense-audience-options" role="list" aria-label="Expense audience">
               <button
                 type="button"
-                className={`exp-type-card${expenseImpact.mode === "personal" ? " active" : ""}`}
+                className={`expense-audience-option${expenseImpact.mode === "personal" ? " active" : ""}`}
                 onClick={() => setExpenseAudience("personal")}
               >
-                <Icon name="user" size={28} className="exp-type-icon" />
-                <span className="exp-type-emoji">🙋</span>
-                <span className="exp-type-label">Just me</span>
-                <span className="exp-type-sub">No split</span>
+                <Icon name="user" size={22} className="expense-audience-icon" />
+                <span>
+                  <strong>Just me</strong>
+                  <small>No split</small>
+                </span>
               </button>
               <button
                 type="button"
-                className={`exp-type-card${expenseImpact.mode === "group" ? " active" : ""}`}
+                className={`expense-audience-option${expenseImpact.mode === "group" ? " active" : ""}`}
                 onClick={() => setExpenseAudience("group")}
               >
-                <Icon name="users" size={28} className="exp-type-icon" />
-                <span className="exp-type-emoji">👥</span>
-                <span className="exp-type-label">Everyone</span>
-                <span className="exp-type-sub">Group total</span>
+                <Icon name="users" size={22} className="expense-audience-icon" />
+                <span>
+                  <strong>Everyone</strong>
+                  <small>Trip group</small>
+                </span>
               </button>
               {currentUnitMemberIds.length > 0 && (
                 <button
                   type="button"
-                  className={`exp-type-card${expenseImpact.mode === "unit" ? " active" : ""}`}
+                  className={`expense-audience-option${expenseImpact.mode === "unit" ? " active" : ""}`}
                   onClick={() => setExpenseAudience("unit")}
                 >
-                  <Icon name="home" size={28} className="exp-type-icon" />
-                  <span className="exp-type-emoji">ðŸ </span>
-                  <span className="exp-type-label">Our unit</span>
-                  <span className="exp-type-sub">{currentUnit?.name || "Private unit"}</span>
+                  <Icon name="home" size={22} className="expense-audience-icon" />
+                  <span>
+                    <strong>Our unit</strong>
+                    <small>{currentUnit?.name || "Private unit"}</small>
+                  </span>
                 </button>
               )}
               <button
                 type="button"
-                className={`exp-type-card${expenseImpact.mode === "selected" ? " active" : ""}`}
+                className={`expense-audience-option${expenseImpact.mode === "selected" ? " active" : ""}`}
                 onClick={() => setExpenseAudience("selected")}
               >
-                <Icon name="target" size={28} className="exp-type-icon" />
-                <span className="exp-type-emoji">ðŸŽ¯</span>
-                <span className="exp-type-label">Selected</span>
-                <span className="exp-type-sub">Private split</span>
+                <Icon name="target" size={22} className="expense-audience-icon" />
+                <span>
+                  <strong>Selected</strong>
+                  <small>Choose people</small>
+                </span>
               </button>
             </div>
-            <div className={`expense-impact-card expense-impact-card--${expenseImpact.mode}`}>
-              <strong>{expenseImpact.title}</strong>
-              <span>{expenseImpact.detail}</span>
-              <small>{expenseImpact.settlement}</small>
+            <div className={`expense-impact-note expense-impact-note--${expenseImpact.mode}`}>
+              <Icon name={expenseImpact.mode === "group" ? "users" : "check"} size={18} />
+              <span>
+                <strong>{expenseImpact.title}</strong>
+                <small>{expenseImpact.detail}</small>
+              </span>
             </div>
           </div>
 
@@ -10423,34 +10552,131 @@ function App() {
         {activeTab !== "dashboard" ? (
           <div className="tab-page-content">
         {activeTab === "prediction" ? (() => {
-          const gbAllocated = totals.groupAllocated || 0;
-          const remaining = roundMoney(gbAllocated - totals.actual);
-          const pct = gbAllocated > 0 ? Math.min(100, Math.round((totals.actual / gbAllocated) * 100)) : 0;
-          const groupAllocationCount = predictions.filter(p => normalizeBudgetScope(p) === "group").length;
-          // Categories with actual spending but no planned allocation
-          const budgetedCategoryIds = new Set(predictions.map(p => p.categoryId).filter(Boolean));
+          const myUnit = getCurrentUserUnit();
+          const scopeOptions = [
+            { value: "group", label: isSolo ? "Trip" : "Group", icon: <Icon name="users" /> },
+            { value: "me", label: "Mine", icon: <Icon name="user" /> },
+            ...(myUnit ? [{ value: "unit", label: "My unit", icon: <Icon name="home" /> }] : [])
+          ];
+          const safeScope = activeBudgetScope === "unit" && !myUnit ? "group" : activeBudgetScope;
+          const scopeMemberIds = safeScope === "unit" ? (myUnit?.memberIds || []) : safeScope === "me" ? [currentUserMemberId].filter(Boolean) : activeMembers.map(m => m.id);
+          const scopeAllocations = predictions.filter(entry => normalizeBudgetScope(entry) === safeScope && isBudgetAllocationEntry(entry));
+          const legacySelectedAllocations = predictions.filter(entry => normalizeBudgetScope(entry) === "selected" && isBudgetAllocationEntry(entry));
+          const unitTotalEntry = safeScope === "unit"
+            ? predictions.find(entry => normalizeBudgetScope(entry) === "unit" && isBudgetTotalEntry(entry))
+            : null;
+          const explicitTotal = safeScope === "group"
+            ? Number(groupBudget?.amountEur || 0)
+            : safeScope === "me"
+            ? Number(personalBudget?.amountEur || 0)
+            : Number(unitTotalEntry?.estimatedEur || 0);
+          const allocated = roundMoney(scopeAllocations.reduce((sum, entry) => sum + Number(entry.estimatedEur || 0), 0));
+          const plannedTotal = explicitTotal > 0 ? explicitTotal : allocated;
+          const unallocated = explicitTotal > 0 ? roundMoney(explicitTotal - allocated) : 0;
+          const scopeExpenses = expenses.filter(expense => {
+            if (expense.isActive === false) return false;
+            if (safeScope === "me") {
+              return expense.expenseType !== "shared" && expense.paidByMemberId === currentUserMemberId;
+            }
+            if (safeScope === "unit") {
+              return scopeMemberIds.includes(expense.paidByMemberId)
+                || (expense.splitMemberIds || []).some(id => scopeMemberIds.includes(id))
+                || (expense.visibleTo || []).some?.(id => scopeMemberIds.includes(id));
+            }
+            return expense.expenseType === "shared" || expense.scope === "group" || expense.scope == null || expense.includeInGroupTotal === true;
+          });
+          const spent = safeScope === "group"
+            ? totals.actual
+            : roundMoney(scopeExpenses.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0));
+          const remaining = roundMoney(plannedTotal - spent);
+          const pct = plannedTotal > 0 ? Math.min(100, Math.round((spent / plannedTotal) * 100)) : 0;
+          const scopedActualByCategoryId = new Map();
+          scopeExpenses.forEach(expense => {
+            if (!expense.categoryId) return;
+            scopedActualByCategoryId.set(expense.categoryId, (scopedActualByCategoryId.get(expense.categoryId) || 0) + Number(expense.amountEur || 0));
+          });
+          const budgetedCategoryIds = new Set(scopeAllocations.map(p => p.categoryId).filter(Boolean));
           const unbudgetedCategories = categories.filter(c =>
-            !budgetedCategoryIds.has(c.id) && (actualByCategoryId.get(c.id) || 0) > 0
+            !budgetedCategoryIds.has(c.id) && (scopedActualByCategoryId.get(c.id) || 0) > 0
           );
+          const scopeTitle = safeScope === "group" ? (isSolo ? "Trip budget" : "Group budget") : safeScope === "me" ? "My budget" : `${myUnit?.name || "My unit"} budget`;
+          const totalCopy = explicitTotal > 0
+            ? `${allocated > 0 ? "Split into categories below" : "Ready when you are"}`
+            : allocated > 0
+            ? "Total comes from category budgets"
+            : "Start with a total, then split it if you want";
+          const overAllocated = explicitTotal > 0 && unallocated < 0;
+          const totalOriginal = safeScope === "group"
+            ? groupBudget
+            : safeScope === "me"
+            ? personalBudget
+            : unitTotalEntry;
           return (
           <section className="plan-budget-page">
 
-            {/* ── Budget summary — derived from category allocations ── */}
-            <section className="card group-budget-card">
-              <div className="group-budget-header">
+            <section className="card budget-workspace-card">
+              <div className="budget-workspace-head">
                 <div>
-                  <h2>{isSolo ? "Trip Budget" : "Group Budget"}</h2>
-                  <p className="small muted">
-                    {gbAllocated > 0
-                      ? `Total from ${groupAllocationCount} category allocation${groupAllocationCount !== 1 ? "s" : ""} below`
-                      : isSolo ? "Add allocations below to set your trip budget." : "Add allocations below to set the group budget."}
-                  </p>
+                  <span className="eyebrow">Plan Budget</span>
+                  <h2>{scopeTitle}</h2>
+                  <p className="small muted">{totalCopy}</p>
+                </div>
+                <div className="budget-scope-switch" role="tablist" aria-label="Budget view">
+                  {scopeOptions.map(option => (
+                    <button
+                      key={option.value}
+                      className={`budget-scope-switch-btn${safeScope === option.value ? " active" : ""}`}
+                      type="button"
+                      onClick={() => {
+                        setActiveBudgetScope(option.value);
+                        setShowGroupBudgetForm(false);
+                        resetBudgetForm({
+                          scope: option.value,
+                          visibleMemberIds: option.value === "unit" ? (myUnit?.memberIds || []) : option.value === "me" && currentUserMemberId ? [currentUserMemberId] : []
+                        });
+                      }}
+                    >
+                      {option.icon}
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
-              {gbAllocated > 0 ? (
+
+              {showGroupBudgetForm && !demoMode ? (
+                <div className="budget-total-form">
+                  <div className="group-budget-form-row">
+                    <input
+                      className="form-input"
+                      type="text"
+                      inputMode="decimal"
+                      value={groupBudgetForm.amount}
+                      placeholder="Total budget"
+                      onChange={e => setGroupBudgetForm(f => ({ ...f, amount: e.target.value.replace(/[^\d.,]/g, "") }))}
+                      onBlur={e => { const n = normalizeAmountInput(e.target.value); if (n !== e.target.value) setGroupBudgetForm(f => ({ ...f, amount: n })); }}
+                    />
+                    <select
+                      className="form-input"
+                      value={groupBudgetForm.currency}
+                      onChange={e => setGroupBudgetForm(f => ({ ...f, currency: e.target.value }))}
+                    >
+                      {SUPPORTED_CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="group-budget-form-actions">
+                    <button className="primary-button small-button" type="button" disabled={savingGroupBudget || savingPersonalBudget} onClick={() => handleSaveBudgetTotal(safeScope, unitTotalEntry)}>
+                      {savingGroupBudget || savingPersonalBudget ? "Saving..." : "Save total"}
+                    </button>
+                    <button className="secondary-button small-button" type="button" onClick={() => setShowGroupBudgetForm(false)}>Cancel</button>
+                    {explicitTotal > 0 && (
+                      <button className="danger-button small-button" type="button" onClick={() => handleDeleteBudgetTotal(safeScope, unitTotalEntry)}>Remove total</button>
+                    )}
+                  </div>
+                </div>
+              ) : plannedTotal > 0 ? (
                 <div className="group-budget-display">
                   <div className="group-budget-amount-row">
-                    <strong className="group-budget-amount">{fmx(gbAllocated)}</strong>
+                    <strong className="group-budget-amount">{fmx(plannedTotal)}</strong>
                     <span className="small muted">planned</span>
                   </div>
                   <div className="group-budget-bar-row">
@@ -10463,28 +10689,66 @@ function App() {
                     <span className={`group-budget-pct${pct >= 100 ? " over" : pct >= 80 ? " near" : ""}`}>{pct}%</span>
                   </div>
                   <div className="group-budget-stats">
-                    <span><strong>{fmx(totals.actual)}</strong> spent</span>
+                    <span><strong>{fmx(spent)}</strong> spent</span>
                     <span className={remaining < 0 ? "over-budget" : ""}>
                       <strong>{fmx(Math.abs(remaining))}</strong> {remaining < 0 ? "over" : "remaining"}
                     </span>
+                    <span className={overAllocated ? "over-budget" : ""}>
+                      <strong>{fmx(Math.abs(unallocated))}</strong> {overAllocated ? "over allocated" : "unallocated"}
+                    </span>
                   </div>
-                  {!isSolo && activeMembers.length > 0 && (
-                    <p className="group-budget-share-hint small muted">
-                      ~{formatMoney(fairShare)} per person · {activeMembers.length} members
-                    </p>
+                  {overAllocated && !demoMode && (
+                    <button
+                      className="link-button budget-inline-fix"
+                      type="button"
+                      onClick={() => {
+                        setGroupBudgetForm({ amount: String(allocated), currency: "EUR" });
+                        setShowGroupBudgetForm(true);
+                      }}
+                    >
+                      Increase total to match categories
+                    </button>
                   )}
                 </div>
               ) : (
-                <p className="muted small" style={{ marginTop: 4 }}>
-                  {demoMode ? "Budget is the sum of category allocations below." : "No budget set yet — add category allocations below."}
-                </p>
+                <div className="budget-empty-start">
+                  <Icon name="chart" size={30} />
+                  <div>
+                    <strong>No budget yet</strong>
+                    <span>{demoMode ? "Demo budgets are read-only." : "Add a total budget, or start with a category below."}</span>
+                  </div>
+                </div>
+              )}
+
+              {!demoMode && !showGroupBudgetForm && (
+                <div className="budget-quick-actions">
+                  <button
+                    className="primary-button small-button"
+                    type="button"
+                    onClick={() => {
+                      const originalCurrency = totalOriginal?.originalCurrency || selectedTrip?.defaultCurrency || "EUR";
+                      const originalAmount = totalOriginal?.originalAmount || (plannedTotal > 0 ? convertFromEur(exchangeRates, plannedTotal, originalCurrency) : "");
+                      setGroupBudgetForm({ amount: originalAmount ? String(originalAmount) : "", currency: originalCurrency });
+                      setShowGroupBudgetForm(true);
+                    }}
+                  >
+                    {explicitTotal > 0 ? "Edit total" : "Set total budget"}
+                  </button>
+                  <button className="secondary-button small-button" type="button" onClick={() => setShowCategoryAllocations(v => !v)}>
+                    {showCategoryAllocations ? "Hide categories" : allocated > 0 ? "Manage categories" : "Split into categories"}
+                  </button>
+                </div>
               )}
             </section>
 
-            {/* ── Category Allocations — always expanded, primary UI ── */}
             <section className="card plan-budget-editor">
               <div className="plan-budget-editor-header">
-                <span className="category-allocations-title">Category allocations</span>
+                <div>
+                  <span className="category-allocations-title">Category budgets</span>
+                  <p className="small muted">
+                    {allocated > 0 ? `${fmx(allocated)} allocated${explicitTotal > 0 ? ` · ${fmx(Math.max(0, unallocated))} still flexible` : ""}` : "Optional. Add only the categories you care about."}
+                  </p>
+                </div>
                 {!demoMode && (
                   <button className="secondary-button small-button" type="button" onClick={openCreateCategory}>
                     + Category
@@ -10493,11 +10757,11 @@ function App() {
               </div>
 
               {/* Allocation form */}
-              {!demoMode && (
+              {!demoMode && (showCategoryAllocations || scopeAllocations.length === 0 || editingBudgetId) && (
                 <form className="budget-form" onSubmit={handleSavePredictions}>
                   <div className="section-header compact-header" style={{ marginBottom: 0, paddingBottom: 0 }}>
                     <span className="emoji-field-label" style={{ fontWeight: 700 }}>
-                      {editingBudgetId ? "Edit allocation" : "Add allocation"}
+                      {editingBudgetId ? "Edit category budget" : "Add category budget"}
                     </span>
                   </div>
 
@@ -10519,7 +10783,7 @@ function App() {
                     <input
                       type="text"
                       value={budgetForm.title}
-                      placeholder="e.g. Group groceries"
+                      placeholder={safeScope === "me" ? "e.g. My snacks" : safeScope === "unit" ? "e.g. Family meals" : "e.g. Group groceries"}
                       onChange={e => setBudgetForm({ ...budgetForm, title: e.target.value })}
                     />
                   </label>
@@ -10580,31 +10844,13 @@ function App() {
                       })()}
                     </div>
                     <p className="intent-helper-text">
-                      {getBudgetScopeMeta(budgetForm.scope).detail}
-                    </p>
-                  </div>
-
-                  {budgetForm.scope === "selected" && (
-                    <div className="budget-member-picker">
-                      <span className="emoji-field-label">Choose people</span>
-                      <div className="member-chip-list">
-                        {activeMembers.map(member => (
-                          <button
-                            className={`member-chip${(budgetForm.visibleMemberIds || []).includes(member.id) ? " selected" : ""}`}
-                            type="button"
-                            key={member.id}
-                            onClick={() => toggleBudgetMember(member.id)}
-                          >
-                            {memberNameOf(member.id)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                    {getBudgetScopeMeta(budgetForm.scope).detail}
+                  </p>
+                </div>
 
                   <div className="budget-form-actions">
                     <button className="primary-button" type="submit" disabled={savingPredictions}>
-                      {savingPredictions ? "Saving…" : editingBudgetId ? "Save allocation" : "Add allocation"}
+                      {savingPredictions ? "Saving..." : editingBudgetId ? "Save category budget" : "Add category budget"}
                     </button>
                     {editingBudgetId && (
                       <button className="secondary-button" type="button" onClick={() => resetBudgetForm()}>
@@ -10616,15 +10862,15 @@ function App() {
               )}
 
               {/* Allocation list with per-category progress bars */}
-              {predictions.length === 0 ? (
+              {scopeAllocations.length === 0 ? (
                 <div className="empty-card" style={{ marginTop: 14 }}>
-                  <p className="muted">No allocations yet. Add one above to start tracking your budget by category.</p>
+                  <p className="muted">No category budgets yet. Keep the total flexible, or split part of it when you are ready.</p>
                 </div>
               ) : (
                 <div className="budget-entry-list" style={{ marginTop: 14 }}>
-                  {predictions.map(entry => {
+                  {scopeAllocations.map(entry => {
                     const category = entry.categoryId ? categoriesById.get(entry.categoryId) : null;
-                    const actualForEntry = entry.categoryId ? (actualByCategoryId.get(entry.categoryId) || 0) : 0;
+                    const actualForEntry = entry.categoryId ? (scopedActualByCategoryId.get(entry.categoryId) || 0) : 0;
                     const entryPct = entry.estimatedEur > 0 ? Math.min(100, Math.round((actualForEntry / entry.estimatedEur) * 100)) : null;
                     const isGroup = normalizeBudgetScope(entry) === "group";
                     return (
@@ -10680,7 +10926,7 @@ function App() {
               {/* Unbudgeted — spending in categories with no allocation */}
               {unbudgetedCategories.length > 0 && (
                 <div className="unbudgeted-section">
-                  <p className="unbudgeted-label small muted">Spending without allocation</p>
+                  <p className="unbudgeted-label small muted">Spent without a category budget</p>
                   {unbudgetedCategories.map(c => (
                     <div className="unbudgeted-row" key={c.id}>
                       <span
@@ -10690,7 +10936,20 @@ function App() {
                         {c.icon || "📦"}
                       </span>
                       <span className="unbudgeted-name">{c.name}</span>
-                      <span className="unbudgeted-amount small">{fmx(actualByCategoryId.get(c.id) || 0)}</span>
+                      <span className="unbudgeted-amount small">{fmx(scopedActualByCategoryId.get(c.id) || 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {legacySelectedAllocations.length > 0 && (
+                <div className="unbudgeted-section">
+                  <p className="unbudgeted-label small muted">Legacy selected-people budgets</p>
+                  {legacySelectedAllocations.map(entry => (
+                    <div className="unbudgeted-row" key={entry.id}>
+                      <span className="category-dot">🔖</span>
+                      <span className="unbudgeted-name">{entry.title || entry.categoryName || "Legacy budget"} · {budgetVisibleNames(entry)}</span>
+                      <span className="unbudgeted-amount small">{fmx(entry.estimatedEur)}</span>
                     </div>
                   ))}
                 </div>
@@ -11917,10 +12176,37 @@ function App() {
         ) : null}
 
         {activeTab === "settings" ? (
-          <section className="card">
-            <h2>Trip settings</h2>
+          <section className="settings-page">
+            <div className="settings-hero">
+              <div>
+                <span className="eyebrow">Control center</span>
+                <h2>Trip settings</h2>
+                <p className="small muted">
+                  Tune the trip, your personal display, exports, and safety actions from one place.
+                </p>
+              </div>
+              <div className="settings-hero-badge">
+                <Icon name="settings" />
+                <span>{canManageSelectedTrip() ? "Admin" : "Member"}</span>
+              </div>
+            </div>
 
-            <section className="profile-picture-setting">
+            <div className="settings-quick-stats" aria-label="Trip summary">
+              <div>
+                <span>Status</span>
+                <strong>{selectedTrip.status || "Active"}</strong>
+              </div>
+              <div>
+                <span>Members</span>
+                <strong>{activeMembers.length}</strong>
+              </div>
+              <div>
+                <span>Settlements</span>
+                <strong>{settlements.length}</strong>
+              </div>
+            </div>
+
+            <section className="settings-panel profile-picture-setting">
               <div
                 className={`profile-picture-preview${userProfile.profileImageDataUrl ? " has-image" : ""}`}
                 style={
@@ -11963,9 +12249,14 @@ function App() {
               </div>
             </section>
 
-            <section className="preferences-section">
-              <h3>My preferences</h3>
-              <p className="small muted">Applies to you across all trips — not visible to other members.</p>
+            <section className="settings-panel preferences-section">
+              <div className="settings-panel-head">
+                <div>
+                  <h3>My preferences</h3>
+                  <p className="small muted">Applies to you across all trips — not visible to other members.</p>
+                </div>
+                <Icon name="user" />
+              </div>
               <label className="preferences-row">
                 <span className="preferences-label">
                   My currency
@@ -11988,7 +12279,14 @@ function App() {
               </label>
             </section>
 
-            <form onSubmit={handleSaveTripSettings}>
+            <form className="settings-panel settings-trip-form" onSubmit={handleSaveTripSettings}>
+              <div className="settings-panel-head">
+                <div>
+                  <h3>Trip details</h3>
+                  <p className="small muted">Dates, name, currency, and the banner image everyone sees.</p>
+                </div>
+                <Icon name="calendar" />
+              </div>
               {!canManageSelectedTrip() ? (
                 <p className="small muted">
                   Trip details are managed by the owner. You can still update the trip image.
@@ -12004,38 +12302,21 @@ function App() {
                   required
                 />
               </label>
-              <div className="grid-2">
-                <label>
-                  Start date
-                  <input
-                    type="date"
-                    value={settingsTripForm.startDate}
-                    disabled={!canManageSelectedTrip()}
-                    onClick={openDatePicker}
-                    onChange={e => {
-                      const newStart = e.target.value;
-                      setSettingsTripForm(f => ({
-                        ...f,
-                        startDate: newStart,
-                        endDate: f.endDate < newStart ? newStart : f.endDate,
-                      }));
-                    }}
-                    required
-                  />
-                </label>
-                <label>
-                  End date
-                  <input
-                    type="date"
-                    value={settingsTripForm.endDate}
-                    min={settingsTripForm.startDate}
-                    disabled={!canManageSelectedTrip()}
-                    onClick={openDatePicker}
-                    onChange={e => setSettingsTripForm({ ...settingsTripForm, endDate: e.target.value })}
-                    required
-                  />
-                </label>
-              </div>
+              {canManageSelectedTrip() ? (
+                <DateRangePicker
+                  label="Trip dates"
+                  startDate={settingsTripForm.startDate}
+                  endDate={settingsTripForm.endDate}
+                  onChange={(startDate, endDate) =>
+                    setSettingsTripForm(f => ({ ...f, startDate, endDate }))
+                  }
+                />
+              ) : (
+                <div className="settings-date-summary">
+                  <span>Trip dates</span>
+                  <strong>{formatTripDateRange(settingsTripForm.startDate, settingsTripForm.endDate)}</strong>
+                </div>
+              )}
               <label>
                 Default currency
                 <select
@@ -12094,22 +12375,16 @@ function App() {
               </button>
             </form>
 
-            <div className="settings-list settings-section-sm">
-              <p><strong>Status:</strong> {selectedTrip.status}</p>
-              <p><strong>Members:</strong> {members.length}</p>
-              <p><strong>Active members:</strong> {activeMembers.length}</p>
-              <p><strong>Settlements:</strong> {settlements.length}</p>
-              <p>
-                <strong>Your access:</strong>{" "}
-                {selectedTrip.accessRole === "owner" ? "Owner" : "Member"}
-              </p>
-            </div>
-
-            <section className="settings-section">
-              <h2>Export</h2>
-              <p className="small muted">
-                Downloads a formatted Excel workbook (.xlsx) with 6 sheets: Summary, Members, Expenses, Categories, Settlements, and Tasks. Opens directly in Excel or Google Sheets with colour-coded formatting.
-              </p>
+            <section className="settings-panel settings-section">
+              <div className="settings-panel-head">
+                <div>
+                  <h3>Export</h3>
+                  <p className="small muted">
+                    Downloads a formatted Excel workbook with Summary, Members, Expenses, Categories, Settlements, and Tasks.
+                  </p>
+                </div>
+                <Icon name="receipt" />
+              </div>
               <p className="small muted settings-section-sm" style={{ marginTop: 0 }}>
                 Other members' personal expense details are redacted for privacy. The file is marked confidential.
               </p>
@@ -12122,9 +12397,14 @@ function App() {
               </button>
             </section>
 
-            <section className="settings-section">
-              <h2>App Tour</h2>
-              <p className="small muted">New here or need a refresher? Replay the interactive walkthrough.</p>
+            <section className="settings-panel settings-section">
+              <div className="settings-panel-head">
+                <div>
+                  <h3>App Tour</h3>
+                  <p className="small muted">New here or need a refresher? Replay the interactive walkthrough.</p>
+                </div>
+                <Icon name="plane" />
+              </div>
               <button
                 className="secondary-button small-button"
                 type="button"
@@ -12134,37 +12414,58 @@ function App() {
               </button>
             </section>
 
-            <section className="settings-section">
-              <h2>Support the App</h2>
-              <p className="small muted">Like TripHisaab? Buy me a Coffee! ☕</p>
+            <section className="settings-panel settings-section">
+              <div className="settings-panel-head">
+                <div>
+                  <h3>Support the App</h3>
+                  <p className="small muted">Like TripHisaab? Buy me a Coffee!</p>
+                </div>
+                <Icon name="cash" />
+              </div>
               <DonateButton inline />
             </section>
 
-            <section className="settings-section">
-              <h2>Exchange rates</h2>
-              <p className="small muted">{ratesStatusLabel}</p>
+            <section className="settings-panel settings-section">
+              <div className="settings-panel-head">
+                <div>
+                  <h3>Exchange rates</h3>
+                  <p className="small muted">{ratesStatusLabel}</p>
+                </div>
+                <Icon name="refresh" />
+              </div>
               {ratesMeta.error ? (
                 <p className="small muted">Last refresh error: {ratesMeta.error}</p>
               ) : null}
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={ratesLoading}
-                onClick={loadLiveExchangeRates}
-              >
-                {ratesLoading ? "Refreshing rates..." : "Refresh live rates"}
-              </button>
-              <div className="settings-list settings-section-sm">
-                {SUPPORTED_CURRENCIES.map(c => (
-                  <p key={c}>
-                    <strong>1 EUR</strong> = {getCurrencyRate(c).toFixed(4)} {c}
-                  </p>
-                ))}
+              <div className="settings-inline-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={ratesLoading}
+                  onClick={loadLiveExchangeRates}
+                >
+                  {ratesLoading ? "Refreshing rates..." : "Refresh live rates"}
+                </button>
+                <button
+                  className="link-button"
+                  type="button"
+                  onClick={() => setShowRatesDetails(value => !value)}
+                >
+                  {showRatesDetails ? "Hide rates" : "Show rates"}
+                </button>
               </div>
+              {showRatesDetails ? (
+                <div className="settings-list settings-section-sm">
+                  {SUPPORTED_CURRENCIES.map(c => (
+                    <p key={c}>
+                      <strong>1 EUR</strong> = {getCurrencyRate(c).toFixed(4)} {c}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
             </section>
 
             <button
-              className="secondary-button"
+              className="secondary-button settings-refresh-button"
               type="button"
               onClick={async () => {
                 await loadTripData(selectedTrip.id);
