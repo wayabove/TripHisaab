@@ -9367,7 +9367,8 @@ body.body-scroll-locked .main-content {
   }
   .expense-quick-details {
     margin: 2px 0 6px;
-    padding: 10px 11px;
+    min-height: 66px;
+    padding: 11px;
   }
   .expense-audience-head {
     display: grid;
@@ -9842,7 +9843,7 @@ body.body-scroll-locked .main-content {
 .expense-split-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 11px 12px;
   border: 1px solid var(--border);
@@ -9853,7 +9854,15 @@ body.body-scroll-locked .main-content {
   z-index: 0;
 }
 
-.expense-quick-details > div,
+.expense-quick-details {
+  width: 100%;
+  min-height: 64px;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+
+.expense-quick-details-copy,
 .expense-split-summary > div {
   display: grid;
   gap: 2px;
@@ -9880,6 +9889,21 @@ body.body-scroll-locked .main-content {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.expense-quick-details-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
 }
 
 .expense-quick-details .small-button,

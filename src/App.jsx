@@ -8538,19 +8538,17 @@ function App() {
           </div>
 
           {!expenseDetailsOpen && (
-            <div className="expense-quick-details">
-              <div>
+            <button
+              type="button"
+              className="expense-quick-details"
+              onClick={() => setExpenseDetailsOpen(true)}
+            >
+              <span className="expense-quick-details-copy">
                 <span>Details</span>
                 <strong>{detailsSummary}</strong>
-              </div>
-              <button
-                type="button"
-                className="secondary-button small-button"
-                onClick={() => setExpenseDetailsOpen(true)}
-              >
-                Edit
-              </button>
-            </div>
+              </span>
+              <span className="expense-quick-details-action">Edit</span>
+            </button>
           )}
 
           {expenseDetailsOpen && (
