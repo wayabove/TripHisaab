@@ -4464,6 +4464,27 @@ function App() {
     }
   }
 
+  function goToTrips() {
+    closeTrip();
+    cancelEditingTrip();
+    setIsCreateModalOpen(false);
+    setShowLanding(false);
+    setIsSidebarOpen(false);
+    try {
+      localStorage.setItem(APP_VIEW_STORAGE_KEY, "app");
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+
+  function handleLogoNavigation() {
+    if (user) {
+      goToTrips();
+      return;
+    }
+    openLandingPage();
+  }
+
   async function loadTripData(tripId, tripContext = selectedTrip) {
     if (tripId === DEMO_TRIP_ID) {
       setTripDataLoading(true);
@@ -9851,7 +9872,7 @@ function App() {
 
         <aside className={`sidebar${isSidebarOpen ? " sidebar-open" : ""}`}>
           <div className="sidebar-logo">
-            <button className="sidebar-logo-button" type="button" onClick={openLandingPage}>
+            <button className="sidebar-logo-button" type="button" onClick={handleLogoNavigation}>
               <img className="app-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
               <div className="brand-tagline">Every trip. Every spend. Sorted.</div>
             </button>
@@ -9865,8 +9886,9 @@ function App() {
               ✕
             </button>
           </div>
-          <button className="sidebar-back-btn" type="button" onClick={closeTrip}>
-            ← Back to trips
+          <button className="sidebar-back-btn" type="button" onClick={goToTrips}>
+            <span className="sidebar-nav-icon"><Icon name="suitcase" /></span>
+            My trips
           </button>
           {canManageSelectedTrip() && !demoMode ? (
             <button
@@ -9941,7 +9963,7 @@ function App() {
             ) : null}
             {!demoMode ? (
               <button className="link-button sidebar-logout" type="button" onClick={handleLogout}>
-                Out
+                Sign out
               </button>
             ) : null}
           </div>
@@ -9961,6 +9983,14 @@ function App() {
             <span className="mobile-topbar-title">
               <img className="mobile-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
             </span>
+            <button
+              className="secondary-button small-button mobile-topbar-trips"
+              type="button"
+              onClick={goToTrips}
+            >
+              <Icon name="suitcase" size={17} />
+              <span>Trips</span>
+            </button>
             {!demoMode ? renderNotificationBell() : null}
             {!demoMode ? (
             <button
@@ -13592,7 +13622,7 @@ function App() {
 
         <aside className={`sidebar${isSidebarOpen ? " sidebar-open" : ""}`}>
           <div className="sidebar-logo">
-            <button className="sidebar-logo-button" type="button" onClick={openLandingPage}>
+            <button className="sidebar-logo-button" type="button" onClick={handleLogoNavigation}>
               <img className="app-logo-img" src="/triphisaab-logo.svg" alt="TripHisaab" />
               <div className="brand-tagline">Every trip. Every spend. Sorted.</div>
             </button>
@@ -13641,7 +13671,7 @@ function App() {
                 <span className="sidebar-currency-badge">{personalCurrency}</span>
               )}
             </button>
-            <button className="link-button sidebar-logout" type="button" onClick={handleLogout}>Out</button>
+            <button className="link-button sidebar-logout" type="button" onClick={handleLogout}>Sign out</button>
           </div>
         </aside>
 
