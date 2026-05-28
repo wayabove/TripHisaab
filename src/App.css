@@ -8821,8 +8821,65 @@ body.body-scroll-locked .main-content {
 
 @media (max-width: 480px) {
   .tour-tooltip {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
     border-radius: 14px;
-    padding: 18px 16px 14px;
+    padding: 15px 14px 13px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tour-tooltip--center {
+    width: calc(100vw - 24px);
+  }
+
+  .tour-header {
+    margin-bottom: 11px;
+  }
+
+  .tour-kicker-row {
+    margin-bottom: 8px;
+  }
+
+  .tour-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .tour-title {
+    font-size: 16px;
+    margin-bottom: 6px;
+  }
+
+  .tour-body {
+    font-size: 13px;
+    line-height: 1.45;
+    margin-bottom: 12px;
+  }
+
+  .tour-bullets {
+    gap: 7px;
+    margin-bottom: 14px;
+  }
+
+  .tour-bullet {
+    font-size: 12px;
+  }
+
+  .tour-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tour-actions .primary-button,
+  .tour-actions .secondary-button {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .tour-actions .primary-button:only-child {
+    grid-column: 1 / -1;
   }
 }
 
@@ -11305,11 +11362,21 @@ body.body-scroll-locked .main-content {
 @media (max-width: 480px) {
   .settings-guide-actions {
     grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .settings-guide-actions > .primary-button,
   .settings-guide-card {
     width: 100%;
+  }
+
+  .settings-guide-card {
+    min-height: 66px;
+    padding: 10px 11px;
+  }
+
+  .settings-guide-card small {
+    font-size: 11px;
   }
 }
 

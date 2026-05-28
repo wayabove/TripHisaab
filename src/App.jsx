@@ -1524,10 +1524,20 @@ function TourOverlay({ onComplete, initialStep = 0 }) {
       const tt = tooltipRef.current.getBoundingClientRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
+      const isCompact = vw <= 480;
       let top, left;
       const pos = spotlight ? currentPosition : "center";
 
-      if (pos === "center" || !spotlight) {
+      if (isCompact && spotlight && pos !== "center") {
+        const SAFE_GAP = 12;
+        const preferredAbove = spotlight.top > vh / 2;
+        top = preferredAbove
+          ? spotlight.top - tt.height - SAFE_GAP
+          : spotlight.top + spotlight.height + SAFE_GAP;
+        if (top < PAD) top = spotlight.top + spotlight.height + SAFE_GAP;
+        if (top + tt.height > vh - PAD) top = spotlight.top - tt.height - SAFE_GAP;
+        left = vw / 2 - tt.width / 2;
+      } else if (pos === "center" || !spotlight) {
         top = vh / 2 - tt.height / 2;
         left = vw / 2 - tt.width / 2;
       } else if (pos === "bottom") {
