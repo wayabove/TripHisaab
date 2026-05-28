@@ -1564,7 +1564,15 @@ function TourOverlay({ onComplete, initialStep = 0 }) {
       setVisible(true);
     }, 60);
     return () => clearTimeout(tid);
-  }, [currentPosition, spotlight]);
+  }, [currentPosition, spotlight, step]);
+
+  useEffect(() => {
+    const handleEscape = event => {
+      if (event.key === "Escape") onComplete();
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [onComplete]);
 
   const next = () => {
     setVisible(false);
@@ -1583,7 +1591,7 @@ function TourOverlay({ onComplete, initialStep = 0 }) {
 
   return (
     <>
-      <div className="tour-overlay" />
+      <div className="tour-overlay" onClick={onComplete} aria-hidden="true" />
       {spotlight && (
         <div
           className="tour-spotlight"
