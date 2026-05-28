@@ -1372,39 +1372,104 @@ function Preloader() {
 
 const TOUR_STEPS = [
   {
+    id: "welcome",
+    icon: "suitcase",
+    kicker: "Quick start",
     targets: [],
-    title: "Welcome to TripHisaab! 👋",
-    body: "Your smart, free travel expense tracker — no ads, no paywalls, ever. Let me show you around in 4 quick steps.",
+    title: "Welcome to TripHisaab",
+    body: "A calm place to plan the trip, log shared costs, keep private spending private, and settle clearly at the end.",
+    bullets: ["Create or open a trip", "Invite people when you are ready", "Add expenses, budget, tasks, and settle"],
     position: "center",
   },
   {
+    id: "trips",
+    icon: "plus",
+    kicker: "Your trip home",
     targets: ["create-trip"],
-    title: "Create Your First Trip",
-    body: "Start here! Give your trip a name, add your destination, travel dates, and currency. You can set a budget too.",
+    title: "Start with one trip",
+    body: "Create a trip with dates and currency. After that, this screen becomes your switchboard for every journey.",
+    bullets: ["Use filters to find active, upcoming, or unsettled trips", "Tap any trip card to continue where you left off"],
     position: "bottom",
   },
   {
+    id: "overview",
+    icon: "suitcase",
+    kicker: "Inside a trip",
     targets: ["home-stats"],
-    title: "Your Travel Overview",
-    body: "At a glance — see how many trips you've taken, total money spent, and any outstanding balances across all journeys.",
+    title: "Know what needs attention",
+    body: "The overview keeps the big picture light: spending, budgets, balances, and what to do next.",
+    bullets: ["Use Home for status at a glance", "Use the Trips shortcut anytime to switch trips"],
     position: "bottom",
   },
   {
+    id: "expenses",
+    icon: "card",
+    kicker: "Log spending",
     targets: ["sidebar-tour", "bottom-nav-tour"],
-    title: "Everything Inside a Trip",
-    body: "Open any trip to access its tabs: log Expenses, plan ahead with Plan Budget, manage Members, view Balances, and adjust Settings.",
+    title: "Add expenses without overthinking",
+    body: "When you add an expense, choose who it is for: everyone, your unit, selected people, or just you.",
+    bullets: ["Everyone affects the group settlement", "Selected and unit expenses stay limited", "Personal expenses can stay private"],
     position: "right",
   },
   {
+    id: "budget",
+    icon: "chart",
+    kicker: "Plan ahead",
+    targets: ["sidebar-tour", "bottom-nav-tour"],
+    title: "Budget can be simple or detailed",
+    body: "Set one total budget first. If you want more control later, split part of it into categories.",
+    bullets: ["Group, personal, and unit budgets are separate", "Category budgets are optional", "Unallocated money stays flexible"],
+    position: "right",
+  },
+  {
+    id: "settle",
+    icon: "handshake",
+    kicker: "Settle clearly",
+    targets: ["sidebar-tour", "bottom-nav-tour"],
+    title: "Let TripHisaab simplify who pays whom",
+    body: "After shared expenses are added, the Settle tab turns balances into clear payment suggestions.",
+    bullets: ["See who owes and who receives", "Record payments as they happen", "Keep private/unit settlements separate"],
+    position: "right",
+  },
+  {
+    id: "tasks",
+    icon: "check",
+    kicker: "Plan together",
+    targets: ["sidebar-tour", "bottom-nav-tour"],
+    title: "Tasks keep the trip moving",
+    body: "Use tasks for bookings, packing, errands, and reminders so money and planning live together.",
+    bullets: ["Assign tasks to the right people", "Filter by what matters now", "Keep trip admin lightweight"],
+    position: "right",
+  },
+  {
+    id: "settings",
+    icon: "settings",
+    kicker: "Come back anytime",
     targets: [],
-    title: "You're All Set! ✈️",
-    body: "Invite friends to split shared costs, then settle up at the end with one tap. 100% free, no ads — forever. Happy travels!",
+    title: "Settings has the guide library",
+    body: "If a feature feels unclear later, replay the full tour or open a focused guide from Settings.",
+    bullets: ["Replay this guide", "Learn one feature at a time", "Export data and manage trip details"],
+    position: "center",
+  },
+  {
+    id: "done",
+    icon: "plane",
+    kicker: "Ready",
+    targets: [],
+    title: "You are all set",
+    body: "Start small: create a trip, add one expense, and let the app reveal the next useful step.",
+    bullets: ["No need to set everything up at once", "You can skip and replay this anytime"],
     position: "center",
   },
 ];
 
-function TourOverlay({ onComplete }) {
-  const [step, setStep] = useState(0);
+const TOUR_STEP_INDEX_BY_ID = TOUR_STEPS.reduce((map, item, index) => {
+  map[item.id] = index;
+  return map;
+}, {});
+
+function TourOverlay({ onComplete, initialStep = 0 }) {
+  const [step, setStep] = useState(() => Math.min(Math.max(0, initialStep), TOUR_STEPS.length - 1));
   const [spotlight, setSpotlight] = useState(null);
   const [tooltipPos, setTooltipPos] = useState(null);
   const [visible, setVisible] = useState(false);
@@ -1504,6 +1569,7 @@ function TourOverlay({ onComplete }) {
     setStep(s => s - 1);
   };
   const isLast = step === TOUR_STEPS.length - 1;
+  const progress = Math.round(((step + 1) / TOUR_STEPS.length) * 100);
 
   return (
     <>
@@ -1522,7 +1588,7 @@ function TourOverlay({ onComplete }) {
       )}
       <div
         ref={tooltipRef}
-        className="tour-tooltip"
+        className={`tour-tooltip${spotlight ? "" : " tour-tooltip--center"}`}
         style={
           tooltipPos && visible
             ? { top: tooltipPos.top, left: tooltipPos.left, opacity: 1 }
@@ -1530,25 +1596,37 @@ function TourOverlay({ onComplete }) {
         }
       >
         <div className="tour-header">
-          <div className="tour-dots">
-            {TOUR_STEPS.map((_, i) => (
-              <div key={i} className={`tour-dot${i === step ? " tour-dot-active" : ""}`} />
-            ))}
+          <div className="tour-progress-wrap" aria-label={`Guide progress ${progress}%`}>
+            <div className="tour-progress-bar" style={{ width: `${progress}%` }} />
           </div>
           <button className="tour-skip-btn" type="button" onClick={onComplete}>
             Skip
           </button>
         </div>
+        <div className="tour-kicker-row">
+          <span className="tour-icon"><Icon name={current.icon || "suitcase"} size={20} /></span>
+          <span className="tour-kicker">{current.kicker || `Step ${step + 1}`}</span>
+        </div>
         <h3 className="tour-title">{current.title}</h3>
         <p className="tour-body">{current.body}</p>
+        {current.bullets?.length ? (
+          <div className="tour-bullets">
+            {current.bullets.map(item => (
+              <div className="tour-bullet" key={item}>
+                <Icon name="check" size={16} />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="tour-actions">
           {step > 0 && (
             <button className="secondary-button small-button" type="button" onClick={prev}>
-              ← Back
+              Back
             </button>
           )}
           <button className="primary-button small-button" type="button" onClick={next}>
-            {isLast ? "Done ✓" : "Next →"}
+            {isLast ? "Done" : "Next"}
           </button>
         </div>
       </div>
@@ -1848,6 +1926,7 @@ function App() {
   const [isInviteShareModalOpen, setIsInviteShareModalOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [tutorialStartStep, setTutorialStartStep] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMoreSheetOpen, setIsMoreSheetOpen] = useState(false);
   const [tripSearch, setTripSearch] = useState("");
@@ -2364,7 +2443,10 @@ function App() {
 
   useEffect(() => {
     if (!user || !userProfile.loaded || pendingInvite) return;
-    if (!userProfile.tutorialCompletedAt) setIsTutorialOpen(true);
+    if (!userProfile.tutorialCompletedAt) {
+      setTutorialStartStep(0);
+      setIsTutorialOpen(true);
+    }
   }, [pendingInvite, user, userProfile.loaded, userProfile.tutorialCompletedAt]);
 
   useEffect(() => {
@@ -3291,6 +3373,14 @@ function App() {
     } catch (error) {
       console.error("Could not save tutorial status:", error);
     }
+  }
+
+  function startTutorialGuide(stepId = "welcome", options = {}) {
+    const nextStep = TOUR_STEP_INDEX_BY_ID[stepId] ?? 0;
+    if (options.tab) setActiveTab(options.tab);
+    setTutorialStartStep(nextStep);
+    setIsTutorialOpen(false);
+    window.requestAnimationFrame(() => setIsTutorialOpen(true));
   }
 
   async function saveProfilePicture(profileImageDataUrl) {
@@ -6709,7 +6799,13 @@ function App() {
   }
 
   function renderTutorialModal() {
-    return isTutorialOpen ? <TourOverlay onComplete={markTutorialSeen} /> : null;
+    return isTutorialOpen ? (
+      <TourOverlay
+        key={tutorialStartStep}
+        initialStep={tutorialStartStep}
+        onComplete={markTutorialSeen}
+      />
+    ) : null;
   }
 
   function selectCategoryEmoji(emoji) {
@@ -12447,18 +12543,40 @@ function App() {
             <section className="settings-panel settings-section">
               <div className="settings-panel-head">
                 <div>
-                  <h3>App Tour</h3>
-                  <p className="small muted">New here or need a refresher? Replay the interactive walkthrough.</p>
+                  <h3>Guide library</h3>
+                  <p className="small muted">Replay the full walkthrough or learn one feature when you need it.</p>
                 </div>
                 <Icon name="plane" />
               </div>
-              <button
-                className="secondary-button small-button"
-                type="button"
-                onClick={() => setIsTutorialOpen(true)}
-              >
-                ▶ Show tutorial
-              </button>
+              <div className="settings-guide-actions">
+                <button
+                  className="primary-button small-button"
+                  type="button"
+                  onClick={() => startTutorialGuide("welcome")}
+                >
+                  Full guide
+                </button>
+                {[
+                  { id: "expenses", tab: "actual", icon: "card", title: "Expenses", text: "Who sees it, who splits it, and private costs." },
+                  { id: "budget", tab: "prediction", icon: "chart", title: "Budget", text: "Total budget first, categories only if useful." },
+                  { id: "settle", tab: "settlements", icon: "handshake", title: "Settle", text: "Understand who pays whom and mark payments." },
+                  { id: "tasks", tab: "tasks", icon: "check", title: "Tasks", text: "Assign planning tasks without making it heavy." },
+                  { id: "settings", tab: "settings", icon: "settings", title: "Settings", text: "Dates, exports, rates, privacy, and this guide." },
+                ].map(guide => (
+                  <button
+                    key={guide.id}
+                    className="settings-guide-card"
+                    type="button"
+                    onClick={() => startTutorialGuide(guide.id, { tab: guide.tab })}
+                  >
+                    <Icon name={guide.icon} />
+                    <span>
+                      <strong>{guide.title}</strong>
+                      <small>{guide.text}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
             </section>
 
             <section className="settings-panel settings-section">

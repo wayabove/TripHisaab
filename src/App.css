@@ -8672,7 +8672,9 @@ body.body-scroll-locked .main-content {
   position: fixed;
   inset: 0;
   z-index: 8998;
-  background: transparent;
+  background: rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
   pointer-events: all;
 }
 
@@ -8700,41 +8702,41 @@ body.body-scroll-locked .main-content {
 .tour-tooltip {
   position: fixed;
   z-index: 9000;
-  width: min(320px, calc(100vw - 32px));
+  width: min(380px, calc(100vw - 32px));
   background: var(--surface);
-  border-radius: 18px;
-  padding: 22px 20px 18px;
+  border-radius: var(--radius-sm);
+  padding: 18px;
   box-shadow:
     0 24px 64px rgba(15, 23, 42, 0.22),
     0 0 0 1px rgba(15, 23, 42, 0.06);
   transition: opacity 220ms ease, top 320ms cubic-bezier(0.4, 0, 0.2, 1), left 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.tour-tooltip--center {
+  width: min(430px, calc(100vw - 32px));
+}
+
 .tour-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
   margin-bottom: 14px;
 }
 
-.tour-dots {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.tour-dot {
-  width: 7px;
+.tour-progress-wrap {
+  flex: 1 1 auto;
   height: 7px;
-  border-radius: 50%;
-  background: var(--border);
-  transition: background 200ms, transform 200ms, width 200ms;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
 }
 
-.tour-dot.tour-dot-active {
-  width: 20px;
-  border-radius: 999px;
-  background: var(--primary);
+.tour-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), #38bdf8);
+  transition: width 220ms ease;
 }
 
 .tour-skip-btn {
@@ -8753,10 +8755,32 @@ body.body-scroll-locked .main-content {
   background: var(--surface-soft);
 }
 
+.tour-kicker-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+
+.tour-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--primary-muted);
+}
+
+.tour-kicker {
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .tour-title {
   font-size: 17px;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   color: var(--text);
   margin: 0 0 8px;
 }
@@ -8765,7 +8789,28 @@ body.body-scroll-locked .main-content {
   font-size: 14px;
   color: var(--muted);
   line-height: 1.6;
-  margin: 0 0 18px;
+  margin: 0 0 14px;
+}
+
+.tour-bullets {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tour-bullet {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.tour-bullet .app-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .tour-actions {
@@ -11196,6 +11241,76 @@ body.body-scroll-locked .main-content {
 
 .settings-refresh-button {
   align-self: flex-start;
+}
+
+.settings-guide-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-guide-actions > .primary-button {
+  grid-column: 1 / -1;
+  justify-self: flex-start;
+}
+
+.settings-guide-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+
+.settings-guide-card:hover {
+  border-color: rgba(15, 118, 110, 0.32);
+  background: var(--primary-muted);
+}
+
+.settings-guide-card:active {
+  transform: scale(0.99);
+}
+
+.settings-guide-card > .app-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.settings-guide-card span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-guide-card strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.settings-guide-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+@media (max-width: 480px) {
+  .settings-guide-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-guide-actions > .primary-button,
+  .settings-guide-card {
+    width: 100%;
+  }
 }
 
 /* ---- Link button size variant ---- */
