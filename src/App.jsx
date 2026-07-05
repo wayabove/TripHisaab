@@ -10367,34 +10367,47 @@ function App() {
       { key: "personal", label: "My personal", count: expenses.filter(e => e.expenseType !== "shared").length },
       { key: "pending", label: "Pending split", count: expenseStats.pendingSplit }
     ];
+    const activeExpenseFilter = expenseFilterOptions.find(option => option.key === expenseFilter) || expenseFilterOptions[0];
+    const selectedExpenseTotalEur = roundMoney(
+      expenseRows.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
+    );
+    const sharedExpenseCount = expenseFilterOptions.find(option => option.key === "shared")?.count || 0;
+    const personalExpenseCount = expenseFilterOptions.find(option => option.key === "personal")?.count || 0;
     const expenseSummaryCards = [
+      {
+        label: `${activeExpenseFilter.label} total`,
+        value: fmx(selectedExpenseTotalEur),
+        sub: `${expenseRows.length} matching expense${expenseRows.length === 1 ? "" : "s"}`,
+        icon: <Icon name="list" />,
+        tone: "mint"
+      },
       {
         label: "Trip total",
         value: fmx(totals.actual),
         sub: "Shared plus included personal totals",
         icon: <Icon name="euro" />,
-        tone: "mint"
+        tone: "blue"
       },
       {
         label: "Shared",
         value: fmx(totals.shared),
-        sub: `${expenseFilterOptions[1].count} expense${expenseFilterOptions[1].count === 1 ? "" : "s"}`,
+        sub: `${sharedExpenseCount} expense${sharedExpenseCount === 1 ? "" : "s"}`,
         icon: <Icon name="users" />,
-        tone: "blue"
+        tone: "violet"
       },
       {
         label: "My personal",
         value: formatMoney(expenseStats.personal),
-        sub: `${expenseFilterOptions[2].count} expense${expenseFilterOptions[2].count === 1 ? "" : "s"}`,
+        sub: `${personalExpenseCount} expense${personalExpenseCount === 1 ? "" : "s"}`,
         icon: <Icon name="receipt" />,
-        tone: "violet"
+        tone: "amber"
       },
       {
         label: "This week",
         value: formatMoney(expenseStats.thisWeek),
         sub: `${expenseStats.thisWeekCount} expense${expenseStats.thisWeekCount === 1 ? "" : "s"}`,
         icon: <Icon name="calendar" />,
-        tone: "amber",
+        tone: "blue",
         mobileOptional: true
       }
     ];
