@@ -1,4 +1,4 @@
-const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 
@@ -21,65 +21,6 @@ function notificationBody(notification) {
   const action = notification.action || "updated the trip";
   return `${actor} ${action}.`;
 }
-
-function roundMoney(value) {
-  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
-}
-
-function isIncludedPersonalExpense(expense) {
-  return expense?.expenseType !== "shared"
-    && expense?.isActive !== false
-    && Number(expense?.amountEur || 0) > 0
-    && expense?.includeInGroupTotal !== false;
-}
-
-function getTripTotalsSummary(expenses) {
-  const activeExpenses = expenses.filter(expense =>
-    expense?.isActive !== false && Number(expense?.amountEur || 0) > 0
-  );
-  const sharedExpenses = activeExpenses.filter(expense => expense.expenseType === "shared");
-  const includedPersonalExpenses = activeExpenses.filter(isIncludedPersonalExpense);
-  const sharedTotalEur = roundMoney(
-    sharedExpenses.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
-  );
-  const personalTotalEur = roundMoney(
-    includedPersonalExpenses.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
-  );
-  return {
-    sharedTotalEur,
-    personalTotalEur,
-    totalSpentEur: roundMoney(sharedTotalEur + personalTotalEur),
-    expenseCount: activeExpenses.length,
-    sharedExpenseCount: sharedExpenses.length,
-    personalExpenseCount: includedPersonalExpenses.length
-  };
-}
-
-exports.syncTripTotalsOnExpenseWrite = onDocumentWritten(
-  "trips/{tripId}/expenses/{expenseId}",
-  async event => {
-    const { tripId, expenseId } = event.params;
-    const expensesSnap = await db.collection(`trips/${tripId}/expenses`).get();
-    const expenses = expensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const summary = getTripTotalsSummary(expenses);
-
-    await db.doc(`trips/${tripId}/tripTotals/summary`).set(
-      {
-        ...summary,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedBy: "syncTripTotalsOnExpenseWrite"
-      },
-      { merge: true }
-    );
-
-    logger.info("Trip totals summary synced after expense write", {
-      tripId,
-      expenseId,
-      expenseCount: summary.expenseCount,
-      totalSpentEur: summary.totalSpentEur
-    });
-  }
-);
 
 exports.sendTripNotificationPush = onDocumentCreated(
   "trips/{tripId}/notifications/{notificationId}",

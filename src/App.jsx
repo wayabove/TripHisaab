@@ -2694,6 +2694,25 @@ function App() {
     [members, user]
   );
 
+  const contributionByMemberId = useMemo(() => {
+    const map = new Map();
+    personalContributions.forEach(contribution => {
+      const memberId = contribution.memberId || contribution.userId;
+      if (!memberId) return;
+      map.set(memberId, Number(contribution.totalEur || 0));
+    });
+    if (currentUserMemberId) {
+      const currentUserTotal = expenses
+        .filter(expense =>
+          isIncludedPersonalExpense(expense)
+          && expense.paidByMemberId === currentUserMemberId
+        )
+        .reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0);
+      map.set(currentUserMemberId, roundMoney(currentUserTotal));
+    }
+    return map;
+  }, [currentUserMemberId, expenses, personalContributions]);
+
   const totals = useMemo(() => {
     let shared = 0;
     expenses.forEach(e => {
@@ -2701,7 +2720,6 @@ function App() {
       if (e.isActive === false || amount <= 0) return;
       if (e.expenseType === "shared") shared += amount;
     });
-    const isTripOwner = selectedTrip?.ownerId === user?.uid;
     // Add all members' personal contributions (amounts they opted to count toward group total).
     // Each member's doc holds only their aggregate — no individual expense details exposed.
     const contribTotal = getPersonalContributionTotal(
@@ -2709,14 +2727,9 @@ function App() {
       expenses,
       user?.uid,
       currentUserMemberId,
-      isTripOwner
+      false
     );
-    if (!isTripOwner && tripTotalsSummary?.totalSpentEur != null) {
-      shared = Number(tripTotalsSummary.sharedTotalEur || 0);
-    }
-    const actual = !isTripOwner && tripTotalsSummary?.totalSpentEur != null
-      ? roundMoney(tripTotalsSummary.totalSpentEur)
-      : roundMoney(shared + contribTotal);
+    const actual = roundMoney(shared + contribTotal);
     const groupAllocated = predictions
       .filter(p => normalizeBudgetScope(p) === "group")
       .filter(isBudgetAllocationEntry)
@@ -2728,7 +2741,7 @@ function App() {
       0
     );
     return { predicted, actual, shared, settled, groupAllocated };
-  }, [currentUserMemberId, expenses, groupBudget, personalContributions, predictions, selectedTrip?.ownerId, settlements, tripTotalsSummary, user?.uid]);
+  }, [currentUserMemberId, expenses, groupBudget, personalContributions, predictions, settlements, user?.uid]);
 
   const visiblePlanTotal = useMemo(
     () => predictions.filter(isBudgetAllocationEntry).reduce((sum, p) => sum + Number(p.estimatedEur || 0), 0),
@@ -2958,6 +2971,27 @@ function App() {
 
   const expenseRows = useMemo(() => {
     const queryText = expenseSearch.trim().toLowerCase();
+    const currentUnit = currentUserMemberId
+      ? settlementGroups.find(group =>
+          group.isActive !== false
+          && Array.isArray(group.memberIds)
+          && group.memberIds.includes(currentUserMemberId)
+        )
+      : null;
+    const currentUnitMemberIds = new Set(currentUnit?.memberIds || []);
+
+    const isMyExpense = expense =>
+      currentUserMemberId && expense.paidByMemberId === currentUserMemberId;
+
+    const isMyUnitExpense = expense => {
+      if (currentUnitMemberIds.size === 0) return false;
+      const relatedIds = new Set([
+        expense.paidByMemberId,
+        ...(expense.splitMemberIds || []),
+        ...expenseVisibleIds(expense, activeMembers)
+      ].filter(Boolean));
+      return Array.from(currentUnitMemberIds).some(memberId => relatedIds.has(memberId));
+    };
 
     const dateTimeValue = expense => {
       const value = `${expense.date || ""}T${expense.time || "00:00"}`;
@@ -2966,6 +3000,8 @@ function App() {
     };
 
     const matchesFilter = expense => {
+      if (expenseFilter === "mine") return isMyExpense(expense);
+      if (expenseFilter === "unit") return isMyUnitExpense(expense);
       if (expenseFilter === "shared") return expense.expenseType === "shared";
       if (expenseFilter === "personal") return expense.expenseType !== "shared";
       if (expenseFilter === "pending") {
@@ -3004,7 +3040,7 @@ function App() {
         }
         return dateTimeValue(b) - dateTimeValue(a);
       });
-  }, [expenseFilter, expenseSearch, expenseSort, expenses, memberNameOf]);
+  }, [activeMembers, currentUserMemberId, expenseFilter, expenseSearch, expenseSort, expenses, memberNameOf, settlementGroups]);
 
   const pagedExpenseRows = useMemo(() => {
     const pageSize = 5;
@@ -3226,14 +3262,16 @@ function App() {
   const memberSpending = useMemo(() => {
     const result = balances.map(b => {
       const personalPaid = roundMoney(
-        expenses
-          .filter(
-            e =>
-              e.isActive !== false &&
-              e.expenseType !== "shared" &&
-              e.paidByMemberId === b.memberId
-          )
-          .reduce((s, e) => s + Number(e.amountEur || 0), 0)
+        contributionByMemberId.has(b.memberId)
+          ? contributionByMemberId.get(b.memberId)
+          : expenses
+              .filter(
+                e =>
+                  e.isActive !== false &&
+                  e.expenseType !== "shared" &&
+                  e.paidByMemberId === b.memberId
+              )
+              .reduce((s, e) => s + Number(e.amountEur || 0), 0)
       );
       return { ...b, personalPaid, totalPaid: roundMoney(b.paid + personalPaid) };
     });
@@ -3243,7 +3281,7 @@ function App() {
       return b.totalPaid - a.totalPaid;
     });
     return result;
-  }, [balances, expenses, currentUserMemberId]);
+  }, [balances, contributionByMemberId, expenses, currentUserMemberId]);
 
   const spendingBreakdown = useMemo(
     () =>
@@ -6251,8 +6289,10 @@ function App() {
         categoryId: normalizedExpenseForm.categoryId
       }));
       setIsAddExpenseModalOpen(false);
+      const nextExpenses = [{ id: expenseRef.id, ...expensePayload, createdAt: new Date(), updatedAt: new Date() }, ...expenses];
+      await recalculatePersonalContribution(nextExpenses);
       if (queued) {
-        setExpenses(current => [{ id: expenseRef.id, ...expensePayload, createdAt: new Date(), updatedAt: new Date() }, ...current]);
+        setExpenses(nextExpenses);
       } else {
         await loadTripData(selectedTrip.id);
       }
@@ -6452,11 +6492,13 @@ function App() {
         updateDoc(expenseDocRef, expenseUpdate),
         "Expense update"
       );
+      const nextExpenses = expenses.map(expense =>
+        expense.id === editingExpenseId ? { ...expense, ...expenseUpdate, updatedAt: new Date() } : expense
+      );
+      await recalculatePersonalContribution(nextExpenses);
       cancelEditingExpense();
       if (queued) {
-        setExpenses(current => current.map(expense =>
-          expense.id === editingExpenseId ? { ...expense, ...expenseUpdate, updatedAt: new Date() } : expense
-        ));
+        setExpenses(nextExpenses);
       } else {
         await loadTripData(selectedTrip.id);
       }
@@ -10219,6 +10261,41 @@ function App() {
     const groupedMemberIds = new Set(activeUnitGroups.flatMap(g => g.memberIds));
     const ungroupedMemberSpending = memberSpending.filter(m => !groupedMemberIds.has(m.memberId));
     const myTravelUnit = getCurrentUserUnit();
+    const myTravelUnitMemberIds = new Set(myTravelUnit?.memberIds || []);
+    const isMyExpense = expense =>
+      currentUserMemberId && expense.paidByMemberId === currentUserMemberId;
+    const isMyUnitExpense = expense => {
+      if (myTravelUnitMemberIds.size === 0) return false;
+      const relatedIds = new Set([
+        expense.paidByMemberId,
+        ...(expense.splitMemberIds || []),
+        ...expenseVisibleIds(expense, activeMembers)
+      ].filter(Boolean));
+      return Array.from(myTravelUnitMemberIds).some(memberId => relatedIds.has(memberId));
+    };
+    const mySharedPaidEur = roundMoney(
+      expenses
+        .filter(expense =>
+          expense.isActive !== false
+          && expense.expenseType === "shared"
+          && expense.paidByMemberId === currentUserMemberId
+        )
+        .reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
+    );
+    const myTotalContributionEur = roundMoney(mySharedPaidEur + (contributionByMemberId.get(currentUserMemberId) || 0));
+    const myUnitContributionEur = roundMoney(
+      Array.from(myTravelUnitMemberIds)
+        .reduce((sum, memberId) => {
+          const sharedPaid = expenses
+            .filter(expense =>
+              expense.isActive !== false
+              && expense.expenseType === "shared"
+              && expense.paidByMemberId === memberId
+            )
+            .reduce((innerSum, expense) => innerSum + Number(expense.amountEur || 0), 0);
+          return sum + sharedPaid + Number(contributionByMemberId.get(memberId) || 0);
+        }, 0)
+    );
     const ungroupedMemberCount = activeMembers.filter(member => !groupedMemberIds.has(member.id)).length;
     const audienceModelItems = [
       { title: "Just me", detail: "Private expenses, budgets, and tasks.", icon: "user" },
@@ -10284,6 +10361,8 @@ function App() {
 
     const expenseFilterOptions = [
       { key: "all", label: "Visible", count: expenses.length },
+      { key: "mine", label: "Paid by me", count: expenses.filter(isMyExpense).length },
+      { key: "unit", label: "My unit", count: expenses.filter(isMyUnitExpense).length },
       { key: "shared", label: "Shared", count: expenses.filter(e => e.expenseType === "shared").length },
       { key: "personal", label: "My personal", count: expenses.filter(e => e.expenseType !== "shared").length },
       { key: "pending", label: "Pending split", count: expenseStats.pendingSplit }
@@ -10705,6 +10784,37 @@ function App() {
                     <span>Task</span>
                   </button>
                 ) : null}
+              </div>
+
+              <div className="dash-row dash-section-priority">
+                <div className="dash-card trip-health-row">
+                  <div className="trip-health-item">
+                    <span className="trip-health-label">My contribution</span>
+                    <strong className="trip-health-value">{fmx(myTotalContributionEur)}</strong>
+                    <span className="trip-health-note">
+                      {expenseFilterOptions.find(option => option.key === "mine")?.count || 0} paid by me
+                    </span>
+                  </div>
+                  <div className="trip-health-item">
+                    <span className="trip-health-label">{myTravelUnit ? `${myTravelUnit.name} contribution` : "My unit contribution"}</span>
+                    <strong className="trip-health-value">{myTravelUnit ? fmx(myUnitContributionEur) : "-"}</strong>
+                    <span className="trip-health-note">
+                      {myTravelUnit
+                        ? `${expenseFilterOptions.find(option => option.key === "unit")?.count || 0} visible unit expenses`
+                        : "Create a unit from Members"}
+                    </span>
+                  </div>
+                  <div className="trip-health-item">
+                    <span className="trip-health-label">Shared paid by me</span>
+                    <strong className="trip-health-value">{fmx(mySharedPaidEur)}</strong>
+                    <span className="trip-health-note">Included in settlement balance</span>
+                  </div>
+                  <div className="trip-health-item">
+                    <span className="trip-health-label">Included personal</span>
+                    <strong className="trip-health-value">{fmx(contributionByMemberId.get(currentUserMemberId) || 0)}</strong>
+                    <span className="trip-health-note">Aggregate visible to trip</span>
+                  </div>
+                </div>
               </div>
 
               {/* ── Trip health row (compact single-line summary) ── */}
