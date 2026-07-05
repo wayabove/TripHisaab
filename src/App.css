@@ -653,55 +653,90 @@ p {
 
 .flight-loader {
   --progress: 0%;
+  --plane-lift: 0px;
+  --route-offset: 420;
   position: relative;
   width: 100%;
-  height: 54px;
-  margin-top: 4px;
+  height: 90px;
+  margin-top: 6px;
+  overflow: visible;
+  isolation: isolate;
 }
 
-.flight-trail,
-.flight-progress {
+.flight-route-map {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 28px;
-  height: 0;
-  border-top: 3px dotted rgba(15, 118, 110, 0.22);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
-.flight-progress {
-  right: auto;
-  width: var(--progress);
-  border-top-color: var(--primary);
-  transition: width 160ms ease;
+.flight-route-shadow,
+.flight-route-progress {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.flight-route-shadow {
+  stroke: rgba(15, 118, 110, 0.18);
+  stroke-width: 5;
+  stroke-dasharray: 2 13;
+  animation: flight-route-spark 1.8s linear infinite;
+}
+
+.flight-route-progress {
+  stroke: var(--primary);
+  stroke-width: 5;
+  stroke-dasharray: 420;
+  stroke-dashoffset: var(--route-offset);
+  filter: drop-shadow(0 4px 8px rgba(15, 118, 110, 0.22));
+  transition: stroke-dashoffset 180ms ease;
 }
 
 .flight-plane {
   position: absolute;
   left: var(--progress);
-  top: 6px;
-  transform: translateX(-50%);
+  top: 24px;
+  transform: translate(-50%, var(--plane-lift));
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 44px;
-  transition: left 160ms ease;
+  width: 58px;
+  height: 50px;
+  z-index: 3;
+  transition: left 180ms ease, transform 180ms ease;
 }
 
 .flight-plane-icon {
-  width: 42px;
-  height: 36px;
+  position: relative;
+  z-index: 2;
+  width: 46px;
+  height: 39px;
   background: var(--primary);
   transform: rotate(0deg);
+  transform-origin: center;
   -webkit-mask: url("/LandingPage/Plane.svg") center / contain no-repeat;
   mask: url("/LandingPage/Plane.svg") center / contain no-repeat;
+  filter: drop-shadow(0 6px 10px rgba(15, 118, 110, 0.28));
+}
+
+.flight-plane-glow {
+  position: absolute;
+  z-index: 1;
+  width: 34px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(45, 212, 191, 0.32);
+  transform: translate(-10px, 9px);
+  filter: blur(6px);
+  animation: flight-plane-glow 900ms ease-in-out infinite;
 }
 
 .flight-speed-lines {
   position: absolute;
-  left: 1px;
-  width: 11px;
-  height: 1px;
+  left: 2px;
+  width: 15px;
+  height: 2px;
   border-radius: 99px;
   background: var(--primary);
   opacity: 0.75;
@@ -713,8 +748,8 @@ p {
   content: "";
   position: absolute;
   right: 0;
-  width: 8px;
-  height: 1px;
+  width: 10px;
+  height: 2px;
   border-radius: inherit;
   background: inherit;
 }
@@ -732,14 +767,132 @@ p {
 }
 
 .flight-speed-lines--top {
-  top: 14px;
-  transform: rotate(10deg);
+  top: 15px;
+  transform: rotate(6deg);
 }
 
 .flight-speed-lines--bottom {
-  top: 31px;
-  transform: rotate(-10deg);
+  top: 33px;
+  transform: rotate(-6deg);
   animation-delay: 180ms;
+}
+
+.flight-cloud {
+  position: absolute;
+  z-index: 1;
+  width: 36px;
+  height: 14px;
+  border: 1px solid rgba(15, 118, 110, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  animation: flight-cloud-drift 2.8s ease-in-out infinite;
+}
+
+.flight-cloud::before,
+.flight-cloud::after {
+  content: "";
+  position: absolute;
+  bottom: 5px;
+  border-radius: 999px;
+  background: inherit;
+}
+
+.flight-cloud::before {
+  left: 7px;
+  width: 14px;
+  height: 14px;
+}
+
+.flight-cloud::after {
+  right: 7px;
+  width: 18px;
+  height: 18px;
+}
+
+.flight-cloud--one {
+  left: 12%;
+  top: 44px;
+}
+
+.flight-cloud--two {
+  left: 46%;
+  top: 17px;
+  transform: scale(0.78);
+  animation-delay: 450ms;
+}
+
+.flight-cloud--three {
+  right: 10%;
+  top: 42px;
+  transform: scale(0.88);
+  animation-delay: 920ms;
+}
+
+.flight-destination {
+  position: absolute;
+  right: 4px;
+  top: 12px;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--primary);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 0 0 7px rgba(15, 118, 110, 0.08);
+  animation: flight-destination-pulse 1.4s ease-in-out infinite;
+}
+
+.flight-destination::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  transform: translate(-50%, -50%);
+}
+
+@keyframes flight-route-spark {
+  to {
+    stroke-dashoffset: -15;
+  }
+}
+
+@keyframes flight-plane-glow {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: translate(-11px, 9px) scaleX(0.85);
+  }
+  50% {
+    opacity: 0.75;
+    transform: translate(-14px, 9px) scaleX(1.18);
+  }
+}
+
+@keyframes flight-cloud-drift {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: -5px 2px;
+  }
+}
+
+@keyframes flight-destination-pulse {
+  0%,
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.08);
+  }
+  50% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(15, 118, 110, 0.14);
+  }
 }
 
 @keyframes flight-speed-line {
@@ -1598,6 +1751,90 @@ p {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
+}
+
+.member-row {
+  align-items: flex-start;
+}
+
+.member-row--pending {
+  border-color: #f59e0b55;
+  background: #fffbeb;
+}
+
+.member-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.member-verification-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  align-items: center;
+  gap: 18px;
+}
+
+.member-verification-card h2 {
+  margin: 2px 0 6px;
+}
+
+.member-verification-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.member-verification-grid span {
+  min-height: 54px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.member-verification-grid strong {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.member-verification-grid .needs-attention {
+  border-color: #f59e0b55;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.member-verification-pill {
+  margin-top: 8px;
+}
+
+.member-verification-pill--verified {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.member-verification-pill--invited,
+.member-verification-pill--pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.member-verification-pill--inactive,
+.member-verification-pill--rejected {
+  background: var(--border);
+  color: var(--muted);
+}
+
+.member-verification-detail {
+  margin: 7px 0 0;
 }
 
 .balance-row > div,
@@ -2948,6 +3185,33 @@ p {
   gap: 6px;
   flex-shrink: 0;
   align-items: flex-start;
+}
+
+.audience-preview-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: var(--radius-sm);
+  background: var(--primary-muted);
+}
+
+.audience-preview-card > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.audience-preview-card strong {
+  color: var(--primary-dark);
+  font-size: 13px;
+}
+
+.audience-preview-card span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .unbudgeted-section {
@@ -5000,6 +5264,15 @@ body.body-scroll-locked .main-content {
     align-items: stretch;
   }
 
+  .member-verification-card,
+  .member-verification-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .member-row-actions {
+    justify-content: flex-start;
+  }
+
   .trip-meta,
   .expense-card-side,
   .budget-entry-side {
@@ -6111,6 +6384,117 @@ body.body-scroll-locked .main-content {
   font-weight: 800;
   margin-bottom: 2px;
   letter-spacing: -0.01em;
+}
+
+.audience-guide-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.audience-guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.audience-guide-kicker {
+  display: block;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.audience-guide-head h3 {
+  margin: 0 0 4px;
+  font-size: 17px;
+}
+
+.audience-guide-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.audience-guide-stats span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.audience-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.audience-guide-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.audience-guide-item > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.audience-guide-item strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.audience-guide-item span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.audience-guide-link {
+  justify-self: start;
+}
+
+@media (max-width: 760px) {
+  .audience-guide-head {
+    display: grid;
+  }
+
+  .audience-guide-stats {
+    justify-content: flex-start;
+  }
+
+  .audience-guide-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .audience-guide-item {
+    padding: 9px;
+  }
+}
+
+@media (max-width: 430px) {
+  .audience-guide-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .dash-card-header {

@@ -18,6 +18,35 @@ service cloud.firestore {
       return existsAfter(tripPath(tripId));
     }
 
+    function invitePath(tripId, inviteId) {
+      return /databases/$(database)/documents/trips/$(tripId)/invites/$(inviteId);
+    }
+
+    function memberPath(tripId, memberId) {
+      return /databases/$(database)/documents/trips/$(tripId)/members/$(memberId);
+    }
+
+    function hasActiveInvite(tripId, inviteId) {
+      return inviteId is string
+        && exists(invitePath(tripId, inviteId))
+        && get(invitePath(tripId, inviteId)).data.status == "active";
+    }
+
+    function inviteEmailMatchesUser(tripId, inviteId) {
+      return signedIn()
+        && request.auth.token.email != null
+        && hasActiveInvite(tripId, inviteId)
+        && get(invitePath(tripId, inviteId)).data.targetEmailLower == request.auth.token.email;
+    }
+
+    function isOpenInvite(tripId, inviteId) {
+      return hasActiveInvite(tripId, inviteId)
+        && (
+          !get(invitePath(tripId, inviteId)).data.keys().hasAny(["targetEmailLower"])
+          || get(invitePath(tripId, inviteId)).data.targetEmailLower == ""
+        );
+    }
+
     function isOwner(tripId) {
       return signedIn()
         && tripExists(tripId)
@@ -240,6 +269,53 @@ service cloud.firestore {
         && request.auth.token.email == email;
     }
 
+    function isVerifiedSelfMemberAfter(tripId, email) {
+      return isSelfEmail(email)
+        && existsAfter(memberPath(tripId, email))
+        && getAfter(memberPath(tripId, email)).data.userId == request.auth.uid
+        && getAfter(memberPath(tripId, email)).data.status == "active";
+    }
+
+    function canSelfJoinWithTargetedInvite(tripId) {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.resource.data.inviteId is string
+        && inviteEmailMatchesUser(tripId, request.resource.data.inviteId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.emailLower == request.auth.token.email
+        && request.resource.data.role == "member"
+        && request.resource.data.status == "active"
+        && request.resource.data.verificationStatus == "verified";
+    }
+
+    function canSelfRequestOpenInvite(tripId) {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.resource.data.inviteId is string
+        && isOpenInvite(tripId, request.resource.data.inviteId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.emailLower == request.auth.token.email
+        && request.resource.data.role == "member"
+        && request.resource.data.status == "pending"
+        && request.resource.data.verificationStatus == "pending_review";
+    }
+
+    function canSelfClaimExpectedMember(memberId) {
+      return signedIn()
+        && request.auth.token.email != null
+        && resource.data.status == "active"
+        && resource.data.email == request.auth.token.email
+        && request.resource.data.role == "member"
+        && request.resource.data.status == "active"
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.emailLower == resource.data.emailLower
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["userId", "displayName", "email", "emailLower", "photoURL", "verificationStatus", "verificationMethod", "verifiedAt", "joinedAt", "updatedAt"]);
+    }
+
     match /users/{userId} {
       allow get, create, update, delete: if isSelfUser(userId);
       allow list: if signedIn();
@@ -255,7 +331,9 @@ service cloud.firestore {
 
     match /emailAccess/{email}/trips/{tripId} {
       allow get, list: if signedIn();
-      allow create, update: if isSelfEmail(email) || isOwner(tripId) || isOwnerAfter(tripId);
+      allow create, update: if isOwner(tripId)
+        || isOwnerAfter(tripId)
+        || isVerifiedSelfMemberAfter(tripId, email);
       allow delete: if isSelfEmail(email) || isOwner(tripId);
     }
 
@@ -269,13 +347,15 @@ service cloud.firestore {
 
       match /members/{memberId} {
         allow get, list: if canReadTrip(tripId) || isOwnerAfter(tripId);
-        allow create, update: if isOwner(tripId)
+        allow create: if isOwner(tripId)
           || isOwnerAfter(tripId)
-          || (
-            signedIn()
-            && request.resource.data.userId == request.auth.uid
-            && request.resource.data.role == "member"
-          );
+          || canSelfJoinWithTargetedInvite(tripId)
+          || canSelfRequestOpenInvite(tripId);
+        allow update: if isOwner(tripId)
+          || isOwnerAfter(tripId)
+          || canSelfJoinWithTargetedInvite(tripId)
+          || canSelfRequestOpenInvite(tripId)
+          || canSelfClaimExpectedMember(memberId);
         allow delete: if isOwner(tripId);
       }
 

@@ -145,6 +145,47 @@ function cleanDisplayName(name) {
     .join(" ");
 }
 
+function isActiveTripMember(member) {
+  if (!member) return false;
+  if (member.isOwner) return true;
+  return !member.status || member.status === "active";
+}
+
+function getMemberVerificationState(member) {
+  if (!member) return "unknown";
+  if (member.isOwner) return "verified";
+  if (member.status === "inactive") return "inactive";
+  if (member.status === "pending" || member.verificationStatus === "pending_review") return "pending";
+  if (member.verificationStatus === "rejected") return "rejected";
+  if (member.userId || member.verificationStatus === "verified" || member.verificationStatus === "admin_approved") {
+    return "verified";
+  }
+  if (member.verificationStatus === "invited" || member.expectedEmailLower || member.inviteId) return "invited";
+  return "active";
+}
+
+function getMemberVerificationLabel(member) {
+  const state = getMemberVerificationState(member);
+  if (member?.isOwner) return "Owner";
+  if (state === "verified") return "Verified";
+  if (state === "pending") return "Needs approval";
+  if (state === "invited") return "Invited";
+  if (state === "rejected") return "Rejected";
+  if (state === "inactive") return "Inactive";
+  return "Member";
+}
+
+function getMemberVerificationDetail(member) {
+  const state = getMemberVerificationState(member);
+  if (member?.isOwner) return "Trip owner and verified admin.";
+  if (state === "verified") return "Signed in with the expected Google email.";
+  if (state === "pending") return "Joined from a general link. Review before giving access.";
+  if (state === "invited") return "Access is limited to this exact email until they sign in.";
+  if (state === "rejected") return "This join request was rejected.";
+  if (state === "inactive") return "Access is removed, but history remains.";
+  return "Can access this trip.";
+}
+
 function normalizeExpenseScope(expense) {
   if (expense?.scope === "group" || expense?.scope === "selected_members" || expense?.scope === "personal") {
     return expense.scope;
@@ -719,7 +760,7 @@ function getSmartSettleSummaryByMode(
   isAdmin = false, currency = "EUR",
   mode = "fewest_payments", settlementGroups = []
 ) {
-  const activeMembers = members.filter(m => m.status !== "inactive");
+  const activeMembers = members.filter(isActiveTripMember);
   const groupExpenses = getGroupSettlementExpenses(expenses);
   const groupSettlements = settlementRecords.filter(r => (r.settlementLayer || "group") === "group");
   const groupBalances = calculateBalances(groupExpenses, activeMembers, groupSettlements);
@@ -1329,6 +1370,9 @@ function DateRangePicker({ label, startDate, endDate, onChange }) {
 
 function Preloader() {
   const [progress, setProgress] = useState(0);
+  const routeLength = 420;
+  const routeOffset = routeLength - (progress / 100) * routeLength;
+  const planeLift = -Math.sin((progress / 100) * Math.PI) * 18;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1353,15 +1397,33 @@ function Preloader() {
           aria-valuemin="0"
           aria-valuemax="100"
           aria-valuenow={progress}
-          style={{ "--progress": `${progress}%` }}
+          style={{
+            "--progress": `${progress}%`,
+            "--plane-lift": `${planeLift}px`,
+            "--route-offset": routeOffset
+          }}
         >
-          <div className="flight-trail" />
-          <div className="flight-progress" />
+          <svg className="flight-route-map" viewBox="0 0 420 86" aria-hidden="true" preserveAspectRatio="none">
+            <path
+              className="flight-route-shadow"
+              d="M12 58 C90 24 154 23 212 42 C274 63 321 47 408 20"
+            />
+            <path
+              className="flight-route-progress"
+              d="M12 58 C90 24 154 23 212 42 C274 63 321 47 408 20"
+              pathLength={routeLength}
+            />
+          </svg>
+          <span className="flight-cloud flight-cloud--one" aria-hidden="true" />
+          <span className="flight-cloud flight-cloud--two" aria-hidden="true" />
+          <span className="flight-cloud flight-cloud--three" aria-hidden="true" />
           <span className="flight-plane" aria-hidden="true">
             <span className="flight-plane-icon" />
+            <span className="flight-plane-glow" />
             <span className="flight-speed-lines flight-speed-lines--top" />
             <span className="flight-speed-lines flight-speed-lines--bottom" />
           </span>
+          <span className="flight-destination" aria-hidden="true" />
         </div>
         <div className="preloader-percent">{progress}%</div>
       </div>
@@ -1919,6 +1981,7 @@ function App() {
   const [inviteError, setInviteError] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [creatingInvite, setCreatingInvite] = useState(false);
+  const [inviteRequestSent, setInviteRequestSent] = useState(false);
 
   // -------------------- Exchange rates --------------------
   const [exchangeRates, setExchangeRates] = useState(
@@ -2543,9 +2606,21 @@ function App() {
   }, [predictions]);
 
   const activeMembers = useMemo(
-    () => members.filter(m => m.status !== "inactive"),
+    () => members.filter(isActiveTripMember),
     [members]
   );
+
+  const memberVerificationSummary = useMemo(() => {
+    const summary = { verified: 0, invited: 0, pending: 0, inactive: 0 };
+    members.forEach(member => {
+      const state = getMemberVerificationState(member);
+      if (state === "pending") summary.pending += 1;
+      else if (state === "invited") summary.invited += 1;
+      else if (state === "inactive" || state === "rejected") summary.inactive += 1;
+      else if (state === "verified") summary.verified += 1;
+    });
+    return summary;
+  }, [members]);
 
   const isSolo = useMemo(() => activeMembers.length <= 1, [activeMembers]);
 
@@ -2708,6 +2783,56 @@ function App() {
       groupSettlements
     );
   }, [activeMembers, expenses, settlements]);
+
+  useEffect(() => {
+    if (!selectedTrip || selectedTrip.id === DEMO_TRIP_ID || selectedTrip.isDemo) return;
+    const tripId = selectedTrip.id;
+    const isOwner = selectedTrip.ownerId === user?.uid;
+    const expenseCollection = collection(db, "trips", tripId, "expenses");
+
+    const expenseQueries = isOwner
+      ? [expenseCollection]
+      : [
+          query(expenseCollection, where("scope", "==", "group")),
+          query(expenseCollection, where("scope", "==", null)),
+          query(expenseCollection, where("visibleTo", "==", "all")),
+          query(expenseCollection, where("countsTowardGroupSettlement", "==", true)),
+          ...(currentUserMemberId
+            ? [query(expenseCollection, where("visibleTo", "array-contains", currentUserMemberId))]
+            : [])
+        ];
+
+    const queryResults = new Map();
+    const unsubscribers = expenseQueries.map((expenseQuery, index) =>
+      onSnapshot(
+        expenseQuery,
+        { includeMetadataChanges: true },
+        snap => {
+          updateSnapshotSyncState(snap);
+          const nextForQuery = new Map();
+          snap.docs.forEach(d => nextForQuery.set(d.id, { id: d.id, ...d.data() }));
+          queryResults.set(index, nextForQuery);
+
+          const mergedExpenses = Array.from(
+            Array.from(queryResults.values())
+              .flatMap(result => Array.from(result.values()))
+              .reduce((map, expense) => map.set(expense.id, expense), new Map())
+              .values()
+          ).sort((a, b) =>
+            (String(b.date || "") + String(b.time || "")).localeCompare(
+              String(a.date || "") + String(a.time || "")
+            )
+          );
+          setExpenses(mergedExpenses);
+        },
+        error => {
+          console.warn("Could not sync expenses in real time", error);
+        }
+      )
+    );
+
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe());
+  }, [selectedTrip?.id, selectedTrip?.ownerId, selectedTrip?.isDemo, user?.uid, currentUserMemberId]);
 
   // Real-time listener for settlements — keeps all members in sync when someone marks a payment.
   // Must be placed after currentUserMemberId is declared to avoid temporal dead zone.
@@ -3257,6 +3382,70 @@ function App() {
     ) || null;
   }
 
+  function memberListSummary(memberIds, fallback = "Selected people", maxNames = 3) {
+    const ids = Array.from(new Set((memberIds || []).filter(Boolean)));
+    if (ids.length === 0) return fallback;
+    const names = ids.slice(0, maxNames).map(memberNameOf);
+    const extra = ids.length - names.length;
+    return extra > 0 ? `${names.join(", ")} + ${extra} more` : names.join(", ");
+  }
+
+  function isSameMemberSet(left = [], right = []) {
+    const a = Array.from(new Set(left.filter(Boolean))).sort();
+    const b = Array.from(new Set(right.filter(Boolean))).sort();
+    return a.length === b.length && a.every((id, index) => id === b[index]);
+  }
+
+  function getUnitForMemberIds(memberIds = []) {
+    return settlementGroups.find(group =>
+      group.isActive !== false
+      && Array.isArray(group.memberIds)
+      && group.memberIds.length > 0
+      && isSameMemberSet(group.memberIds, memberIds)
+    ) || null;
+  }
+
+  function audienceLabelFromIds(memberIds = [], fallback = "Selected people") {
+    const ids = Array.from(new Set(memberIds.filter(Boolean)));
+    if (ids.length === 0) return fallback;
+    if (activeMembers.length > 0 && isSameMemberSet(ids, activeMembers.map(member => member.id))) return "Everyone";
+    const unit = getUnitForMemberIds(ids);
+    if (unit) return unit.id === getCurrentUserUnit()?.id ? `My unit: ${unit.name}` : `Unit: ${unit.name}`;
+    if (currentUserMemberId && ids.length === 1 && ids[0] === currentUserMemberId) return "Just me";
+    return memberListSummary(ids, fallback);
+  }
+
+  function expenseAudienceLabel(expense) {
+    const scope = normalizeExpenseScope(expense);
+    if (scope === "group" || expense.visibleTo === "all") return "Everyone";
+    const visibleIds = Array.isArray(expense.visibleTo)
+      ? expense.visibleTo
+      : expenseVisibleIds(expense, activeMembers);
+    if (scope === "personal") return "Just me";
+    return audienceLabelFromIds(visibleIds, "Selected people");
+  }
+
+  function expenseVisibilityPreview(formData, impact) {
+    if (impact.mode === "group") return "Visible to everyone";
+    if (impact.mode === "unit") return `Visible to ${getCurrentUserUnit()?.name || "your unit"}`;
+    if (impact.mode === "personal") return "Visible to you";
+    return `Visible to ${audienceLabelFromIds(formData.splitMemberIds || [], "selected people")}`;
+  }
+
+  function budgetVisibilityPreview(scope = budgetForm.scope, ids = budgetForm.visibleMemberIds) {
+    if (scope === "group") return "Visible to everyone";
+    if (scope === "me") return "Visible only to you";
+    if (scope === "unit") return `Visible to ${getCurrentUserUnit()?.name || "your unit"}`;
+    return `Visible to ${memberListSummary(ids, "selected people")}`;
+  }
+
+  function taskVisibilityPreview(form = taskForm) {
+    if (form.scope === "group") return "Visible to everyone";
+    if (form.scope === "personal") return "Visible only to you";
+    if (form.scope === "our_unit") return `Visible to ${getCurrentUserUnit()?.name || "your unit"}`;
+    return `Visible to ${memberListSummary(form.selectedMemberIds || [], "selected people")}`;
+  }
+
   function getBudgetScopeMeta(scope) {
     if (scope === "me") {
       return {
@@ -3565,12 +3754,14 @@ function App() {
     setPendingInvite(null);
     setInviteDetails(null);
     setInviteError("");
+    setInviteRequestSent(false);
   }
 
   async function loadInviteDetails(invite) {
     if (!invite?.tripId || !invite?.inviteId) return;
     setInviteLoading(true);
     setInviteError("");
+    setInviteRequestSent(false);
     try {
       const inviteRef = doc(db, "trips", invite.tripId, "invites", invite.inviteId);
       const snap = await getDoc(inviteRef);
@@ -3614,23 +3805,75 @@ function App() {
       }
 
       const emailLower = getEmailLower(user.email);
-      const displayName = user.displayName || emailLower;
+      const targetEmailLower = getEmailLower(inviteDetails.targetEmailLower || inviteDetails.targetEmail || "");
+      const isTargetedInvite = Boolean(targetEmailLower);
+
+      if (isTargetedInvite && emailLower !== targetEmailLower) {
+        showToast(`This invite is for ${targetEmailLower}. Sign in with that Google account.`, "error");
+        return;
+      }
+
+      const memberId = isTargetedInvite ? targetEmailLower : emailLower;
+      const memberRef = doc(db, "trips", pendingInvite.tripId, "members", memberId);
+      const existingMemberSnap = await getDoc(memberRef).catch(() => null);
+      const existingMember = existingMemberSnap?.exists() ? existingMemberSnap.data() : null;
+      const canAutoJoinExistingMember =
+        existingMember
+        && isActiveTripMember(existingMember)
+        && getEmailLower(existingMember.email) === emailLower;
+      const displayName =
+        inviteDetails.targetDisplayName
+        || existingMember?.displayName
+        || user.displayName
+        || emailLower;
       const batch = writeBatch(db);
 
+      if (!isTargetedInvite && !canAutoJoinExistingMember) {
+        batch.set(
+          memberRef,
+          {
+            displayName,
+            email: emailLower,
+            emailLower,
+            role: "member",
+            status: "pending",
+            verificationStatus: "pending_review",
+            verificationMethod: "open_invite_request",
+            isOwner: false,
+            userId: user.uid,
+            photoURL: user.photoURL || "",
+            inviteId: pendingInvite.inviteId,
+            invitedBy: inviteDetails.createdBy || "",
+            requestedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          },
+          { merge: true }
+        );
+
+        await batch.commit();
+        setInviteRequestSent(true);
+        showToast("Join request sent. A trip admin needs to approve it.", "success");
+        return;
+      }
+
       batch.set(
-        doc(db, "trips", pendingInvite.tripId, "members", emailLower),
+        memberRef,
         {
           displayName,
           email: emailLower,
           emailLower,
+          expectedEmailLower: emailLower,
           role: "member",
           status: "active",
+          verificationStatus: "verified",
+          verificationMethod: isTargetedInvite ? "targeted_invite" : "expected_email_access",
           isOwner: false,
           userId: user.uid,
           photoURL: user.photoURL || "",
           inviteId: pendingInvite.inviteId,
           invitedBy: inviteDetails.createdBy || "",
-          joinedAt: serverTimestamp(),
+          joinedAt: existingMember?.joinedAt || serverTimestamp(),
+          verifiedAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         },
         { merge: true }
@@ -3681,7 +3924,7 @@ function App() {
     }
   }
 
-  async function createInviteLink() {
+  async function createInviteLink(options = {}) {
     if (!selectedTrip || !user) return;
     if (navigator.onLine === false) {
       showToast("Invite links need a connection. Try again when you're online.", "info");
@@ -3693,6 +3936,8 @@ function App() {
     }
     setCreatingInvite(true);
     try {
+      const targetEmailLower = getEmailLower(options.targetEmail || options.targetEmailLower || "");
+      const targetDisplayName = String(options.targetDisplayName || "").trim();
       const inviteRef = doc(collection(db, "trips", selectedTrip.id, "invites"));
       await setDoc(inviteRef, {
         tripId: selectedTrip.id,
@@ -3707,6 +3952,11 @@ function App() {
           selectedTrip.ownerEmailLower || getEmailLower(user.email),
         createdBy: user.uid,
         status: "active",
+        inviteType: targetEmailLower ? "targeted_member" : "open_request",
+        approvalMode: targetEmailLower ? "exact_email" : "admin_approval",
+        targetEmailLower,
+        targetDisplayName,
+        expectedMemberId: targetEmailLower,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -3837,7 +4087,7 @@ function App() {
         .map(d => ({ data: d.data(), tripId: d.data().tripId || d.id }))
         .filter(e =>
           e.tripId &&
-          e.data.status !== "inactive" &&
+          (e.data.status || "active") === "active" &&
           leftTrips[e.tripId] !== true &&
           !tripsMap.has(e.tripId)
         );
@@ -3890,7 +4140,7 @@ function App() {
       ]);
       const loadedMembers = membersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedCurrentUserMemberId = getCurrentUserMemberIdFromList(loadedMembers);
-      const activeMembers = loadedMembers.filter(member => member.status !== "inactive");
+      const activeMembers = loadedMembers.filter(isActiveTripMember);
 
       const settlementCollection = collection(db, "trips", tripId, "settlements");
       const canLoadAllSettlements = trip.ownerId === user?.uid;
@@ -4559,6 +4809,45 @@ function App() {
     setInviteLink("");
   }
 
+  async function verifyCurrentMemberAccess(tripId, memberList) {
+    if (!tripId || !user) return memberList;
+    const emailLower = getEmailLower(user.email);
+    if (!emailLower) return memberList;
+    const member = memberList.find(m =>
+      getEmailLower(m.email) === emailLower || getEmailLower(m.emailLower) === emailLower
+    );
+    if (!member || member.isOwner || !isActiveTripMember(member)) return memberList;
+    if (member.userId === user.uid && getMemberVerificationState(member) === "verified") return memberList;
+
+    const verifiedNow = new Date().toISOString();
+    const updates = {
+      userId: user.uid,
+      displayName: member.displayName || user.displayName || emailLower,
+      email: emailLower,
+      emailLower,
+      photoURL: user.photoURL || member.photoURL || "",
+      verificationStatus: "verified",
+      verificationMethod: member.verificationMethod || "expected_email_access",
+      verifiedAt: serverTimestamp(),
+      joinedAt: member.joinedAt || serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    const localUpdates = {
+      ...updates,
+      verifiedAt: verifiedNow,
+      joinedAt: member.joinedAt || verifiedNow,
+      updatedAt: verifiedNow
+    };
+
+    try {
+      await updateDoc(doc(db, "trips", tripId, "members", member.id), updates);
+      return memberList.map(m => (m.id === member.id ? { ...m, ...localUpdates } : m));
+    } catch (error) {
+      console.warn("Could not mark member as verified:", error);
+      return memberList;
+    }
+  }
+
   function openLandingPage() {
     closeTrip();
     cancelEditingTrip();
@@ -4618,7 +4907,8 @@ function App() {
           getDocs(collection(db, "trips", tripId, "settlementGroups")).catch(() => ({ docs: [] }))
         ]);
 
-      const loadedMembers = membersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      let loadedMembers = membersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      loadedMembers = await verifyCurrentMemberAccess(tripId, loadedMembers);
       const loadedCategories = categoriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const loadedCurrentUserMemberId = getCurrentUserMemberIdFromList(loadedMembers);
       const settlementCollection = collection(db, "trips", tripId, "settlements");
@@ -4786,9 +5076,14 @@ function App() {
       loadedMembers.sort((a, b) => {
         if (a.isOwner) return -1;
         if (b.isOwner) return 1;
-        const aInactive = a.status === "inactive";
-        const bInactive = b.status === "inactive";
-        if (aInactive !== bInactive) return aInactive ? 1 : -1;
+        const rank = member => {
+          const state = getMemberVerificationState(member);
+          if (state === "pending") return 1;
+          if (state === "inactive" || state === "rejected") return 3;
+          return 2;
+        };
+        const rankDiff = rank(a) - rank(b);
+        if (rankDiff !== 0) return rankDiff;
         return String(a.displayName || a.email).localeCompare(
           String(b.displayName || b.email)
         );
@@ -4819,7 +5114,7 @@ function App() {
       });
 
       const firstActiveCategory = loadedCategories.find(c => c.isActive);
-      const activeLoadedMembers = loadedMembers.filter(m => m.status !== "inactive");
+      const activeLoadedMembers = loadedMembers.filter(isActiveTripMember);
 
       const defaultPayerId =
         getCurrentUserMemberIdFromList(activeLoadedMembers) ||
@@ -4877,7 +5172,7 @@ function App() {
         const syncedContributions = [];
         await Promise.all(
           loadedMembers
-            .filter(member => member.status !== "inactive")
+            .filter(isActiveTripMember)
             .map(async member => {
               const contributionId = member.userId || member.id;
               if (!contributionId) return;
@@ -5034,30 +5329,63 @@ function App() {
     const alreadyExists = members.some(
       m => getEmailLower(m.email) === emailLower
     );
+    const existingMember = members.find(m => getEmailLower(m.email) === emailLower);
 
     setSavingMember(true);
     try {
       const batch = writeBatch(db);
-      const memberRef = doc(db, "trips", selectedTrip.id, "members", emailLower);
+      const memberRef = doc(db, "trips", selectedTrip.id, "members", existingMember?.id || emailLower);
+      const inviteRef = doc(collection(db, "trips", selectedTrip.id, "invites"));
+      const inviteData = {
+        tripId: selectedTrip.id,
+        tripName: selectedTrip.name,
+        startDate: selectedTrip.startDate || "",
+        endDate: selectedTrip.endDate || "",
+        defaultCurrency: selectedTrip.defaultCurrency || "",
+        tripStatus: selectedTrip.status || "",
+        ownerId: selectedTrip.ownerId,
+        ownerEmail: selectedTrip.ownerEmail || user.email,
+        ownerEmailLower:
+          selectedTrip.ownerEmailLower || getEmailLower(user.email),
+        createdBy: user.uid,
+        status: "active",
+        inviteType: "targeted_member",
+        approvalMode: "exact_email",
+        targetEmailLower: emailLower,
+        targetDisplayName: displayName || emailLower,
+        expectedMemberId: existingMember?.id || emailLower,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      batch.set(inviteRef, inviteData);
+
+      const memberAccessFields = {
+        displayName: displayName || existingMember?.displayName || emailLower,
+        email: emailLower,
+        emailLower,
+        expectedEmailLower: emailLower,
+        role: "member",
+        status: "active",
+        verificationStatus: existingMember?.userId ? "verified" : "invited",
+        verificationMethod: existingMember?.userId ? (existingMember.verificationMethod || "expected_email_access") : "targeted_invite",
+        isOwner: false,
+        inviteId: inviteRef.id,
+        invitedBy: user.uid,
+        invitedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
 
       if (!alreadyExists) {
         batch.set(memberRef, {
-          displayName: displayName || emailLower,
-          email: emailLower,
-          emailLower,
-          role: "member",
-          status: "active",
-          isOwner: false,
+          ...memberAccessFields,
           userId: "",
           photoURL: "",
-          joinedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          createdAt: serverTimestamp()
         });
       } else {
         batch.update(memberRef, {
+          ...memberAccessFields,
           status: "active",
-          displayName: displayName || emailLower,
           updatedAt: serverTimestamp()
         });
       }
@@ -5074,6 +5402,8 @@ function App() {
       });
 
       await batch.commit();
+      const secureInviteLink = buildInviteLink(selectedTrip.id, inviteRef.id);
+      setInviteLink(secureInviteLink);
       setMemberDirectory(current => {
         const next = mergeMemberDirectory(current, [
           { displayName: displayName || emailLower, email: emailLower }
@@ -5086,7 +5416,9 @@ function App() {
       await loadTripData(selectedTrip.id);
 
       if (alreadyExists) {
-        showToast("This member already existed. Their access is active again.", "success");
+        showToast("Member access is active again. A fresh secure invite is ready.", "success");
+      } else {
+        showToast("Expected member added. Share the secure invite with that email.", "success");
       }
     } catch (error) {
       console.error("Could not add member:", error);
@@ -5126,6 +5458,9 @@ function App() {
 
       batch.update(memberRef, {
         status: nextStatus,
+        verificationStatus: nextStatus === "active"
+          ? (member.userId ? "verified" : "invited")
+          : "inactive",
         updatedAt: serverTimestamp()
       });
 
@@ -5151,6 +5486,99 @@ function App() {
       showToast("Could not update member. Check your Firestore rules.", "error");
     } finally {
       setUpdatingMemberId("");
+    }
+  }
+
+  async function handleApproveMemberRequest(member) {
+    if (!selectedTrip || !user) return;
+    if (!canManageSelectedTrip()) {
+      showToast("Only the trip owner can approve members.", "error");
+      return;
+    }
+    const emailLower = getEmailLower(member.email);
+    if (!emailLower) {
+      showToast("This request has no email to approve.", "error");
+      return;
+    }
+    setUpdatingMemberId(member.id);
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "trips", selectedTrip.id, "members", member.id), {
+        status: "active",
+        verificationStatus: "admin_approved",
+        verificationMethod: "admin_review",
+        approvedBy: user.uid,
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      batch.set(doc(db, "emailAccess", emailLower, "trips", selectedTrip.id), {
+        tripId: selectedTrip.id,
+        role: member.role || "member",
+        ownerId: selectedTrip.ownerId,
+        ownerEmailLower:
+          selectedTrip.ownerEmailLower || getEmailLower(user.email),
+        status: "active",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      await batch.commit();
+      await loadTripData(selectedTrip.id);
+      showToast(`${memberNameOf(member.id)} can now access this trip.`, "success");
+    } catch (error) {
+      console.error("Could not approve member:", error);
+      showToast("Could not approve member. Check your Firestore rules.", "error");
+    } finally {
+      setUpdatingMemberId("");
+    }
+  }
+
+  async function handleRejectMemberRequest(member) {
+    if (!selectedTrip || !user) return;
+    if (!canManageSelectedTrip()) {
+      showToast("Only the trip owner can reject members.", "error");
+      return;
+    }
+    const emailLower = getEmailLower(member.email);
+    if (!window.confirm(`Reject ${memberNameOf(member.id)}'s join request?`)) return;
+    setUpdatingMemberId(member.id);
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "trips", selectedTrip.id, "members", member.id), {
+        status: "inactive",
+        verificationStatus: "rejected",
+        rejectedBy: user.uid,
+        rejectedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      if (emailLower) {
+        batch.delete(doc(db, "emailAccess", emailLower, "trips", selectedTrip.id));
+      }
+      await batch.commit();
+      await loadTripData(selectedTrip.id);
+      showToast("Join request rejected.", "success");
+    } catch (error) {
+      console.error("Could not reject member:", error);
+      showToast("Could not reject member. Check your Firestore rules.", "error");
+    } finally {
+      setUpdatingMemberId("");
+    }
+  }
+
+  async function copyMemberInviteLink(member) {
+    if (!selectedTrip) return;
+    const inviteId = member.inviteId || member.lastInviteId;
+    if (!inviteId) {
+      showToast("No secure invite link is saved for this member. Add them again to create one.", "info");
+      return;
+    }
+    const link = buildInviteLink(selectedTrip.id, inviteId);
+    try {
+      await navigator.clipboard.writeText(link);
+      setInviteLink(link);
+      showToast("Secure invite copied.", "success");
+    } catch {
+      setInviteLink(link);
+      showToast("Could not copy automatically. The secure invite is shown above.", "info");
     }
   }
 
@@ -5206,6 +5634,7 @@ function App() {
         try {
           await updateDoc(doc(db, "trips", selectedTrip.id, "members", currentUserMemberId), {
             status: "inactive",
+            verificationStatus: "inactive",
             updatedAt: serverTimestamp()
           });
         } catch (memberError) {
@@ -8401,6 +8830,7 @@ function App() {
     const currentUnit = getCurrentUserUnit();
     const currentUnitMemberIds = currentUnit?.memberIds?.filter(id => activeMembers.some(member => member.id === id)) || [];
     const expenseImpact = getExpenseImpactMeta(formData);
+    const expenseVisibility = expenseVisibilityPreview(formData, expenseImpact);
     const selectedSplitCount = Array.isArray(formData.splitMemberIds) ? formData.splitMemberIds.length : 0;
     const allMembersSelected =
       activeMembers.length > 0
@@ -8802,6 +9232,7 @@ function App() {
               <span>
                 <strong>{expenseImpact.title}</strong>
                 <small>{expenseImpact.detail}</small>
+                <small>{expenseVisibility} · {expenseImpact.settlement}</small>
               </span>
             </div>
           </div>
@@ -9071,7 +9502,7 @@ function App() {
 
   function updateTripListInsightFromSettlementMode(mode) {
     if (!selectedTrip?.id) return;
-    const activeTripMembers = members.filter(m => m.status !== "inactive");
+    const activeTripMembers = members.filter(isActiveTripMember);
     const summary = getSmartSettleSummaryByMode(
       expenses,
       activeTripMembers,
@@ -9188,7 +9619,7 @@ function App() {
     const { name, type } = settlementGroupForm;
     if (!name.trim()) return showToast("Group name is required.", "error");
 
-    const activeTripMembers = members.filter(m => m.status !== "inactive");
+    const activeTripMembers = members.filter(isActiveTripMember);
     const activeTripMemberIds = new Set(activeTripMembers.map(m => m.id));
 
     const validMemberIds = settlementGroupForm.memberIds.filter(id => activeTripMemberIds.has(id));
@@ -9300,7 +9731,7 @@ function App() {
     ];
     const currentModeDesc = modeOptions.find(o => o.value === settlementMode)?.desc || "";
 
-    const activeMembers = members.filter(m => m.status !== "inactive");
+    const activeMembers = members.filter(isActiveTripMember);
     const activeGroups = settlementGroups.filter(g => g.isActive !== false);
     const assignedMemberIds = new Set(activeGroups.flatMap(g => g.memberIds));
     const unassignedMembers = activeMembers.filter(m => !assignedMemberIds.has(m.id));
@@ -9787,6 +10218,20 @@ function App() {
 
     const groupedMemberIds = new Set(activeUnitGroups.flatMap(g => g.memberIds));
     const ungroupedMemberSpending = memberSpending.filter(m => !groupedMemberIds.has(m.memberId));
+    const myTravelUnit = getCurrentUserUnit();
+    const ungroupedMemberCount = activeMembers.filter(member => !groupedMemberIds.has(member.id)).length;
+    const audienceModelItems = [
+      { title: "Just me", detail: "Private expenses, budgets, and tasks.", icon: "user" },
+      {
+        title: "My unit",
+        detail: myTravelUnit
+          ? `${myTravelUnit.name}: ${memberListSummary(myTravelUnit.memberIds, "unit members")}`
+          : "For couples, families, or room groups.",
+        icon: "home"
+      },
+      { title: "Selected people", detail: "Use when only part of the group joined.", icon: "target" },
+      { title: "Everyone", detail: "Shared with all trip members.", icon: "users" }
+    ];
 
     // Helper: render one member spending row
     function renderSpendingRow(m, compact = false) {
@@ -10210,6 +10655,39 @@ function App() {
               </button>
 
               {/* ── Quick actions — desktop only (mobile uses FAB + bottom nav) ── */}
+              <section className="dash-card audience-guide-card">
+                <div className="audience-guide-head">
+                  <div>
+                    <span className="audience-guide-kicker">Trip visibility</span>
+                    <h3>Choose the right audience</h3>
+                    <p className="small muted">
+                      Use the same four choices for expenses, budgets, and tasks so families, couples, and individuals only see what matters to them.
+                    </p>
+                  </div>
+                  <div className="audience-guide-stats">
+                    <span>{activeMembers.length} members</span>
+                    <span>{activeUnitGroups.length} units</span>
+                    <span>{ungroupedMemberCount} solo</span>
+                  </div>
+                </div>
+                <div className="audience-guide-grid">
+                  {audienceModelItems.map(item => (
+                    <div className="audience-guide-item" key={item.title}>
+                      <Icon name={item.icon} size={20} />
+                      <div>
+                        <strong>{item.title}</strong>
+                        <span>{item.detail}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {!myTravelUnit && canManageSelectedTrip() && !demoMode ? (
+                  <button className="link-button audience-guide-link" type="button" onClick={() => setActiveTab("members")}>
+                    Set up travel units for couples and families →
+                  </button>
+                ) : null}
+              </section>
+
               <div className="dash-action-bar dash-section-actions dash-actions-desktop" aria-label="Primary trip actions">
                 {!demoMode ? (
                   <button className="dash-action-btn dash-action-expense" type="button" onClick={() => openFastExpenseModal()}>
@@ -11005,9 +11483,34 @@ function App() {
                       })()}
                     </div>
                     <p className="intent-helper-text">
-                    {getBudgetScopeMeta(budgetForm.scope).detail}
-                  </p>
-                </div>
+                      {getBudgetScopeMeta(budgetForm.scope).detail}
+                    </p>
+                    <div className="audience-preview-card">
+                      <Icon name="eye" size={18} />
+                      <div>
+                        <strong>{budgetVisibilityPreview()}</strong>
+                        <span>Members can plan in their own currency while the trip keeps one shared baseline.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {budgetForm.scope === "selected" && (
+                    <div className="budget-member-picker">
+                      <span className="emoji-field-label">Choose people</span>
+                      <div className="member-chip-list">
+                        {activeMembers.map(member => (
+                          <button
+                            className={`member-chip${(budgetForm.visibleMemberIds || []).includes(member.id) ? " selected" : ""}`}
+                            type="button"
+                            key={member.id}
+                            onClick={() => toggleBudgetMember(member.id)}
+                          >
+                            {memberNameOf(member.id)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="budget-form-actions">
                     <button className="primary-button" type="submit" disabled={savingPredictions}>
@@ -11251,7 +11754,7 @@ function App() {
                               <strong>{expense.description || expense.categoryName || "Expense"}</strong>
                               <span>{expense.categoryName || category?.name || "Uncategorized"}</span>
                               <small>
-                                {expense.expenseType === "shared" ? "Shared" : "Personal"} · Paid by {memberNameOf(expense.paidByMemberId)}
+                                {expense.expenseType === "shared" ? "Shared" : "Personal"} · {expenseAudienceLabel(expense)} · Paid by {memberNameOf(expense.paidByMemberId)}
                               </small>
                             </div>
                           </div>
@@ -11431,8 +11934,8 @@ function App() {
                                   : e.splitType === "percent"
                                   ? "% split"
                                   : "Equal split"
-                              } · Paid by ${memberNameOf(e.paidByMemberId)}`
-                            : `Personal · Paid by ${memberNameOf(e.paidByMemberId)}`}
+                              } · ${expenseAudienceLabel(e)} · Paid by ${memberNameOf(e.paidByMemberId)}`
+                            : `Personal · ${expenseAudienceLabel(e)} · Paid by ${memberNameOf(e.paidByMemberId)}`}
                         </p>
                         {e.expenseType === "shared" &&
                         (e.splitType === "custom" || e.splitType === "percent") ? (
@@ -11987,10 +12490,10 @@ function App() {
           <section>
             {selectedTrip && canManageSelectedTrip() ? (
               <section className="card">
-                <h2>Invite link</h2>
+                <h2>General invite</h2>
                 <p className="small muted">
-                  Create a shareable link. Your friend opens it, logs in with
-                  Google, and joins this trip automatically.
+                  Use this only when you do not know someone's email yet. People who join with this
+                  link must be approved before they can see the trip.
                 </p>
                 <button
                   className="primary-button"
@@ -11998,7 +12501,7 @@ function App() {
                   disabled={creatingInvite}
                   onClick={handleCreateInviteLink}
                 >
-                  {creatingInvite ? "Creating invite..." : "Create invite link"}
+                  {creatingInvite ? "Creating invite..." : "Create approval link"}
                 </button>
                 {inviteLink ? (
                   <div style={{ marginTop: "14px", display: "grid", gap: "10px" }}>
@@ -12017,9 +12520,9 @@ function App() {
 
             {canManageSelectedTrip() ? (
             <section className="card">
-              <h2>Add trip member</h2>
+              <h2>Add expected member</h2>
               <p className="small muted">
-                Search previous members or enter a new Google email.
+                Enter the Google email you expect them to use. Trip access stays tied to that exact email, and a secure invite is created for sharing.
               </p>
               <form onSubmit={handleAddMember}>
                 <label>
@@ -12083,17 +12586,36 @@ function App() {
                   type="submit"
                   disabled={savingMember}
                 >
-                  {savingMember ? "Adding..." : "Add member + give access"}
+                  {savingMember ? "Adding..." : "Add + create secure invite"}
                 </button>
               </form>
             </section>
             ) : null}
 
+            {canManageSelectedTrip() ? (
+              <section className="card member-verification-card">
+                <div>
+                  <p className="small muted">Member verification</p>
+                  <h2>Know who is actually in the trip</h2>
+                  <p className="small muted">
+                    Exact-email invites are verified automatically. General-link joins wait here until an admin approves them.
+                  </p>
+                </div>
+                <div className="member-verification-grid">
+                  <span><strong>{memberVerificationSummary.verified}</strong> verified</span>
+                  <span><strong>{memberVerificationSummary.invited}</strong> invited</span>
+                  <span className={memberVerificationSummary.pending ? "needs-attention" : ""}>
+                    <strong>{memberVerificationSummary.pending}</strong> needs approval
+                  </span>
+                  <span><strong>{memberVerificationSummary.inactive}</strong> inactive</span>
+                </div>
+              </section>
+            ) : null}
+
             <section className="card">
               <h2>Trip members</h2>
               <p className="small muted">
-                Removing a member takes away app access but keeps old expense
-                history readable.
+                Verified people can use shared features. Pending requests cannot see the trip until approved.
               </p>
               {members.length === 0 ? (
                 <p className="muted">No members yet.</p>
@@ -12106,8 +12628,12 @@ function App() {
                     activeUnits.forEach((g, i) => {
                       g.memberIds.forEach(id => { memberUnitColor[id] = UNIT_COLORS[i % UNIT_COLORS.length]; });
                     });
-                    return members.map(m => (
-                    <div className="member-row" key={m.id}>
+                    return members.map(m => {
+                      const verificationState = getMemberVerificationState(m);
+                      const isPendingRequest = verificationState === "pending";
+                      const canCopySecureInvite = canManageSelectedTrip() && !m.isOwner && (m.inviteId || m.lastInviteId) && verificationState === "invited";
+                      return (
+                    <div className={`member-row member-row--${verificationState}`} key={m.id}>
                       <div className="member-avatar-wrap">
                         <div
                           className={`member-avatar${memberImageOf(m) ? " has-image" : ""}`}
@@ -12127,37 +12653,66 @@ function App() {
                         <strong>{memberNameOf(m.id)}</strong>
                         <p className="small muted">{m.email || "No email"}</p>
                         <span
-                          className={
-                            m.status === "inactive" ? "pill muted-pill" : "pill"
-                          }
+                          className={`pill member-verification-pill member-verification-pill--${verificationState}`}
                         >
-                          {m.isOwner
-                            ? "Owner"
-                            : m.status === "inactive"
-                            ? "Inactive"
-                            : "Member"}
+                          {getMemberVerificationLabel(m)}
                         </span>
+                        <p className="small muted member-verification-detail">
+                          {getMemberVerificationDetail(m)}
+                        </p>
                       </div>
                       {canManageSelectedTrip() && !m.isOwner ? (
-                        <button
-                          className={
-                            m.status === "inactive"
-                              ? "secondary-button small-button"
-                              : "danger-button small-button"
-                          }
-                          type="button"
-                          disabled={updatingMemberId === m.id}
-                          onClick={() => handleToggleMemberStatus(m)}
-                        >
-                          {updatingMemberId === m.id
-                            ? "Updating..."
-                            : m.status === "inactive"
-                            ? "Restore"
-                            : "Remove"}
-                        </button>
+                        <div className="member-row-actions">
+                          {isPendingRequest ? (
+                            <>
+                              <button
+                                className="primary-button small-button"
+                                type="button"
+                                disabled={updatingMemberId === m.id}
+                                onClick={() => handleApproveMemberRequest(m)}
+                              >
+                                {updatingMemberId === m.id ? "Updating..." : "Approve"}
+                              </button>
+                              <button
+                                className="danger-button small-button"
+                                type="button"
+                                disabled={updatingMemberId === m.id}
+                                onClick={() => handleRejectMemberRequest(m)}
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : null}
+                          {canCopySecureInvite ? (
+                            <button
+                              className="secondary-button small-button"
+                              type="button"
+                              onClick={() => copyMemberInviteLink(m)}
+                            >
+                              Copy invite
+                            </button>
+                          ) : null}
+                          <button
+                            className={
+                              m.status === "inactive"
+                                ? "secondary-button small-button"
+                                : "danger-button small-button"
+                            }
+                            type="button"
+                            disabled={updatingMemberId === m.id}
+                            onClick={() => handleToggleMemberStatus(m)}
+                          >
+                            {updatingMemberId === m.id
+                              ? "Updating..."
+                              : m.status === "inactive"
+                              ? "Restore"
+                              : "Remove"}
+                          </button>
+                        </div>
                       ) : null}
                     </div>
-                  ));
+                  );
+                    });
                   })()}
                 </div>
               )}
@@ -13064,6 +13619,14 @@ function App() {
                 </select>
               </label>
 
+              <div className="audience-preview-card">
+                <Icon name="eye" size={18} />
+                <div>
+                  <strong>{taskVisibilityPreview()}</strong>
+                  <span>Use unit or selected visibility for family, couple, or private trip work.</span>
+                </div>
+              </div>
+
               {(taskForm.scope === "selected_members" || taskForm.scope === "our_unit") ? (
                 <div className="task-form-section">
                   <div className="create-trip-img-label">{taskForm.scope === "our_unit" ? "Unit members" : "Selected people"}</div>
@@ -13603,6 +14166,11 @@ function App() {
               : ""
           ],
           ["Currency", inviteDetails.defaultCurrency],
+          [
+            "Join mode",
+            inviteDetails.targetEmailLower ? "Exact email invite" : "Admin approval required"
+          ],
+          ["For", inviteDetails.targetEmailLower || ""],
           ["Status", inviteDetails.tripStatus]
         ].filter(([, value]) => Boolean(value))
       : [];
@@ -13620,12 +14188,20 @@ function App() {
             <p className="muted intro-text">Loading invite...</p>
           ) : inviteError ? (
             <p className="muted intro-text">{inviteError}</p>
+          ) : inviteRequestSent ? (
+            <p className="muted intro-text">
+              Your request to join <strong>{inviteDetails?.tripName || "this trip"}</strong> was sent.
+              A trip admin needs to approve it before you can see shared expenses, budgets, and tasks.
+            </p>
           ) : inviteDetails ? (
             <>
               <p className="muted intro-text">
                 You have been invited to join{" "}
                 <strong>{inviteDetails.tripName || "this trip"}</strong>
                 {inviteDetails.ownerEmail ? ` by ${inviteDetails.ownerEmail}` : ""}.
+                {inviteDetails.targetEmailLower
+                  ? ` This link is only for ${inviteDetails.targetEmailLower}.`
+                  : " This general link sends a join request for admin approval."}
               </p>
               {inviteSummaryRows.length > 1 ? (
                 <div className="invite-summary-card">
@@ -13646,14 +14222,18 @@ function App() {
           <button className="primary-button" onClick={handleGoogleLogin}>
             Continue with Google
           </button>
-        ) : inviteDetails && !inviteError ? (
+        ) : inviteDetails && !inviteError && !inviteRequestSent ? (
           <button
             className="primary-button"
             type="button"
             disabled={acceptingInvite}
             onClick={handleAcceptInvite}
           >
-            {acceptingInvite ? "Joining trip..." : "Join trip"}
+            {acceptingInvite
+              ? "Joining trip..."
+              : inviteDetails.targetEmailLower
+              ? "Join trip"
+              : "Request to join"}
           </button>
         ) : null}
         <button className="secondary-button" type="button" onClick={clearInviteUrl}>
