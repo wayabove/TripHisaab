@@ -11052,14 +11052,14 @@ function App() {
                 <span className="mobile-next-action-cta">{nextAction.cta} →</span>
               </button>
 
-              {/* ── Quick actions — desktop only (mobile uses FAB + bottom nav) ── */}
+              {/* ── Passive audience guide — explains visibility without looking tappable ── */}
               <section className="dash-card audience-guide-card">
                 <div className="audience-guide-head">
                   <div>
                     <span className="audience-guide-kicker">Trip visibility</span>
-                    <h3>Choose the right audience</h3>
+                    <h3>How audiences work</h3>
                     <p className="small muted">
-                      Use the same four choices for expenses, budgets, and tasks so families, couples, and individuals only see what matters to them.
+                      Expenses, budgets, and tasks use these visibility labels so families, couples, and individuals only see what matters to them.
                     </p>
                   </div>
                   <div className="audience-guide-stats">
@@ -11068,17 +11068,19 @@ function App() {
                     <span>{ungroupedMemberCount} solo</span>
                   </div>
                 </div>
-                <div className="audience-guide-grid">
+                <ul className="audience-guide-list" aria-label="Trip visibility audience labels">
                   {audienceModelItems.map(item => (
-                    <div className="audience-guide-item" key={item.title}>
-                      <Icon name={item.icon} size={20} />
+                    <li className="audience-guide-item" key={item.title}>
+                      <span className="audience-guide-icon" aria-hidden="true">
+                        <Icon name={item.icon} size={17} />
+                      </span>
                       <div>
                         <strong>{item.title}</strong>
                         <span>{item.detail}</span>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
                 {!myTravelUnit && canManageSelectedTrip() && !demoMode ? (
                   <button className="link-button audience-guide-link" type="button" onClick={() => setActiveTab("members")}>
                     Set up travel units for couples and families →

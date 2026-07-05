@@ -6595,6 +6595,10 @@ body.body-scroll-locked .main-content {
   display: grid;
   gap: 14px;
   padding: 18px;
+  border-color: #bfdbfe;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.95), rgba(240, 253, 250, 0.9));
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
 }
 
 .audience-guide-head {
@@ -6606,7 +6610,7 @@ body.body-scroll-locked .main-content {
 
 .audience-guide-kicker {
   display: block;
-  color: var(--primary);
+  color: #0369a1;
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -6633,27 +6637,43 @@ body.body-scroll-locked .main-content {
   align-items: center;
   padding: 5px 9px;
   border-radius: var(--radius-pill);
-  background: var(--surface-soft);
-  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.68);
+  color: #075985;
   font-size: 12px;
   font-weight: 800;
 }
 
-.audience-guide-grid {
+.audience-guide-list {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .audience-guide-item {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
+  gap: 10px;
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-soft);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: default;
+  user-select: text;
+}
+
+.audience-guide-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(14, 116, 144, 0.1);
+  color: #0e7490;
 }
 
 .audience-guide-item > div {
@@ -6663,7 +6683,7 @@ body.body-scroll-locked .main-content {
 }
 
 .audience-guide-item strong {
-  color: var(--text);
+  color: #0f172a;
   font-size: 13px;
 }
 
@@ -6687,18 +6707,15 @@ body.body-scroll-locked .main-content {
     justify-content: flex-start;
   }
 
-  .audience-guide-grid {
+  .audience-guide-list {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .audience-guide-item {
-    padding: 9px;
   }
 }
 
 @media (max-width: 430px) {
-  .audience-guide-grid {
+  .audience-guide-list {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
 }
 
