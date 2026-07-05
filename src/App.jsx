@@ -2137,6 +2137,18 @@ function App() {
   const [expenseFeedback, setExpenseFeedback] = useState(null);
   const [expenseSearch, setExpenseSearch] = useState("");
   const [expenseFilter, setExpenseFilter] = useState("all");
+  const [expenseAdvancedFilters, setExpenseAdvancedFilters] = useState({
+    datePreset: "all",
+    fromDate: "",
+    toDate: "",
+    memberMode: "paidBy",
+    memberIds: [],
+    categoryIds: [],
+    scopes: [],
+    minAmount: "",
+    maxAmount: ""
+  });
+  const [isExpenseFilterOpen, setIsExpenseFilterOpen] = useState(false);
   const [expenseSort, setExpenseSort] = useState("newest");
   const [showBetaWelcome, setShowBetaWelcome] = useState(() => {
     try { return !localStorage.getItem('thBetaWelcomeSeen'); } catch { return false; }
@@ -2576,7 +2588,7 @@ function App() {
 
   useEffect(() => {
     setExpensePage(1);
-  }, [expenseFilter, expenseSearch, expenseSort, selectedTrip?.id]);
+  }, [expenseAdvancedFilters, expenseFilter, expenseSearch, expenseSort, selectedTrip?.id]);
 
   // -------------------- Memoized lookups & derived data --------------------
   const membersById = useMemo(() => {
@@ -2999,6 +3011,21 @@ function App() {
       return Number.isNaN(parsed) ? 0 : parsed;
     };
 
+    const dateRangeForPreset = preset => {
+      if (!preset || preset === "all" || preset === "custom") return null;
+      const today = todayIso();
+      if (preset === "today") return { from: today, to: today };
+      const todayDate = new Date(`${today}T00:00:00`);
+      if (preset === "week") {
+        const from = new Date(todayDate);
+        from.setDate(todayDate.getDate() - 6);
+        return { from: from.toISOString().slice(0, 10), to: today };
+      }
+      if (preset === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
+      if (preset === "trip") return { from: selectedTrip?.startDate || "", to: selectedTrip?.endDate || "" };
+      return null;
+    };
+
     const matchesFilter = expense => {
       if (expenseFilter === "mine") return isMyExpense(expense);
       if (expenseFilter === "unit") return isMyUnitExpense(expense);
@@ -3010,6 +3037,46 @@ function App() {
           (!Array.isArray(expense.splitMemberIds) || expense.splitMemberIds.length === 0)
         );
       }
+      return true;
+    };
+
+    const relatedMemberIds = expense =>
+      new Set([
+        expense.paidByMemberId,
+        ...(expense.splitMemberIds || []),
+        ...expenseVisibleIds(expense, activeMembers)
+      ].filter(Boolean));
+
+    const matchesAdvancedFilters = expense => {
+      const filters = expenseAdvancedFilters;
+      const presetRange = dateRangeForPreset(filters.datePreset);
+      const fromDate = filters.datePreset === "custom" ? filters.fromDate : presetRange?.from || "";
+      const toDate = filters.datePreset === "custom" ? filters.toDate : presetRange?.to || "";
+      if (fromDate && String(expense.date || "") < fromDate) return false;
+      if (toDate && String(expense.date || "") > toDate) return false;
+
+      if (filters.memberIds.length > 0) {
+        const selectedMembers = new Set(filters.memberIds);
+        if (filters.memberMode === "paidBy") {
+          if (!selectedMembers.has(expense.paidByMemberId)) return false;
+        } else {
+          const relatedIds = relatedMemberIds(expense);
+          if (!Array.from(selectedMembers).some(memberId => relatedIds.has(memberId))) return false;
+        }
+      }
+
+      if (filters.categoryIds.length > 0 && !filters.categoryIds.includes(expense.categoryId)) return false;
+
+      if (filters.scopes.length > 0) {
+        const scope = normalizeExpenseScope(expense);
+        if (!filters.scopes.includes(scope)) return false;
+      }
+
+      const amount = Number(expense.amountEur || 0);
+      const minAmount = parseAmount(filters.minAmount);
+      const maxAmount = parseAmount(filters.maxAmount);
+      if (minAmount && amount < minAmount) return false;
+      if (maxAmount && amount > maxAmount) return false;
       return true;
     };
 
@@ -3030,7 +3097,7 @@ function App() {
     };
 
     return expenses
-      .filter(expense => matchesFilter(expense) && matchesSearch(expense))
+      .filter(expense => expense.isActive !== false && matchesFilter(expense) && matchesAdvancedFilters(expense) && matchesSearch(expense))
       .sort((a, b) => {
         if (expenseSort === "oldest") return dateTimeValue(a) - dateTimeValue(b);
         if (expenseSort === "highest") return Number(b.amountEur || 0) - Number(a.amountEur || 0);
@@ -3040,7 +3107,7 @@ function App() {
         }
         return dateTimeValue(b) - dateTimeValue(a);
       });
-  }, [activeMembers, currentUserMemberId, expenseFilter, expenseSearch, expenseSort, expenses, memberNameOf, settlementGroups]);
+  }, [activeMembers, currentUserMemberId, expenseAdvancedFilters, expenseFilter, expenseSearch, expenseSort, expenses, memberNameOf, selectedTrip?.endDate, selectedTrip?.startDate, settlementGroups]);
 
   const pagedExpenseRows = useMemo(() => {
     const pageSize = 5;
@@ -10360,57 +10427,94 @@ function App() {
       : "#e5e7eb 0% 100%";
 
     const expenseFilterOptions = [
-      { key: "all", label: "Visible", count: expenses.length },
-      { key: "mine", label: "Paid by me", count: expenses.filter(isMyExpense).length },
-      { key: "unit", label: "My unit", count: expenses.filter(isMyUnitExpense).length },
-      { key: "shared", label: "Shared", count: expenses.filter(e => e.expenseType === "shared").length },
-      { key: "personal", label: "My personal", count: expenses.filter(e => e.expenseType !== "shared").length },
+      { key: "all", label: "Visible", count: expenses.filter(e => e.isActive !== false).length },
+      { key: "mine", label: "Paid by me", count: expenses.filter(e => e.isActive !== false && isMyExpense(e)).length },
+      { key: "unit", label: "My unit", count: expenses.filter(e => e.isActive !== false && isMyUnitExpense(e)).length },
+      { key: "shared", label: "Shared", count: expenses.filter(e => e.isActive !== false && e.expenseType === "shared").length },
+      { key: "personal", label: "Personal", count: expenses.filter(e => e.isActive !== false && e.expenseType !== "shared").length },
       { key: "pending", label: "Pending split", count: expenseStats.pendingSplit }
     ];
     const activeExpenseFilter = expenseFilterOptions.find(option => option.key === expenseFilter) || expenseFilterOptions[0];
+    const datePresetLabels = {
+      all: "Any date",
+      today: "Today",
+      week: "Last 7 days",
+      month: "This month",
+      trip: "Trip dates",
+      custom: "Custom dates"
+    };
+    const scopeLabels = {
+      group: "Everyone",
+      selected_members: "Selected people",
+      personal: "Personal"
+    };
+    const toggleExpenseAdvancedArray = (key, value) => {
+      setExpenseAdvancedFilters(current => {
+        const selected = new Set(current[key] || []);
+        if (selected.has(value)) selected.delete(value);
+        else selected.add(value);
+        return { ...current, [key]: Array.from(selected) };
+      });
+    };
+    const resetExpenseAdvancedFilters = () => {
+      setExpenseAdvancedFilters({
+        datePreset: "all",
+        fromDate: "",
+        toDate: "",
+        memberMode: "paidBy",
+        memberIds: [],
+        categoryIds: [],
+        scopes: [],
+        minAmount: "",
+        maxAmount: ""
+      });
+    };
+    const activeAdvancedFilterPills = [
+      expenseAdvancedFilters.datePreset !== "all"
+        ? {
+            key: "date",
+            label: expenseAdvancedFilters.datePreset === "custom"
+              ? `${expenseAdvancedFilters.fromDate || "Start"} to ${expenseAdvancedFilters.toDate || "End"}`
+              : datePresetLabels[expenseAdvancedFilters.datePreset],
+            clear: () => setExpenseAdvancedFilters(current => ({ ...current, datePreset: "all", fromDate: "", toDate: "" }))
+          }
+        : null,
+      expenseAdvancedFilters.memberIds.length > 0
+        ? {
+            key: "members",
+            label: `${expenseAdvancedFilters.memberMode === "paidBy" ? "Paid by" : "Involving"} ${memberListSummary(expenseAdvancedFilters.memberIds, "members", 2)}`,
+            clear: () => setExpenseAdvancedFilters(current => ({ ...current, memberIds: [] }))
+          }
+        : null,
+      expenseAdvancedFilters.categoryIds.length > 0
+        ? {
+            key: "categories",
+            label: expenseAdvancedFilters.categoryIds
+              .slice(0, 2)
+              .map(id => categoriesById.get(id)?.name || "Category")
+              .join(", ") + (expenseAdvancedFilters.categoryIds.length > 2 ? ` +${expenseAdvancedFilters.categoryIds.length - 2}` : ""),
+            clear: () => setExpenseAdvancedFilters(current => ({ ...current, categoryIds: [] }))
+          }
+        : null,
+      expenseAdvancedFilters.scopes.length > 0
+        ? {
+            key: "scopes",
+            label: expenseAdvancedFilters.scopes.map(scope => scopeLabels[scope] || scope).join(", "),
+            clear: () => setExpenseAdvancedFilters(current => ({ ...current, scopes: [] }))
+          }
+        : null,
+      expenseAdvancedFilters.minAmount || expenseAdvancedFilters.maxAmount
+        ? {
+            key: "amount",
+            label: `${expenseAdvancedFilters.minAmount || "0"}-${expenseAdvancedFilters.maxAmount || "max"}`,
+            clear: () => setExpenseAdvancedFilters(current => ({ ...current, minAmount: "", maxAmount: "" }))
+          }
+        : null
+    ].filter(Boolean);
+    const activeAdvancedFilterCount = activeAdvancedFilterPills.length;
     const selectedExpenseTotalEur = roundMoney(
       expenseRows.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
     );
-    const sharedExpenseCount = expenseFilterOptions.find(option => option.key === "shared")?.count || 0;
-    const personalExpenseCount = expenseFilterOptions.find(option => option.key === "personal")?.count || 0;
-    const expenseSummaryCards = [
-      {
-        label: `${activeExpenseFilter.label} total`,
-        value: fmx(selectedExpenseTotalEur),
-        sub: `${expenseRows.length} matching expense${expenseRows.length === 1 ? "" : "s"}`,
-        icon: <Icon name="list" />,
-        tone: "mint"
-      },
-      {
-        label: "Trip total",
-        value: fmx(totals.actual),
-        sub: "Shared plus included personal totals",
-        icon: <Icon name="euro" />,
-        tone: "blue"
-      },
-      {
-        label: "Shared",
-        value: fmx(totals.shared),
-        sub: `${sharedExpenseCount} expense${sharedExpenseCount === 1 ? "" : "s"}`,
-        icon: <Icon name="users" />,
-        tone: "violet"
-      },
-      {
-        label: "My personal",
-        value: formatMoney(expenseStats.personal),
-        sub: `${personalExpenseCount} expense${personalExpenseCount === 1 ? "" : "s"}`,
-        icon: <Icon name="receipt" />,
-        tone: "amber"
-      },
-      {
-        label: "This week",
-        value: formatMoney(expenseStats.thisWeek),
-        sub: `${expenseStats.thisWeekCount} expense${expenseStats.thisWeekCount === 1 ? "" : "s"}`,
-        icon: <Icon name="calendar" />,
-        tone: "blue",
-        mobileOptional: true
-      }
-    ];
     const expensePageStart = expenseRows.length === 0 ? 0 : (expensePage - 1) * 5 + 1;
     const expensePageEnd = Math.min(expenseRows.length, expensePage * 5);
     const firstExpensePageButton = Math.min(
@@ -11764,6 +11868,15 @@ function App() {
                     aria-label="Search expenses"
                   />
                 </label>
+                <button
+                  className={`secondary-button expense-filter-button${activeAdvancedFilterCount > 0 ? " active" : ""}`}
+                  type="button"
+                  onClick={() => setIsExpenseFilterOpen(true)}
+                >
+                  <Icon name="settings" size={18} />
+                  <span>Filter</span>
+                  {activeAdvancedFilterCount > 0 ? <strong>{activeAdvancedFilterCount}</strong> : null}
+                </button>
                 {!demoMode ? (
                   <button
                     className="primary-button expense-toolbar-add"
@@ -11802,20 +11915,49 @@ function App() {
               </label>
             </div>
 
-            <div className="expense-summary-grid">
-              {expenseSummaryCards.map(card => (
-                <article
-                  className={`expense-summary-card${card.mobileOptional ? " mobile-optional" : ""}`}
-                  key={card.label}
+            {(activeAdvancedFilterPills.length > 0 || expenseFilter !== "all" || expenseSearch.trim()) && (
+              <div className="expense-active-filters" aria-label="Active expense filters">
+                {expenseFilter !== "all" ? (
+                  <button className="expense-active-filter-pill" type="button" onClick={() => setExpenseFilter("all")}>
+                    {activeExpenseFilter.label}<span>×</span>
+                  </button>
+                ) : null}
+                {expenseSearch.trim() ? (
+                  <button className="expense-active-filter-pill" type="button" onClick={() => setExpenseSearch("")}>
+                    Search: {expenseSearch.trim()}<span>×</span>
+                  </button>
+                ) : null}
+                {activeAdvancedFilterPills.map(pill => (
+                  <button className="expense-active-filter-pill" type="button" key={pill.key} onClick={pill.clear}>
+                    {pill.label}<span>×</span>
+                  </button>
+                ))}
+                <button
+                  className="expense-active-filter-clear"
+                  type="button"
+                  onClick={() => {
+                    setExpenseFilter("all");
+                    setExpenseSearch("");
+                    resetExpenseAdvancedFilters();
+                  }}
                 >
-                  <div className={`expense-summary-icon ${card.tone}`}>{card.icon}</div>
-                  <div>
-                    <p>{card.label}</p>
-                    <strong>{card.value}</strong>
-                    <span>{card.sub}</span>
-                  </div>
-                </article>
-              ))}
+                  Clear all
+                </button>
+              </div>
+            )}
+
+            <div className="expense-result-summary">
+              <div className="expense-result-main">
+                <Icon name="list" size={22} />
+                <div>
+                  <span>{activeExpenseFilter.label} total</span>
+                  <strong>{fmx(selectedExpenseTotalEur)}</strong>
+                </div>
+              </div>
+              <div className="expense-result-meta">
+                <span>{expenseRows.length} matching expense{expenseRows.length === 1 ? "" : "s"}</span>
+                <span>Trip total {fmx(totals.actual)}</span>
+              </div>
             </div>
 
             {expenses.length === 0 ? (
@@ -12012,111 +12154,173 @@ function App() {
           </section>
         ) : null}
 
-        {activeTab === "actual" ? (
-          <section className="legacy-expenses-section" aria-hidden="true">
-            <div className="section-header">
-              <h2>Expenses</h2>
-              <div className="section-actions">
-                {!demoMode ? (
-                <button
-                  className="secondary-button small-button"
-                  type="button"
-                  onClick={openCreateCategory}
-                >
-                  + New category
-                </button>
-                ) : null}
-                {!demoMode ? (
-                <button
-                  className="primary-button small-button"
-                  type="button"
-                  onClick={() => openFastExpenseModal()}
-                >
-                  + Add expense
-                </button>
-                ) : null}
+        <Modal
+          isOpen={isExpenseFilterOpen}
+          onClose={() => setIsExpenseFilterOpen(false)}
+          title="Filter expenses"
+          className="expense-filter-modal"
+        >
+          <div className="expense-filter-sheet">
+            <section className="expense-filter-section">
+              <div className="expense-filter-section-head">
+                <strong>Date</strong>
               </div>
-            </div>
-            <section>
-              {expenses.length === 0 ? (
-                <EmptyState className="empty-card" icon="💸" title="No expenses yet" description="Add your first expense above." />
-              ) : (
-                <div className="expense-list">
-                  {expenses.map(e => (
-                    <article className="expense-card" key={e.id}>
-                      <div>
-                        <strong>{e.description || e.categoryName}</strong>
-                        <p className="small muted">
-                          {e.date} · {e.time} · {e.categoryName}
-                        </p>
-                        <p className="small muted">
-                          {e.expenseType === "shared"
-                            ? `Shared · ${
-                                e.splitType === "custom"
-                                  ? "Custom split"
-                                  : e.splitType === "percent"
-                                  ? "% split"
-                                  : "Equal split"
-                              } · ${expenseAudienceLabel(e)} · Paid by ${memberNameOf(e.paidByMemberId)}`
-                            : `Personal · ${expenseAudienceLabel(e)} · Paid by ${memberNameOf(e.paidByMemberId)}`}
-                        </p>
-                        {e.expenseType === "shared" &&
-                        (e.splitType === "custom" || e.splitType === "percent") ? (
-                          <p className="small muted">
-                            {e.splitType === "percent" ? "% split" : "Custom split"} ·{" "}
-                            {Object.entries(e.customSplitSharesEur || {})
-                              .map(
-                                ([id, amount]) =>
-                                  `${memberNameOf(id)}: ${formatMoney(amount)}`
-                              )
-                              .join(" · ")}
-                          </p>
-                        ) : null}
-                        {e.notes ? (
-                          <p className="small muted">Note: {e.notes}</p>
-                        ) : null}
-                        {e.ratesSource ? (
-                          <p className="small muted">
-                            Rate: {e.ratesSource}
-                            {e.ratesUpdatedAt ? ` · ${e.ratesUpdatedAt}` : ""}
-                          </p>
-                        ) : null}
-                      </div>
-
-                      <div className="expense-card-side">
-                        <strong>{formatMoney(e.amountEur)}</strong>
-                        {e.originalCurrency && e.originalCurrency !== "EUR" ? (
-                          <span className="small muted">
-                            Original:{" "}
-                            {formatCurrency(e.originalAmount, e.originalCurrency)}
-                          </span>
-                        ) : null}
-                        {!demoMode ? (
-                        <div className="expense-actions">
-                          <button
-                            className="secondary-button small-button"
-                            type="button"
-                            onClick={() => startEditingExpense(e)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="danger-button small-button"
-                            type="button"
-                            onClick={() => handleDeleteExpense(e)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                        ) : null}
-                      </div>
-                    </article>
-                  ))}
+              <div className="expense-filter-choice-grid">
+                {["all", "today", "week", "month", "trip", "custom"].map(preset => (
+                  <button
+                    key={preset}
+                    className={`expense-filter-choice${expenseAdvancedFilters.datePreset === preset ? " active" : ""}`}
+                    type="button"
+                    onClick={() => setExpenseAdvancedFilters(current => ({
+                      ...current,
+                      datePreset: preset,
+                      fromDate: preset === "custom" ? current.fromDate : "",
+                      toDate: preset === "custom" ? current.toDate : ""
+                    }))}
+                  >
+                    {datePresetLabels[preset]}
+                  </button>
+                ))}
+              </div>
+              {expenseAdvancedFilters.datePreset === "custom" ? (
+                <div className="expense-filter-field-grid">
+                  <label>
+                    <span>From</span>
+                    <input
+                      className="form-input"
+                      type="date"
+                      value={expenseAdvancedFilters.fromDate}
+                      onChange={event => setExpenseAdvancedFilters(current => ({ ...current, fromDate: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span>To</span>
+                    <input
+                      className="form-input"
+                      type="date"
+                      value={expenseAdvancedFilters.toDate}
+                      onChange={event => setExpenseAdvancedFilters(current => ({ ...current, toDate: event.target.value }))}
+                    />
+                  </label>
                 </div>
-              )}
+              ) : null}
             </section>
-          </section>
-        ) : null}
+
+            <section className="expense-filter-section">
+              <div className="expense-filter-section-head">
+                <strong>Member</strong>
+              </div>
+              <div className="expense-filter-segmented">
+                {[
+                  { key: "paidBy", label: "Paid by" },
+                  { key: "involved", label: "Involved" }
+                ].map(option => (
+                  <button
+                    key={option.key}
+                    className={expenseAdvancedFilters.memberMode === option.key ? "active" : ""}
+                    type="button"
+                    onClick={() => setExpenseAdvancedFilters(current => ({ ...current, memberMode: option.key }))}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div className="expense-filter-chip-grid">
+                {activeMembers.map(member => (
+                  <button
+                    key={member.id}
+                    className={`expense-filter-person-chip${expenseAdvancedFilters.memberIds.includes(member.id) ? " active" : ""}`}
+                    type="button"
+                    onClick={() => toggleExpenseAdvancedArray("memberIds", member.id)}
+                  >
+                    <span>{memberInitialOf(member.id)}</span>
+                    {memberNameOf(member.id)}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="expense-filter-section">
+              <div className="expense-filter-section-head">
+                <strong>Category</strong>
+              </div>
+              <div className="expense-filter-chip-grid">
+                {activeCategories.map(category => (
+                  <button
+                    key={category.id}
+                    className={`expense-filter-category-chip${expenseAdvancedFilters.categoryIds.includes(category.id) ? " active" : ""}`}
+                    type="button"
+                    onClick={() => toggleExpenseAdvancedArray("categoryIds", category.id)}
+                  >
+                    <span style={{ backgroundColor: `${category.color || "#0f766e"}22`, color: category.color || "#0f766e" }}>
+                      {category.icon || "€"}
+                    </span>
+                    {category.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="expense-filter-section">
+              <div className="expense-filter-section-head">
+                <strong>Audience</strong>
+              </div>
+              <div className="expense-filter-choice-grid">
+                {[
+                  { key: "group", label: "Everyone" },
+                  { key: "selected_members", label: "Selected people" },
+                  { key: "personal", label: "Personal" }
+                ].map(scope => (
+                  <button
+                    key={scope.key}
+                    className={`expense-filter-choice${expenseAdvancedFilters.scopes.includes(scope.key) ? " active" : ""}`}
+                    type="button"
+                    onClick={() => toggleExpenseAdvancedArray("scopes", scope.key)}
+                  >
+                    {scope.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="expense-filter-section">
+              <div className="expense-filter-section-head">
+                <strong>Amount</strong>
+              </div>
+              <div className="expense-filter-field-grid">
+                <label>
+                  <span>Min EUR</span>
+                  <input
+                    className="form-input"
+                    type="text"
+                    inputMode="decimal"
+                    value={expenseAdvancedFilters.minAmount}
+                    onChange={event => setExpenseAdvancedFilters(current => ({ ...current, minAmount: event.target.value.replace(/[^\d.,]/g, "") }))}
+                  />
+                </label>
+                <label>
+                  <span>Max EUR</span>
+                  <input
+                    className="form-input"
+                    type="text"
+                    inputMode="decimal"
+                    value={expenseAdvancedFilters.maxAmount}
+                    onChange={event => setExpenseAdvancedFilters(current => ({ ...current, maxAmount: event.target.value.replace(/[^\d.,]/g, "") }))}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <div className="expense-filter-sheet-actions">
+              <button className="secondary-button" type="button" onClick={resetExpenseAdvancedFilters}>
+                Reset
+              </button>
+              <button className="primary-button" type="button" onClick={() => setIsExpenseFilterOpen(false)}>
+                Show {expenseRows.length} expense{expenseRows.length === 1 ? "" : "s"}
+              </button>
+            </div>
+          </div>
+        </Modal>
 
         {activeTab === "tasks" ? (() => {
           const taskStats = [
