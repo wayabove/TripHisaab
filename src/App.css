@@ -7511,6 +7511,47 @@ body.body-scroll-locked .main-content {
 .trip-health-budget-pct.warning-text { color: #d97706; }
 
 /* ---- Overview category bars ---- */
+.overview-filter-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.overview-filter-button strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--surface);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.overview-filter-button.active {
+  border-color: var(--primary);
+  background: var(--primary-muted);
+  color: var(--primary-dark);
+}
+
+.overview-filter-tabs,
+.overview-active-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.overview-filter-tabs::-webkit-scrollbar,
+.overview-active-filters::-webkit-scrollbar {
+  display: none;
+}
+
 .overview-cat-bars {
   display: flex;
   flex-direction: column;
@@ -7522,7 +7563,21 @@ body.body-scroll-locked .main-content {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   min-width: 0;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.overview-cat-row:hover,
+.overview-cat-row:focus-visible {
+  background: var(--surface-soft);
+  outline: none;
 }
 
 .overview-cat-icon {
@@ -7586,10 +7641,22 @@ body.body-scroll-locked .main-content {
 }
 
 .overview-cat-more {
+  border: 0;
+  background: transparent;
   font-size: 12px;
   color: var(--muted);
   padding-top: 2px;
   text-align: center;
+  cursor: pointer;
+}
+
+.overview-category-empty {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 12px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* ---- Overview group card ---- */
@@ -8163,10 +8230,23 @@ body.body-scroll-locked .main-content {
 }
 
 .cbm-item {
+  display: block;
+  width: 100%;
   padding: 10px 0;
+  border: 0;
   border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 .cbm-item:last-child { border-bottom: none; }
+
+.cbm-item:hover,
+.cbm-item:focus-visible {
+  background: var(--surface-soft);
+  outline: none;
+}
 
 .cbm-item-top {
   display: grid;

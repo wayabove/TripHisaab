@@ -2149,6 +2149,19 @@ function App() {
     maxAmount: ""
   });
   const [isExpenseFilterOpen, setIsExpenseFilterOpen] = useState(false);
+  const [overviewExpenseFilter, setOverviewExpenseFilter] = useState("all");
+  const [overviewAdvancedFilters, setOverviewAdvancedFilters] = useState({
+    datePreset: "all",
+    fromDate: "",
+    toDate: "",
+    memberMode: "paidBy",
+    memberIds: [],
+    categoryIds: [],
+    scopes: [],
+    minAmount: "",
+    maxAmount: ""
+  });
+  const [isOverviewFilterOpen, setIsOverviewFilterOpen] = useState(false);
   const [expenseSort, setExpenseSort] = useState("newest");
   const [showBetaWelcome, setShowBetaWelcome] = useState(() => {
     try { return !localStorage.getItem('thBetaWelcomeSeen'); } catch { return false; }
@@ -2800,6 +2813,129 @@ function App() {
     [membersById]
   );
 
+  const getExpenseDateRange = useCallback(
+    preset => {
+      if (!preset || preset === "all" || preset === "custom") return null;
+      const today = todayIso();
+      if (preset === "today") return { from: today, to: today };
+      const todayDate = new Date(`${today}T00:00:00`);
+      if (preset === "week") {
+        const from = new Date(todayDate);
+        from.setDate(todayDate.getDate() - 6);
+        return { from: from.toISOString().slice(0, 10), to: today };
+      }
+      if (preset === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
+      if (preset === "trip") return { from: selectedTrip?.startDate || "", to: selectedTrip?.endDate || "" };
+      return null;
+    },
+    [selectedTrip?.endDate, selectedTrip?.startDate]
+  );
+
+  const getCurrentUnitMemberIds = useCallback(() => {
+    if (!currentUserMemberId) return new Set();
+    const currentUnit = settlementGroups.find(group =>
+      group.isActive !== false
+      && Array.isArray(group.memberIds)
+      && group.memberIds.includes(currentUserMemberId)
+    );
+    return new Set(currentUnit?.memberIds || []);
+  }, [currentUserMemberId, settlementGroups]);
+
+  const getExpenseRelatedMemberIds = useCallback(
+    expense =>
+      new Set([
+        expense.paidByMemberId,
+        ...(expense.splitMemberIds || []),
+        ...expenseVisibleIds(expense, activeMembers)
+      ].filter(Boolean)),
+    [activeMembers]
+  );
+
+  const matchesExpenseFilters = useCallback(
+    (expense, quickFilter = "all", advancedFilters = {}, queryText = "") => {
+      if (expense?.isActive === false) return false;
+      const currentUnitMemberIds = getCurrentUnitMemberIds();
+      const isMyExpense = currentUserMemberId && expense.paidByMemberId === currentUserMemberId;
+      const isMyUnitExpense = () => {
+        if (currentUnitMemberIds.size === 0) return false;
+        const relatedIds = getExpenseRelatedMemberIds(expense);
+        return Array.from(currentUnitMemberIds).some(memberId => relatedIds.has(memberId));
+      };
+
+      if (quickFilter === "mine" && !isMyExpense) return false;
+      if (quickFilter === "unit" && !isMyUnitExpense()) return false;
+      if (quickFilter === "shared" && expense.expenseType !== "shared") return false;
+      if (quickFilter === "personal" && expense.expenseType === "shared") return false;
+      if (
+        quickFilter === "pending"
+        && !(
+          expense.expenseType === "shared"
+          && (!Array.isArray(expense.splitMemberIds) || expense.splitMemberIds.length === 0)
+        )
+      ) return false;
+
+      const filters = {
+        datePreset: "all",
+        fromDate: "",
+        toDate: "",
+        memberMode: "paidBy",
+        memberIds: [],
+        categoryIds: [],
+        scopes: [],
+        minAmount: "",
+        maxAmount: "",
+        ...advancedFilters
+      };
+      const presetRange = getExpenseDateRange(filters.datePreset);
+      const fromDate = filters.datePreset === "custom" ? filters.fromDate : presetRange?.from || "";
+      const toDate = filters.datePreset === "custom" ? filters.toDate : presetRange?.to || "";
+      if (fromDate && String(expense.date || "") < fromDate) return false;
+      if (toDate && String(expense.date || "") > toDate) return false;
+
+      if (filters.memberIds.length > 0) {
+        const selectedMembers = new Set(filters.memberIds);
+        if (filters.memberMode === "paidBy") {
+          if (!selectedMembers.has(expense.paidByMemberId)) return false;
+        } else {
+          const relatedIds = getExpenseRelatedMemberIds(expense);
+          if (!Array.from(selectedMembers).some(memberId => relatedIds.has(memberId))) return false;
+        }
+      }
+
+      if (filters.categoryIds.length > 0 && !filters.categoryIds.includes(expense.categoryId)) return false;
+
+      if (filters.scopes.length > 0) {
+        const scope = normalizeExpenseScope(expense);
+        if (!filters.scopes.includes(scope)) return false;
+      }
+
+      const amount = Number(expense.amountEur || 0);
+      const minAmount = parseAmount(filters.minAmount);
+      const maxAmount = parseAmount(filters.maxAmount);
+      if (minAmount && amount < minAmount) return false;
+      if (maxAmount && amount > maxAmount) return false;
+
+      const normalizedQuery = queryText.trim().toLowerCase();
+      if (normalizedQuery) {
+        const participantNames = (expense.splitMemberIds || []).map(memberNameOf).join(" ");
+        const haystack = [
+          expense.description,
+          expense.categoryName,
+          expense.notes,
+          memberNameOf(expense.paidByMemberId),
+          participantNames
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(normalizedQuery)) return false;
+      }
+
+      return true;
+    },
+    [currentUserMemberId, getCurrentUnitMemberIds, getExpenseDateRange, getExpenseRelatedMemberIds, memberNameOf]
+  );
+
   const balances = useMemo(() => {
     const groupSettlements = settlements.filter(s => (s.settlementLayer || "group") === "group");
     return calculateBalances(
@@ -2982,122 +3118,14 @@ function App() {
   }, [expenses]);
 
   const expenseRows = useMemo(() => {
-    const queryText = expenseSearch.trim().toLowerCase();
-    const currentUnit = currentUserMemberId
-      ? settlementGroups.find(group =>
-          group.isActive !== false
-          && Array.isArray(group.memberIds)
-          && group.memberIds.includes(currentUserMemberId)
-        )
-      : null;
-    const currentUnitMemberIds = new Set(currentUnit?.memberIds || []);
-
-    const isMyExpense = expense =>
-      currentUserMemberId && expense.paidByMemberId === currentUserMemberId;
-
-    const isMyUnitExpense = expense => {
-      if (currentUnitMemberIds.size === 0) return false;
-      const relatedIds = new Set([
-        expense.paidByMemberId,
-        ...(expense.splitMemberIds || []),
-        ...expenseVisibleIds(expense, activeMembers)
-      ].filter(Boolean));
-      return Array.from(currentUnitMemberIds).some(memberId => relatedIds.has(memberId));
-    };
-
     const dateTimeValue = expense => {
       const value = `${expense.date || ""}T${expense.time || "00:00"}`;
       const parsed = new Date(value).getTime();
       return Number.isNaN(parsed) ? 0 : parsed;
     };
 
-    const dateRangeForPreset = preset => {
-      if (!preset || preset === "all" || preset === "custom") return null;
-      const today = todayIso();
-      if (preset === "today") return { from: today, to: today };
-      const todayDate = new Date(`${today}T00:00:00`);
-      if (preset === "week") {
-        const from = new Date(todayDate);
-        from.setDate(todayDate.getDate() - 6);
-        return { from: from.toISOString().slice(0, 10), to: today };
-      }
-      if (preset === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
-      if (preset === "trip") return { from: selectedTrip?.startDate || "", to: selectedTrip?.endDate || "" };
-      return null;
-    };
-
-    const matchesFilter = expense => {
-      if (expenseFilter === "mine") return isMyExpense(expense);
-      if (expenseFilter === "unit") return isMyUnitExpense(expense);
-      if (expenseFilter === "shared") return expense.expenseType === "shared";
-      if (expenseFilter === "personal") return expense.expenseType !== "shared";
-      if (expenseFilter === "pending") {
-        return (
-          expense.expenseType === "shared" &&
-          (!Array.isArray(expense.splitMemberIds) || expense.splitMemberIds.length === 0)
-        );
-      }
-      return true;
-    };
-
-    const relatedMemberIds = expense =>
-      new Set([
-        expense.paidByMemberId,
-        ...(expense.splitMemberIds || []),
-        ...expenseVisibleIds(expense, activeMembers)
-      ].filter(Boolean));
-
-    const matchesAdvancedFilters = expense => {
-      const filters = expenseAdvancedFilters;
-      const presetRange = dateRangeForPreset(filters.datePreset);
-      const fromDate = filters.datePreset === "custom" ? filters.fromDate : presetRange?.from || "";
-      const toDate = filters.datePreset === "custom" ? filters.toDate : presetRange?.to || "";
-      if (fromDate && String(expense.date || "") < fromDate) return false;
-      if (toDate && String(expense.date || "") > toDate) return false;
-
-      if (filters.memberIds.length > 0) {
-        const selectedMembers = new Set(filters.memberIds);
-        if (filters.memberMode === "paidBy") {
-          if (!selectedMembers.has(expense.paidByMemberId)) return false;
-        } else {
-          const relatedIds = relatedMemberIds(expense);
-          if (!Array.from(selectedMembers).some(memberId => relatedIds.has(memberId))) return false;
-        }
-      }
-
-      if (filters.categoryIds.length > 0 && !filters.categoryIds.includes(expense.categoryId)) return false;
-
-      if (filters.scopes.length > 0) {
-        const scope = normalizeExpenseScope(expense);
-        if (!filters.scopes.includes(scope)) return false;
-      }
-
-      const amount = Number(expense.amountEur || 0);
-      const minAmount = parseAmount(filters.minAmount);
-      const maxAmount = parseAmount(filters.maxAmount);
-      if (minAmount && amount < minAmount) return false;
-      if (maxAmount && amount > maxAmount) return false;
-      return true;
-    };
-
-    const matchesSearch = expense => {
-      if (!queryText) return true;
-      const participantNames = (expense.splitMemberIds || []).map(memberNameOf).join(" ");
-      return [
-        expense.description,
-        expense.categoryName,
-        expense.notes,
-        memberNameOf(expense.paidByMemberId),
-        participantNames
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(queryText);
-    };
-
     return expenses
-      .filter(expense => expense.isActive !== false && matchesFilter(expense) && matchesAdvancedFilters(expense) && matchesSearch(expense))
+      .filter(expense => matchesExpenseFilters(expense, expenseFilter, expenseAdvancedFilters, expenseSearch))
       .sort((a, b) => {
         if (expenseSort === "oldest") return dateTimeValue(a) - dateTimeValue(b);
         if (expenseSort === "highest") return Number(b.amountEur || 0) - Number(a.amountEur || 0);
@@ -3107,7 +3135,7 @@ function App() {
         }
         return dateTimeValue(b) - dateTimeValue(a);
       });
-  }, [activeMembers, currentUserMemberId, expenseAdvancedFilters, expenseFilter, expenseSearch, expenseSort, expenses, memberNameOf, selectedTrip?.endDate, selectedTrip?.startDate, settlementGroups]);
+  }, [expenseAdvancedFilters, expenseFilter, expenseSearch, expenseSort, expenses, matchesExpenseFilters]);
 
   const pagedExpenseRows = useMemo(() => {
     const pageSize = 5;
@@ -3365,6 +3393,44 @@ function App() {
         })
         .filter(category => category.actual > 0),
     [categories, actualByCategoryId]
+  );
+
+  const overviewFilteredExpenses = useMemo(
+    () =>
+      expenses.filter(expense =>
+        matchesExpenseFilters(expense, overviewExpenseFilter, overviewAdvancedFilters)
+      ),
+    [expenses, matchesExpenseFilters, overviewAdvancedFilters, overviewExpenseFilter]
+  );
+
+  const overviewActualByCategoryId = useMemo(() => {
+    const map = new Map();
+    overviewFilteredExpenses.forEach(expense => {
+      map.set(expense.categoryId, (map.get(expense.categoryId) || 0) + Number(expense.amountEur || 0));
+    });
+    return map;
+  }, [overviewFilteredExpenses]);
+
+  const overviewSpendingBreakdown = useMemo(
+    () =>
+      categories
+        .map((category, index) => {
+          const actual = overviewActualByCategoryId.get(category.id) || 0;
+          return {
+            ...category,
+            actual,
+            color:
+              category.color ||
+              ["#0f766e", "#2563eb", "#7c3aed", "#ea580c", "#16a34a", "#db2777"][index % 6]
+          };
+        })
+        .filter(category => category.actual > 0),
+    [categories, overviewActualByCategoryId]
+  );
+
+  const overviewFilteredTotalEur = useMemo(
+    () => roundMoney(overviewFilteredExpenses.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)),
+    [overviewFilteredExpenses]
   );
 
   // -------------------- Rates --------------------
@@ -10415,11 +10481,11 @@ function App() {
     }
 
     let breakdownCursor = 0;
-    const breakdownGradient = spendingBreakdown.length > 0
-      ? spendingBreakdown
+    const breakdownGradient = overviewSpendingBreakdown.length > 0 && overviewFilteredTotalEur > 0
+      ? overviewSpendingBreakdown
           .map(category => {
             const start = breakdownCursor;
-            const end = breakdownCursor + (category.actual / totals.actual) * 100;
+            const end = breakdownCursor + (category.actual / overviewFilteredTotalEur) * 100;
             breakdownCursor = end;
             return `${category.color} ${start}% ${end}%`;
           })
@@ -10435,6 +10501,13 @@ function App() {
       { key: "pending", label: "Pending split", count: expenseStats.pendingSplit }
     ];
     const activeExpenseFilter = expenseFilterOptions.find(option => option.key === expenseFilter) || expenseFilterOptions[0];
+    const overviewFilterOptions = [
+      { key: "all", label: "All", count: expenses.filter(e => e.isActive !== false).length },
+      { key: "mine", label: "Paid by me", count: expenseFilterOptions.find(option => option.key === "mine")?.count || 0 },
+      { key: "unit", label: "My unit", count: expenseFilterOptions.find(option => option.key === "unit")?.count || 0 },
+      { key: "shared", label: "Shared", count: expenseFilterOptions.find(option => option.key === "shared")?.count || 0 }
+    ];
+    const activeOverviewFilter = overviewFilterOptions.find(option => option.key === overviewExpenseFilter) || overviewFilterOptions[0];
     const datePresetLabels = {
       all: "Any date",
       today: "Today",
@@ -10512,6 +10585,86 @@ function App() {
         : null
     ].filter(Boolean);
     const activeAdvancedFilterCount = activeAdvancedFilterPills.length;
+    const resetOverviewAdvancedFilters = () => {
+      setOverviewAdvancedFilters({
+        datePreset: "all",
+        fromDate: "",
+        toDate: "",
+        memberMode: "paidBy",
+        memberIds: [],
+        categoryIds: [],
+        scopes: [],
+        minAmount: "",
+        maxAmount: ""
+      });
+    };
+    const toggleOverviewAdvancedArray = (key, value) => {
+      setOverviewAdvancedFilters(current => {
+        const selected = new Set(current[key] || []);
+        if (selected.has(value)) selected.delete(value);
+        else selected.add(value);
+        return { ...current, [key]: Array.from(selected) };
+      });
+    };
+    const overviewAdvancedFilterPills = [
+      overviewAdvancedFilters.datePreset !== "all"
+        ? {
+            key: "date",
+            label: overviewAdvancedFilters.datePreset === "custom"
+              ? `${overviewAdvancedFilters.fromDate || "Start"} to ${overviewAdvancedFilters.toDate || "End"}`
+              : datePresetLabels[overviewAdvancedFilters.datePreset],
+            clear: () => setOverviewAdvancedFilters(current => ({ ...current, datePreset: "all", fromDate: "", toDate: "" }))
+          }
+        : null,
+      overviewAdvancedFilters.memberIds.length > 0
+        ? {
+            key: "members",
+            label: `${overviewAdvancedFilters.memberMode === "paidBy" ? "Paid by" : "Involving"} ${memberListSummary(overviewAdvancedFilters.memberIds, "members", 2)}`,
+            clear: () => setOverviewAdvancedFilters(current => ({ ...current, memberIds: [] }))
+          }
+        : null,
+      overviewAdvancedFilters.categoryIds.length > 0
+        ? {
+            key: "categories",
+            label: overviewAdvancedFilters.categoryIds
+              .slice(0, 2)
+              .map(id => categoriesById.get(id)?.name || "Category")
+              .join(", ") + (overviewAdvancedFilters.categoryIds.length > 2 ? ` +${overviewAdvancedFilters.categoryIds.length - 2}` : ""),
+            clear: () => setOverviewAdvancedFilters(current => ({ ...current, categoryIds: [] }))
+          }
+        : null,
+      overviewAdvancedFilters.scopes.length > 0
+        ? {
+            key: "scopes",
+            label: overviewAdvancedFilters.scopes.map(scope => scopeLabels[scope] || scope).join(", "),
+            clear: () => setOverviewAdvancedFilters(current => ({ ...current, scopes: [] }))
+          }
+        : null,
+      overviewAdvancedFilters.minAmount || overviewAdvancedFilters.maxAmount
+        ? {
+            key: "amount",
+            label: `${overviewAdvancedFilters.minAmount || "0"}-${overviewAdvancedFilters.maxAmount || "max"}`,
+            clear: () => setOverviewAdvancedFilters(current => ({ ...current, minAmount: "", maxAmount: "" }))
+          }
+        : null
+    ].filter(Boolean);
+    const overviewAdvancedFilterCount = overviewAdvancedFilterPills.length;
+    const applyCategoryToExpenses = categoryId => {
+      setExpenseFilter("all");
+      setExpenseSearch("");
+      setExpenseAdvancedFilters({
+        datePreset: overviewAdvancedFilters.datePreset,
+        fromDate: overviewAdvancedFilters.fromDate,
+        toDate: overviewAdvancedFilters.toDate,
+        memberMode: overviewAdvancedFilters.memberMode,
+        memberIds: [...overviewAdvancedFilters.memberIds],
+        categoryIds: [categoryId],
+        scopes: [...overviewAdvancedFilters.scopes],
+        minAmount: overviewAdvancedFilters.minAmount,
+        maxAmount: overviewAdvancedFilters.maxAmount
+      });
+      setActiveTab("actual");
+    };
     const selectedExpenseTotalEur = roundMoney(
       expenseRows.reduce((sum, expense) => sum + Number(expense.amountEur || 0), 0)
     );
@@ -11272,43 +11425,103 @@ function App() {
               {spendingBreakdown.length > 0 && (
                 <div
                   className="dash-card dash-section-breakdown"
-                  role="button"
-                  tabIndex={0}
                   aria-label="View category breakdown"
-                  onClick={() => setShowCategoryBreakdown(true)}
-                  onKeyDown={e => e.key === "Enter" && setShowCategoryBreakdown(true)}
                 >
                   <Icon name="home" size={28} className="exp-type-icon" />
                   <div className="dash-card-header">
                     <div>
                       <h3>Spending by category</h3>
-                      <p className="dash-card-sub">{spendingBreakdown.length} {spendingBreakdown.length === 1 ? "category" : "categories"}</p>
+                      <p className="dash-card-sub">{fmx(overviewFilteredTotalEur)} · {overviewFilteredExpenses.length} expense{overviewFilteredExpenses.length === 1 ? "" : "s"}</p>
                     </div>
-                    <span className="link-button link-button--sm" aria-hidden="true">View all →</span>
+                    <button
+                      className={`secondary-button small-button overview-filter-button${overviewAdvancedFilterCount > 0 ? " active" : ""}`}
+                      type="button"
+                      onClick={() => setIsOverviewFilterOpen(true)}
+                    >
+                      <Icon name="settings" size={16} />
+                      <span>Filter</span>
+                      {overviewAdvancedFilterCount > 0 ? <strong>{overviewAdvancedFilterCount}</strong> : null}
+                    </button>
+                    <button className="link-button link-button--sm" type="button" onClick={() => setShowCategoryBreakdown(true)}>
+                      View all →
+                    </button>
                   </div>
-                  <div className="overview-cat-bars">
-                    {spendingBreakdown.slice(0, 4).map(c => {
-                      const pct = Math.max(1, Math.round((c.actual / totals.actual) * 100));
-                      return (
-                        <div className="overview-cat-row" key={c.id}>
-                          <span className="overview-cat-icon" style={{ color: c.color }}>{c.icon}</span>
-                          <div className="overview-cat-info">
-                            <div className="overview-cat-name-row">
-                              <span className="overview-cat-name">{c.name}</span>
-                              <span className="overview-cat-amt">{formatMoney(c.actual)}</span>
-                            </div>
-                            <div className="overview-cat-bar-track">
-                              <div className="overview-cat-bar-fill" style={{ width: `${pct}%`, background: c.color }} />
-                            </div>
-                          </div>
-                          <span className="overview-cat-pct">{pct}%</span>
-                        </div>
-                      );
-                    })}
-                    {spendingBreakdown.length > 4 && (
-                      <div className="overview-cat-more">+{spendingBreakdown.length - 4} more categories</div>
-                    )}
+                  <div className="overview-filter-tabs" role="tablist" aria-label="Category spending filters">
+                    {overviewFilterOptions.map(option => (
+                      <button
+                        key={option.key}
+                        className={`expense-filter-chip${overviewExpenseFilter === option.key ? " active" : ""}`}
+                        type="button"
+                        onClick={() => setOverviewExpenseFilter(option.key)}
+                      >
+                        {option.label}
+                        <span>{option.count}</span>
+                      </button>
+                    ))}
                   </div>
+                  {(overviewExpenseFilter !== "all" || overviewAdvancedFilterPills.length > 0) && (
+                    <div className="overview-active-filters">
+                      {overviewExpenseFilter !== "all" ? (
+                        <button className="expense-active-filter-pill" type="button" onClick={() => setOverviewExpenseFilter("all")}>
+                          {activeOverviewFilter.label}<span>×</span>
+                        </button>
+                      ) : null}
+                      {overviewAdvancedFilterPills.map(pill => (
+                        <button className="expense-active-filter-pill" type="button" key={pill.key} onClick={pill.clear}>
+                          {pill.label}<span>×</span>
+                        </button>
+                      ))}
+                      <button
+                        className="expense-active-filter-clear"
+                        type="button"
+                        onClick={() => {
+                          setOverviewExpenseFilter("all");
+                          resetOverviewAdvancedFilters();
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                  {overviewSpendingBreakdown.length > 0 ? (
+                    <div className="overview-cat-bars">
+                      {overviewSpendingBreakdown.slice(0, 4).map(c => {
+                        const pct = Math.max(1, Math.round((c.actual / overviewFilteredTotalEur) * 100));
+                        return (
+                          <button className="overview-cat-row" key={c.id} type="button" onClick={() => applyCategoryToExpenses(c.id)}>
+                            <span className="overview-cat-icon" style={{ color: c.color }}>{c.icon}</span>
+                            <div className="overview-cat-info">
+                              <div className="overview-cat-name-row">
+                                <span className="overview-cat-name">{c.name}</span>
+                                <span className="overview-cat-amt">{formatMoney(c.actual)}</span>
+                              </div>
+                              <div className="overview-cat-bar-track">
+                                <div className="overview-cat-bar-fill" style={{ width: `${pct}%`, background: c.color }} />
+                              </div>
+                            </div>
+                            <span className="overview-cat-pct">{pct}%</span>
+                          </button>
+                        );
+                      })}
+                      {overviewSpendingBreakdown.length > 4 && (
+                        <button className="overview-cat-more" type="button" onClick={() => setShowCategoryBreakdown(true)}>+{overviewSpendingBreakdown.length - 4} more categories</button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="overview-category-empty">
+                      No category spending matches these filters.
+                      <button
+                        className="link-button"
+                        type="button"
+                        onClick={() => {
+                          setOverviewExpenseFilter("all");
+                          resetOverviewAdvancedFilters();
+                        }}
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -11367,6 +11580,174 @@ function App() {
                 </div>
               )}
 
+              <Modal
+                isOpen={isOverviewFilterOpen}
+                onClose={() => setIsOverviewFilterOpen(false)}
+                title="Filter category spending"
+                className="expense-filter-modal overview-filter-modal"
+              >
+                <div className="expense-filter-sheet">
+                  <section className="expense-filter-section">
+                    <div className="expense-filter-section-head">
+                      <strong>Date</strong>
+                    </div>
+                    <div className="expense-filter-choice-grid">
+                      {["all", "today", "week", "month", "trip", "custom"].map(preset => (
+                        <button
+                          key={preset}
+                          className={`expense-filter-choice${overviewAdvancedFilters.datePreset === preset ? " active" : ""}`}
+                          type="button"
+                          onClick={() => setOverviewAdvancedFilters(current => ({
+                            ...current,
+                            datePreset: preset,
+                            fromDate: preset === "custom" ? current.fromDate : "",
+                            toDate: preset === "custom" ? current.toDate : ""
+                          }))}
+                        >
+                          {datePresetLabels[preset]}
+                        </button>
+                      ))}
+                    </div>
+                    {overviewAdvancedFilters.datePreset === "custom" ? (
+                      <div className="expense-filter-field-grid">
+                        <label>
+                          <span>From</span>
+                          <input
+                            className="form-input"
+                            type="date"
+                            value={overviewAdvancedFilters.fromDate}
+                            onChange={event => setOverviewAdvancedFilters(current => ({ ...current, fromDate: event.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          <span>To</span>
+                          <input
+                            className="form-input"
+                            type="date"
+                            value={overviewAdvancedFilters.toDate}
+                            onChange={event => setOverviewAdvancedFilters(current => ({ ...current, toDate: event.target.value }))}
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+                  </section>
+
+                  <section className="expense-filter-section">
+                    <div className="expense-filter-section-head">
+                      <strong>Member</strong>
+                    </div>
+                    <div className="expense-filter-segmented">
+                      {[
+                        { key: "paidBy", label: "Paid by" },
+                        { key: "involved", label: "Involved" }
+                      ].map(option => (
+                        <button
+                          key={option.key}
+                          className={overviewAdvancedFilters.memberMode === option.key ? "active" : ""}
+                          type="button"
+                          onClick={() => setOverviewAdvancedFilters(current => ({ ...current, memberMode: option.key }))}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="expense-filter-chip-grid">
+                      {activeMembers.map(member => (
+                        <button
+                          key={member.id}
+                          className={`expense-filter-person-chip${overviewAdvancedFilters.memberIds.includes(member.id) ? " active" : ""}`}
+                          type="button"
+                          onClick={() => toggleOverviewAdvancedArray("memberIds", member.id)}
+                        >
+                          <span>{memberInitialOf(member.id)}</span>
+                          {memberNameOf(member.id)}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="expense-filter-section">
+                    <div className="expense-filter-section-head">
+                      <strong>Category</strong>
+                    </div>
+                    <div className="expense-filter-chip-grid">
+                      {activeCategories.map(category => (
+                        <button
+                          key={category.id}
+                          className={`expense-filter-category-chip${overviewAdvancedFilters.categoryIds.includes(category.id) ? " active" : ""}`}
+                          type="button"
+                          onClick={() => toggleOverviewAdvancedArray("categoryIds", category.id)}
+                        >
+                          <span style={{ backgroundColor: `${category.color || "#0f766e"}22`, color: category.color || "#0f766e" }}>
+                            {category.icon || "EUR"}
+                          </span>
+                          {category.name}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="expense-filter-section">
+                    <div className="expense-filter-section-head">
+                      <strong>Audience</strong>
+                    </div>
+                    <div className="expense-filter-choice-grid">
+                      {[
+                        { key: "group", label: "Everyone" },
+                        { key: "selected_members", label: "Selected people" },
+                        { key: "personal", label: "Personal" }
+                      ].map(scope => (
+                        <button
+                          key={scope.key}
+                          className={`expense-filter-choice${overviewAdvancedFilters.scopes.includes(scope.key) ? " active" : ""}`}
+                          type="button"
+                          onClick={() => toggleOverviewAdvancedArray("scopes", scope.key)}
+                        >
+                          {scope.label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="expense-filter-section">
+                    <div className="expense-filter-section-head">
+                      <strong>Amount</strong>
+                    </div>
+                    <div className="expense-filter-field-grid">
+                      <label>
+                        <span>Min EUR</span>
+                        <input
+                          className="form-input"
+                          type="text"
+                          inputMode="decimal"
+                          value={overviewAdvancedFilters.minAmount}
+                          onChange={event => setOverviewAdvancedFilters(current => ({ ...current, minAmount: event.target.value.replace(/[^\d.,]/g, "") }))}
+                        />
+                      </label>
+                      <label>
+                        <span>Max EUR</span>
+                        <input
+                          className="form-input"
+                          type="text"
+                          inputMode="decimal"
+                          value={overviewAdvancedFilters.maxAmount}
+                          onChange={event => setOverviewAdvancedFilters(current => ({ ...current, maxAmount: event.target.value.replace(/[^\d.,]/g, "") }))}
+                        />
+                      </label>
+                    </div>
+                  </section>
+
+                  <div className="expense-filter-sheet-actions">
+                    <button className="secondary-button" type="button" onClick={resetOverviewAdvancedFilters}>
+                      Reset
+                    </button>
+                    <button className="primary-button" type="button" onClick={() => setIsOverviewFilterOpen(false)}>
+                      Show {overviewFilteredExpenses.length} expense{overviewFilteredExpenses.length === 1 ? "" : "s"}
+                    </button>
+                  </div>
+                </div>
+              </Modal>
+
               {/* Category breakdown modal */}
               <Modal
                 isOpen={showCategoryBreakdown}
@@ -11384,16 +11765,16 @@ function App() {
                     >
                       <div className="breakdown-ring-center">
                         <span>Total</span>
-                        <strong>{fmx(totals.actual)}</strong>
+                        <strong>{fmx(overviewFilteredTotalEur)}</strong>
                       </div>
                     </div>
                   </div>
                   <div className="cbm-scroll-region" role="region" aria-label="Category spending list" tabIndex={0}>
                     <div className="cbm-list">
-                      {spendingBreakdown.map(c => {
-                        const pct = Math.max(1, Math.round((c.actual / totals.actual) * 100));
+                      {overviewSpendingBreakdown.map(c => {
+                        const pct = Math.max(1, Math.round((c.actual / overviewFilteredTotalEur) * 100));
                         return (
-                          <div className="cbm-item" key={c.id}>
+                          <button className="cbm-item" key={c.id} type="button" onClick={() => applyCategoryToExpenses(c.id)}>
                             <div className="cbm-item-top">
                               <div className="cbm-icon" style={{ color: c.color }}>{c.icon}</div>
                               <div className="cbm-name">{c.name}</div>
@@ -11403,7 +11784,7 @@ function App() {
                             <div className="cbm-bar-track">
                               <div className="cbm-bar-fill" style={{ width: `${pct}%`, background: c.color }} />
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
