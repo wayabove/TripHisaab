@@ -1372,7 +1372,46 @@ function Preloader() {
   const [progress, setProgress] = useState(0);
   const routeLength = 420;
   const routeOffset = routeLength - (progress / 100) * routeLength;
-  const planeLift = -Math.sin((progress / 100) * Math.PI) * 18;
+  const flightPath = useMemo(
+    () => [
+      { start: [12, 58], c1: [90, 24], c2: [154, 23], end: [212, 42] },
+      { start: [212, 42], c1: [274, 63], c2: [321, 47], end: [408, 20] }
+    ],
+    []
+  );
+  const planePosition = useMemo(() => {
+    const cubicPoint = (segment, t) => {
+      const u = 1 - t;
+      const [x0, y0] = segment.start;
+      const [x1, y1] = segment.c1;
+      const [x2, y2] = segment.c2;
+      const [x3, y3] = segment.end;
+      return {
+        x: (u ** 3 * x0) + (3 * u ** 2 * t * x1) + (3 * u * t ** 2 * x2) + (t ** 3 * x3),
+        y: (u ** 3 * y0) + (3 * u ** 2 * t * y1) + (3 * u * t ** 2 * y2) + (t ** 3 * y3)
+      };
+    };
+    const cubicTangent = (segment, t) => {
+      const u = 1 - t;
+      const [x0, y0] = segment.start;
+      const [x1, y1] = segment.c1;
+      const [x2, y2] = segment.c2;
+      const [x3, y3] = segment.end;
+      return {
+        x: (3 * u ** 2 * (x1 - x0)) + (6 * u * t * (x2 - x1)) + (3 * t ** 2 * (x3 - x2)),
+        y: (3 * u ** 2 * (y1 - y0)) + (6 * u * t * (y2 - y1)) + (3 * t ** 2 * (y3 - y2))
+      };
+    };
+    const easedProgress = 1 - ((1 - (progress / 100)) ** 1.45);
+    const segmentIndex = easedProgress <= 0.5 ? 0 : 1;
+    const segmentT = segmentIndex === 0 ? easedProgress / 0.5 : (easedProgress - 0.5) / 0.5;
+    const point = cubicPoint(flightPath[segmentIndex], segmentT);
+    const tangent = cubicTangent(flightPath[segmentIndex], segmentT);
+    return {
+      ...point,
+      angle: Math.atan2(tangent.y, tangent.x) * (180 / Math.PI)
+    };
+  }, [flightPath, progress]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1399,11 +1438,10 @@ function Preloader() {
           aria-valuenow={progress}
           style={{
             "--progress": `${progress}%`,
-            "--plane-lift": `${planeLift}px`,
             "--route-offset": routeOffset
           }}
         >
-          <svg className="flight-route-map" viewBox="0 0 420 86" aria-hidden="true" preserveAspectRatio="none">
+          <svg className="flight-route-map" viewBox="0 0 420 86" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
             <path
               className="flight-route-shadow"
               d="M12 58 C90 24 154 23 212 42 C274 63 321 47 408 20"
@@ -1413,16 +1451,27 @@ function Preloader() {
               d="M12 58 C90 24 154 23 212 42 C274 63 321 47 408 20"
               pathLength={routeLength}
             />
+            <g
+              className="flight-plane-marker"
+              transform={`translate(${planePosition.x} ${planePosition.y}) rotate(${planePosition.angle})`}
+            >
+              <ellipse className="flight-plane-shadow" cx="-8" cy="18" rx="22" ry="6" />
+              <path className="flight-plane-speed flight-plane-speed--top" d="M-42 -7 H-20" />
+              <path className="flight-plane-speed flight-plane-speed--bottom" d="M-38 9 H-18" />
+              <image
+                className="flight-plane-svg-icon"
+                href="/LandingPage/Plane.svg"
+                x="-24"
+                y="-20"
+                width="48"
+                height="41"
+                preserveAspectRatio="xMidYMid meet"
+              />
+            </g>
           </svg>
           <span className="flight-cloud flight-cloud--one" aria-hidden="true" />
           <span className="flight-cloud flight-cloud--two" aria-hidden="true" />
           <span className="flight-cloud flight-cloud--three" aria-hidden="true" />
-          <span className="flight-plane" aria-hidden="true">
-            <span className="flight-plane-icon" />
-            <span className="flight-plane-glow" />
-            <span className="flight-speed-lines flight-speed-lines--top" />
-            <span className="flight-speed-lines flight-speed-lines--bottom" />
-          </span>
           <span className="flight-destination" aria-hidden="true" />
         </div>
         <div className="preloader-percent">{progress}%</div>

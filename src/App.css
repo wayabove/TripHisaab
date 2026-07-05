@@ -694,87 +694,35 @@ p {
   transition: stroke-dashoffset 180ms ease;
 }
 
-.flight-plane {
-  position: absolute;
-  left: var(--progress);
-  top: 24px;
-  transform: translate(-50%, var(--plane-lift));
-  display: grid;
-  place-items: center;
-  width: 58px;
-  height: 50px;
-  z-index: 3;
-  transition: left 180ms ease, transform 180ms ease;
-}
-
-.flight-plane-icon {
-  position: relative;
-  z-index: 2;
-  width: 46px;
-  height: 39px;
-  background: var(--primary);
-  transform: rotate(0deg);
+.flight-plane-marker {
+  transform-box: fill-box;
   transform-origin: center;
-  -webkit-mask: url("/LandingPage/Plane.svg") center / contain no-repeat;
-  mask: url("/LandingPage/Plane.svg") center / contain no-repeat;
-  filter: drop-shadow(0 6px 10px rgba(15, 118, 110, 0.28));
+  transition: transform 180ms ease;
+  will-change: transform;
 }
 
-.flight-plane-glow {
-  position: absolute;
-  z-index: 1;
-  width: 34px;
-  height: 14px;
-  border-radius: 999px;
-  background: rgba(45, 212, 191, 0.32);
-  transform: translate(-10px, 9px);
-  filter: blur(6px);
+.flight-plane-svg-icon {
+  filter: drop-shadow(0 7px 10px rgba(15, 118, 110, 0.28));
+}
+
+.flight-plane-shadow {
+  fill: rgba(45, 212, 191, 0.28);
+  filter: blur(4px);
   animation: flight-plane-glow 900ms ease-in-out infinite;
 }
 
-.flight-speed-lines {
-  position: absolute;
-  left: 2px;
-  width: 15px;
-  height: 2px;
-  border-radius: 99px;
-  background: var(--primary);
-  opacity: 0.75;
-  animation: flight-speed-line 720ms ease-in-out infinite;
+.flight-plane-speed {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.72;
+  animation: flight-speed-line-svg 720ms ease-in-out infinite;
 }
 
-.flight-speed-lines::before,
-.flight-speed-lines::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  width: 10px;
-  height: 2px;
-  border-radius: inherit;
-  background: inherit;
-}
-
-.flight-speed-lines::before {
-  top: -5px;
-  opacity: 0.7;
-  animation: flight-speed-line 720ms ease-in-out infinite 120ms;
-}
-
-.flight-speed-lines::after {
-  top: 5px;
-  opacity: 0.55;
-  animation: flight-speed-line 720ms ease-in-out infinite 240ms;
-}
-
-.flight-speed-lines--top {
-  top: 15px;
-  transform: rotate(6deg);
-}
-
-.flight-speed-lines--bottom {
-  top: 33px;
-  transform: rotate(-6deg);
+.flight-plane-speed--bottom {
   animation-delay: 180ms;
+  opacity: 0.56;
 }
 
 .flight-cloud {
@@ -895,15 +843,15 @@ p {
   }
 }
 
-@keyframes flight-speed-line {
+@keyframes flight-speed-line-svg {
   0%,
   100% {
-    transform: translateX(1px) scaleX(0.65);
-    opacity: 0.35;
+    transform: translateX(2px) scaleX(0.65);
+    opacity: 0.32;
   }
   50% {
-    transform: translateX(-4px) scaleX(1);
-    opacity: 0.9;
+    transform: translateX(-5px) scaleX(1);
+    opacity: 0.88;
   }
 }
 
@@ -932,6 +880,21 @@ p {
   .preloader-credit {
     font-size: 11px;
     bottom: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flight-route-shadow,
+  .flight-plane-shadow,
+  .flight-plane-speed,
+  .flight-cloud,
+  .flight-destination {
+    animation: none;
+  }
+
+  .flight-route-progress,
+  .flight-plane-marker {
+    transition-duration: 360ms;
   }
 }
 
