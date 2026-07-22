@@ -938,17 +938,52 @@ const DEMO_PREDICTIONS = [
   { id: "transport", categoryId: "transport", categoryName: "Transport", estimatedEur: 260 },
   { id: "activities", categoryId: "activities", categoryName: "Activities", estimatedEur: 360 }
 ];
-const DEMO_EXPENSES = [
-  { id: "demo-exp-1", date: "2026-06-10", time: "09:10", categoryId: "flights", categoryName: "Flights", categoryIcon: "✈️", description: "Oslo round-trip flights", amountEur: 695, originalAmount: 695, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-alex", paidByMemberName: "Alex", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" },
-  { id: "demo-exp-2", date: "2026-06-10", time: "17:30", categoryId: "hotel", categoryName: "Hotel", categoryIcon: "🏨", description: "Bergen harbor hotel", amountEur: 870, originalAmount: 870, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-sam", paidByMemberName: "Sam", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "4 nights" },
-  { id: "demo-exp-3", date: "2026-06-11", time: "12:20", categoryId: "food", categoryName: "Food", categoryIcon: "🍽️", description: "Fish market lunch", amountEur: 86, originalAmount: 86, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-maya", paidByMemberName: "Maya", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" },
-  { id: "demo-exp-4", date: "2026-06-12", time: "08:45", categoryId: "transport", categoryName: "Transport", categoryIcon: "🚆", description: "Flam railway tickets", amountEur: 240, originalAmount: 240, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-alex", paidByMemberName: "Alex", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" },
-  { id: "demo-exp-5", date: "2026-06-13", time: "14:00", categoryId: "activities", categoryName: "Activities", categoryIcon: "🎟️", description: "Fjord cruise", amountEur: 330, originalAmount: 330, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-sam", paidByMemberName: "Sam", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" },
-  { id: "demo-exp-6", date: "2026-06-14", time: "19:10", categoryId: "food", categoryName: "Food", categoryIcon: "🍽️", description: "Last dinner in Oslo", amountEur: 124, originalAmount: 124, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-maya", paidByMemberName: "Maya", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], paymentMethod: "card", notes: "" }
+// "Our unit" showcases family/couple consolidation on the overview visibility guide, unit filters, and settle screen.
+const DEMO_SETTLEMENT_GROUPS = [
+  {
+    id: "demo-unit-sam-maya",
+    name: "Sam & Maya",
+    memberIds: ["demo-sam", "demo-maya"],
+    type: "couple",
+    isActive: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z"
+  }
 ];
-const DEMO_SETTLEMENTS = [
-  { id: "demo-settle-1", date: "2026-06-15", fromMemberId: "demo-maya", fromMemberName: "Maya", toMemberId: "demo-alex", toMemberName: "Alex", amountEur: 120, notes: "Partial payback" }
-];
+
+// Demo dates are anchored to "today" (not a fixed 2026 date) so date-based
+// expense/task filters (Today, Last 7 days, This month) always have matching data.
+function demoIsoDate(daysAgo) {
+  return new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 10);
+}
+
+function buildDemoExpenses() {
+  return [
+    { id: "demo-exp-1", date: demoIsoDate(5), time: "09:10", categoryId: "flights", categoryName: "Flights", categoryIcon: "✈️", description: "Oslo round-trip flights", amountEur: 695, originalAmount: 695, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-alex", paidByMemberName: "Alex", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], scope: "group", visibleTo: "all", countsTowardGroupSettlement: true, includeInGroupTotal: true, paymentMethod: "card", notes: "" },
+    { id: "demo-exp-2", date: demoIsoDate(5), time: "17:30", categoryId: "hotel", categoryName: "Hotel", categoryIcon: "🏨", description: "Bergen harbor hotel", amountEur: 870, originalAmount: 870, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-sam", paidByMemberName: "Sam", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], scope: "group", visibleTo: "all", countsTowardGroupSettlement: true, includeInGroupTotal: true, paymentMethod: "card", notes: "4 nights" },
+    { id: "demo-exp-3", date: demoIsoDate(4), time: "12:20", categoryId: "food", categoryName: "Food", categoryIcon: "🍽️", description: "Fish market lunch", amountEur: 86, originalAmount: 86, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-maya", paidByMemberName: "Maya", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], scope: "group", visibleTo: "all", countsTowardGroupSettlement: true, includeInGroupTotal: true, paymentMethod: "card", notes: "" },
+    { id: "demo-exp-4", date: demoIsoDate(3), time: "08:45", categoryId: "transport", categoryName: "Transport", categoryIcon: "🚆", description: "Flam railway tickets", amountEur: 240, originalAmount: 240, originalCurrency: "EUR", expenseType: "shared", splitType: "custom", customSplitSharesEur: { "demo-alex": 100, "demo-sam": 90, "demo-maya": 50 }, paidByMemberId: "demo-alex", paidByMemberName: "Alex", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], scope: "group", visibleTo: "all", countsTowardGroupSettlement: true, includeInGroupTotal: true, paymentMethod: "card", notes: "Alex booked extra legroom seats" },
+    { id: "demo-exp-5", date: demoIsoDate(2), time: "14:00", categoryId: "activities", categoryName: "Activities", categoryIcon: "🎟️", description: "Fjord cruise for two", amountEur: 180, originalAmount: 180, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-sam", paidByMemberName: "Sam", splitMemberIds: ["demo-sam", "demo-maya"], scope: "selected_members", visibleTo: ["demo-sam", "demo-maya"], countsTowardGroupSettlement: false, includeInGroupTotal: false, paymentMethod: "card", notes: "Just Sam & Maya's excursion" },
+    { id: "demo-exp-6", date: demoIsoDate(1), time: "19:10", categoryId: "food", categoryName: "Food", categoryIcon: "🍽️", description: "Last dinner in Oslo", amountEur: 124, originalAmount: 124, originalCurrency: "EUR", expenseType: "shared", splitType: "equal", paidByMemberId: "demo-maya", paidByMemberName: "Maya", splitMemberIds: ["demo-alex", "demo-sam", "demo-maya"], scope: "group", visibleTo: "all", countsTowardGroupSettlement: true, includeInGroupTotal: true, paymentMethod: "card", notes: "" },
+    { id: "demo-exp-7", date: demoIsoDate(0), time: "10:15", categoryId: "activities", categoryName: "Activities", categoryIcon: "🎟️", description: "Souvenir shopping", amountEur: 42, originalAmount: 42, originalCurrency: "EUR", expenseType: "personal", splitType: "none", paidByMemberId: "demo-alex", paidByMemberName: "Alex", splitMemberIds: [], scope: "personal", visibleTo: ["demo-alex"], countsTowardGroupSettlement: false, includeInGroupTotal: false, paymentMethod: "card", notes: "Visible only to me" }
+  ];
+}
+
+function buildDemoTasks() {
+  return [
+    { id: "demo-task-1", tripId: DEMO_TRIP_ID, title: "Book Bergen–Flam train", type: "booking", scope: "group", visibleTo: "all", assignedTo: ["demo-alex"], dueDate: demoIsoDate(3), notes: "Reserve the morning departure", status: "done", completedBy: "demo-alex", completedAt: demoIsoDate(3), isActive: true, createdBy: "demo-alex" },
+    { id: "demo-task-2", tripId: DEMO_TRIP_ID, title: "Pay hotel balance", type: "payment", scope: "group", visibleTo: "all", assignedTo: ["demo-sam"], dueDate: demoIsoDate(-1), notes: "", status: "todo", completedBy: null, completedAt: null, isActive: true, createdBy: "demo-alex" },
+    { id: "demo-task-3", tripId: DEMO_TRIP_ID, title: "Pack rain jackets", type: "packing", scope: "selected_members", visibleTo: ["demo-sam", "demo-maya"], assignedTo: ["demo-sam", "demo-maya"], dueDate: null, notes: "Norway weather is unpredictable", status: "todo", completedBy: null, completedAt: null, isActive: true, createdBy: "demo-maya" },
+    { id: "demo-task-4", tripId: DEMO_TRIP_ID, title: "Scan passports", type: "document", scope: "personal", visibleTo: ["demo-alex"], assignedTo: ["demo-alex"], dueDate: null, notes: "", status: "todo", completedBy: null, completedAt: null, isActive: true, createdBy: "demo-alex" },
+    { id: "demo-task-5", tripId: DEMO_TRIP_ID, title: "Save fjord cruise receipt", type: "receipt", scope: "group", visibleTo: "all", assignedTo: ["demo-maya"], dueDate: null, notes: "", status: "done", completedBy: "demo-maya", completedAt: demoIsoDate(1), isActive: true, createdBy: "demo-alex" }
+  ];
+}
+
+function buildDemoSettlements() {
+  return [
+    { id: "demo-settle-1", date: demoIsoDate(4), settlementLayer: "group", fromMemberId: "demo-maya", fromMemberName: "Maya", toMemberId: "demo-alex", toMemberName: "Alex", amountEur: 120, notes: "Partial payback" }
+  ];
+}
 
 function readTripImage(file) {
   return new Promise((resolve, reject) => {
@@ -2756,6 +2791,11 @@ function App() {
 
   const currentUserMemberId = useMemo(
     () => {
+      // Demo trip has no real signed-in member to match, so browse it as the
+      // organizer (Alex) — this makes "Paid by me"/"My unit" filters and
+      // private-task visibility rules demonstrate for real instead of always
+      // showing zero/empty.
+      if (selectedTrip?.id === DEMO_TRIP_ID || selectedTrip?.isDemo === true) return "demo-alex";
       if (!user) return "";
       const byUserId = members.find(m => m.userId === user.uid);
       if (byUserId) return byUserId.id;
@@ -2765,7 +2805,7 @@ function App() {
       );
       return byEmail?.id || "";
     },
-    [members, user]
+    [members, user, selectedTrip]
   );
 
   const contributionByMemberId = useMemo(() => {
@@ -4984,8 +5024,8 @@ function App() {
       isDemo: true,
       accessRole: "demo",
       name: "5-Day Norway Trip Demo",
-      startDate: "2026-06-10",
-      endDate: "2026-06-14",
+      startDate: demoIsoDate(5),
+      endDate: demoIsoDate(0),
       defaultCurrency: "EUR",
       status: "Demo",
       ownerId: "demo",
@@ -5109,11 +5149,11 @@ function App() {
       setMemberProfilesByEmail({});
       setCategories(DEMO_CATEGORIES);
       setPredictions(DEMO_PREDICTIONS);
-      setExpenses(DEMO_EXPENSES);
-      setSettlements(DEMO_SETTLEMENTS);
-      setTasks([]);
+      setExpenses(buildDemoExpenses());
+      setSettlements(buildDemoSettlements());
+      setTasks(buildDemoTasks());
       setNotifications([]);
-      setSettlementGroups([]);
+      setSettlementGroups(DEMO_SETTLEMENT_GROUPS);
       setTripDataLoading(false);
       return;
     }
