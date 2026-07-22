@@ -2297,6 +2297,7 @@ function App() {
   const [showQuickCategory, setShowQuickCategory] = useState(false);
   const [savingQuickCategory, setSavingQuickCategory] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showAudienceGuideModal, setShowAudienceGuideModal] = useState(false);
   const [defaultPayerIsMe, setDefaultPayerIsMe] = useState(() => {
     try { return localStorage.getItem("triphisaab-pref-defaultPayerIsMe") === "true"; } catch { return false; }
   });
@@ -3690,6 +3691,35 @@ function App() {
     if (impact.mode === "unit") return `Visible to ${getCurrentUserUnit()?.name || "your unit"}`;
     if (impact.mode === "personal") return "Visible to you";
     return `Visible to ${audienceLabelFromIds(formData.splitMemberIds || [], "selected people")}`;
+  }
+
+  // Plain-language "who paid, who owes what, who can see it" sentence shown before saving.
+  function buildExpensePreviewSentence(formData, impact) {
+    const amount = parseAmount(formData.originalAmount);
+    if (!amount || !formData.paidByMemberId) return "";
+    const currency = formData.originalCurrency || "EUR";
+    const amountLabel = formatCurrency(amount, currency);
+    const payerName = memberNameOf(formData.paidByMemberId) || "Someone";
+    const visibility = expenseVisibilityPreview(formData, impact);
+
+    if (impact.mode === "personal") {
+      return `${payerName} paid ${amountLabel} for themself. ${visibility}.`;
+    }
+
+    const participantIds = getCleanSplitMemberIds(formData);
+    const namesStr = memberListSummary(participantIds, "the group");
+
+    let splitSentence = "";
+    if (formData.splitType === "custom" || formData.splitType === "percent") {
+      splitSentence = participantIds.length ? `${namesStr} share this unevenly. ` : "";
+    } else if (participantIds.length > 0) {
+      const shareLabel = formatCurrency(amount / participantIds.length, currency);
+      splitSentence = participantIds.length === 1
+        ? `${namesStr} owes ${shareLabel}. `
+        : `${namesStr} each owe ${shareLabel}. `;
+    }
+
+    return `${payerName} paid ${amountLabel}. ${splitSentence}${visibility}.`;
   }
 
   function budgetVisibilityPreview(scope = budgetForm.scope, ids = budgetForm.visibleMemberIds) {
@@ -7301,6 +7331,33 @@ function App() {
     );
   }
 
+  function renderMoreSheetModal() {
+    return (
+      <Modal isOpen={isMoreSheetOpen} onClose={() => setIsMoreSheetOpen(false)} title="More" className="more-sheet-modal">
+        <div className="more-sheet-list">
+          {[
+            { key: "members",    label: "Members",          icon: "users",    onOpen: () => setActiveTab("members") },
+            { key: "categories", label: "Categories",        icon: "tag",      onOpen: () => setActiveTab("categories") },
+            { key: "settings",   label: "Settings",          icon: "settings", onOpen: () => setActiveTab("settings") },
+            { key: "export",     label: "Export trip data",  icon: "list",     onOpen: () => exportTripSummaryCsv() },
+            { key: "guide",      label: "Guide & tour",      icon: "suitcase", onOpen: () => startTutorialGuide("welcome") },
+          ].map(item => (
+            <button
+              key={item.key}
+              type="button"
+              className="more-sheet-item"
+              onClick={() => { setIsMoreSheetOpen(false); item.onOpen(); }}
+            >
+              <span className="more-sheet-item-icon"><Icon name={item.icon} size={18} /></span>
+              <span className="more-sheet-item-label">{item.label}</span>
+              <span className="more-sheet-item-chevron" aria-hidden="true">›</span>
+            </button>
+          ))}
+        </div>
+      </Modal>
+    );
+  }
+
   function renderAccountModal() {
     if (!user) return null;
     const acctInitial = (user?.displayName || user?.email || "?")[0].toUpperCase();
@@ -9499,6 +9556,11 @@ function App() {
                 <small>{expenseVisibility} · {expenseImpact.settlement}</small>
               </span>
             </div>
+            {buildExpensePreviewSentence(formData, expenseImpact) ? (
+              <p className="expense-preview-sentence">
+                {buildExpensePreviewSentence(formData, expenseImpact)}
+              </p>
+            ) : null}
           </div>
 
           {/* Limited expenses: include in group total */}
@@ -11092,41 +11154,20 @@ function App() {
                 <span className="mobile-next-action-cta">{nextAction.cta} →</span>
               </button>
 
-              {/* ── Passive audience guide — explains visibility without looking tappable ── */}
-              <section className="dash-card audience-guide-card">
-                <div className="audience-guide-head">
-                  <div>
-                    <span className="audience-guide-kicker">Trip visibility</span>
-                    <h3>How audiences work</h3>
-                    <p className="small muted">
-                      Expenses, budgets, and tasks use these visibility labels so families, couples, and individuals only see what matters to them.
-                    </p>
-                  </div>
-                  <div className="audience-guide-stats">
-                    <span>{activeMembers.length} members</span>
-                    <span>{activeUnitGroups.length} units</span>
-                    <span>{ungroupedMemberCount} solo</span>
-                  </div>
-                </div>
-                <ul className="audience-guide-list" aria-label="Trip visibility audience labels">
-                  {audienceModelItems.map(item => (
-                    <li className="audience-guide-item" key={item.title}>
-                      <span className="audience-guide-icon" aria-hidden="true">
-                        <Icon name={item.icon} size={17} />
-                      </span>
-                      <div>
-                        <strong>{item.title}</strong>
-                        <span>{item.detail}</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                {!myTravelUnit && canManageSelectedTrip() && !demoMode ? (
-                  <button className="link-button audience-guide-link" type="button" onClick={() => setActiveTab("members")}>
-                    Set up travel units for couples and families →
-                  </button>
-                ) : null}
-              </section>
+              {/* ── Audience guide trigger — on-demand explainer instead of a permanent section ── */}
+              <button
+                type="button"
+                className="audience-guide-trigger"
+                onClick={() => setShowAudienceGuideModal(true)}
+              >
+                <span className="audience-guide-trigger-icon" aria-hidden="true">
+                  <Icon name="user" size={15} />
+                </span>
+                <span>New here? See who can see what</span>
+                <span className="audience-guide-trigger-stats">
+                  {activeUnitGroups.length} units · {ungroupedMemberCount} solo →
+                </span>
+              </button>
 
               <div className="dash-action-bar dash-section-actions dash-actions-desktop" aria-label="Primary trip actions">
                 {!demoMode ? (
@@ -14068,12 +14109,17 @@ function App() {
             { key: "settlements", label: "Settle",   icon: <Icon name="handshake" /> },
             { key: "prediction",  label: "Budget",   icon: <Icon name="chart" /> },
             { key: "tasks",       label: "Tasks",    icon: <Icon name="check" /> },
+            { key: "more",        label: "More",     icon: <Icon name="list" /> },
           ].map(({ key, label, icon }) => (
             <button
               key={key}
-              className={`bottom-nav-item${activeTab === key ? " active" : ""}`}
+              className={`bottom-nav-item${(key === "more" ? isMoreSheetOpen : activeTab === key && !isMoreSheetOpen) ? " active" : ""}`}
               type="button"
-              onClick={() => { setActiveTab(key); setIsMoreSheetOpen(false); }}
+              onClick={() => {
+                if (key === "more") { setIsMoreSheetOpen(true); return; }
+                setActiveTab(key);
+                setIsMoreSheetOpen(false);
+              }}
             >
               <span className="bottom-nav-icon">{icon}</span>
               <span className="bottom-nav-label">{label}</span>
@@ -14779,6 +14825,40 @@ function App() {
         {renderBetaWelcome()}
         {renderFeedbackModal()}
         {renderAccountModal()}
+        {renderMoreSheetModal()}
+
+        <Modal isOpen={showAudienceGuideModal} onClose={() => setShowAudienceGuideModal(false)} title="Who sees what?" className="audience-guide-modal">
+          <p className="small muted audience-guide-modal-intro">
+            Every expense, budget, and task uses one of these four visibility labels.
+          </p>
+          <ul className="audience-guide-list" aria-label="Trip visibility audience labels">
+            {audienceModelItems.map(item => (
+              <li className="audience-guide-item" key={item.title}>
+                <span className="audience-guide-icon" aria-hidden="true">
+                  <Icon name={item.icon} size={17} />
+                </span>
+                <div>
+                  <strong>{item.title}</strong>
+                  <span>{item.detail}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="audience-guide-modal-stats">
+            <span>{activeMembers.length} members</span>
+            <span>{activeUnitGroups.length} units</span>
+            <span>{ungroupedMemberCount} solo</span>
+          </div>
+          {!myTravelUnit && canManageSelectedTrip() && !demoMode ? (
+            <button
+              className="link-button audience-guide-link"
+              type="button"
+              onClick={() => { setShowAudienceGuideModal(false); setActiveTab("members"); }}
+            >
+              Set up travel units for couples and families →
+            </button>
+          ) : null}
+        </Modal>
       </div>
     );
   }
